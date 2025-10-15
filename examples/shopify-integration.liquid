@@ -1,0 +1,67 @@
+{% comment %}
+  Vigaia AI Nutritionist Chat Widget - Shopify Integration
+  Add this to your theme.liquid file before </head>
+{% endcomment %}
+
+<script src="https://chat.vigaia.ai/widget.min.js"></script>
+
+{% comment %}
+  Optional: Configure the widget for your store
+{% endcomment %}
+<script>
+  // Wait for widget to load
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window.vigaiaChatWidget) {
+      // Customize the add to cart functionality for Shopify
+      window.vigaiaChatWidget.addToCart = function(variantId) {
+        // Use Shopify's cart API
+        fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: variantId,
+            quantity: 1
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 422) {
+            alert('Sorry, this product is not available.');
+          } else {
+            // Show success message
+            alert('Product added to cart!');
+            
+            // Optional: Update cart count
+            fetch('/cart.js')
+              .then(response => response.json())
+              .then(cart => {
+                // Update cart count in your theme
+                const cartCount = document.querySelector('.cart-count');
+                if (cartCount) {
+                  cartCount.textContent = cart.item_count;
+                }
+              });
+          }
+        })
+        .catch(error => {
+          console.error('Error adding to cart:', error);
+          alert('Sorry, there was an error adding the product to cart.');
+        });
+      };
+    }
+  });
+</script>
+
+{% comment %}
+  Alternative: Add via Shopify Script Tag API (for app developers)
+  
+  POST /admin/api/2023-10/script_tags.json
+  {
+    "script_tag": {
+      "event": "onload",
+      "src": "https://chat.vigaia.ai/widget.min.js"
+    }
+  }
+{% endcomment %}
