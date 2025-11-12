@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import FullPageChat from "../components/FullPageChat";
-import Navigation from "../components/Navigation";
+import FullPageChat from "../../components/FullPageChat";
+import Navigation from "../../components/Navigation";
 
-export default function Home() {
+export default function NutritionnistePage() {
   const [isConsultationStarted, setIsConsultationStarted] = useState(false);
   const [userName, setUserName] = useState<string>("");
 
@@ -102,3 +102,4 @@ export default function Home() {
     </div>
   );
 }
+

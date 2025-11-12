@@ -1,8 +1,13 @@
-const mongoose = require('mongoose');
+// Load environment variables from .env.local or .env
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env' });
+
+import mongoose from 'mongoose';
 
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ai-nutritionist';
-
+console.log('MONGODB_URI:', MONGODB_URI || '(using default)');
 // UserProfile schema (simplified for this script)
 const UserProfileSchema = new mongoose.Schema({
      userId: {
@@ -44,7 +49,7 @@ const UserProfileSchema = new mongoose.Schema({
           currency: {
                type: String,
                required: true,
-               default: 'USD',
+               default: 'EUR',
                enum: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'BRL', 'MXN', 'CNY']
           }
      },

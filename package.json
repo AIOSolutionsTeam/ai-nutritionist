@@ -9,14 +9,17 @@
     "lint": "eslint",
     "build-widget": "node scripts/build-widget.js",
     "test-widget": "open public/test.html",
-    "create-test-user": "node scripts/create-test-user.js",
-    "test-db": "node scripts/test-db-connection.js"
+    "create-test-user": "tsx scripts/create-test-user.js",
+    "test-db": "tsx scripts/test-db-connection.js",
+    "test-pdf": "tsx scripts/test-pdf-generation.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@types/mongoose": "^5.11.96",
     "@types/nodemailer": "^7.0.2",
     "@types/pdfkit": "^0.17.3",
+    "dotenv": "^17.2.3",
+    "mongodb": "^6.20.0",
     "mongoose": "^8.19.1",
     "next": "15.5.4",
     "nodemailer": "^7.0.9",
@@ -34,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }

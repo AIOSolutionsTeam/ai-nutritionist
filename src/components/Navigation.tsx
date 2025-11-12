@@ -7,8 +7,7 @@ export default function Navigation() {
   const pathname = usePathname();
 
   const navItems = [
-    { href: "/", label: "Home" },
-    { href: "/about", label: "About" },
+    { href: "/about", label: "À propos" },
     { href: "/contact", label: "Contact" },
   ];
 

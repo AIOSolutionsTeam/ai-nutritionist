@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
-  trackChatOpened,
   trackProductRecommended,
   trackAddToCart,
   trackEvent,
@@ -50,7 +49,6 @@ interface SpeechRecognitionAlternative {
   confidence: number;
 }
 
-// Narrowed window type for SpeechRecognition constructors
 type WindowWithSpeechRecognition = Window & {
   SpeechRecognition?: new () => SpeechRecognition;
   webkitSpeechRecognition?: new () => SpeechRecognition;
@@ -97,7 +95,7 @@ const Avatar = ({ isUser }: { isUser: boolean }) => (
     className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-medium ${
       isUser
         ? "bg-gradient-to-br from-gray-800 to-gray-900 text-white shadow-lg"
-        : "bg-gradient-nutrition text-white shadow-lg animate-float"
+        : "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg animate-float"
     }`}
   >
     {isUser ? "👤" : "🥗"}
@@ -107,27 +105,8 @@ const Avatar = ({ isUser }: { isUser: boolean }) => (
 // Product Card component
 const ProductCard = ({ product }: { product: ProductSearchResult }) => {
   const handleAddToCart = () => {
-    // Track add to cart event
     trackAddToCart(product.title, product.variantId, product.price, 1);
-
-    // TODO: Implement add to cart functionality
     console.log("Adding to cart:", product);
-
-    // Example implementation options:
-    // 1. Add to local state/cart context
-    // 2. Call Shopify Storefront API to add to cart
-    // 3. Send to your backend cart service
-    // 4. Use a cart library like use-shopping-cart
-
-    // Example with Shopify Storefront API:
-    // const mutation = `
-    //   mutation cartLinesAdd($cartId: ID!, $lines: [CartLineInput!]!) {
-    //     cartLinesAdd(cartId: $cartId, lines: $lines) {
-    //       cart { id }
-    //       userErrors { field message }
-    //     }
-    //   }
-    // `;
   };
 
   return (
@@ -151,15 +130,16 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
           {product.title}
         </h3>
         <div className="flex items-center justify-between">
-          <span className="text-lg font-bold text-green-600">
+          <span className="text-lg font-bold" style={{ color: '#059669' }}>
             ${product.price.toFixed(2)}
           </span>
           <button
             onClick={handleAddToCart}
             disabled={!product.available}
-            className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
+            className="px-3 py-1.5 text-white text-xs font-medium rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
+            style={{ backgroundColor: product.available ? '#059669' : undefined }}
           >
-            {product.available ? "Add to Cart" : "Out of Stock"}
+            {product.available ? "Ajouter au panier" : "Rupture de stock"}
           </button>
         </div>
       </div>
@@ -201,7 +181,6 @@ const FloatingBubbles = ({
 }: FloatingBubblesProps) => {
   const handleCustomSubmit = () => {
     const trimmed = customInputValue.trim();
-    // Validate: 1-3 words, max 30 characters
     const words = trimmed.split(/\s+/).filter((w) => w.length > 0);
     if (trimmed && words.length >= 1 && words.length <= 3 && trimmed.length <= 30) {
       onCustomInputAdd(trimmed);
@@ -214,7 +193,6 @@ const FloatingBubbles = ({
 
   return (
     <div className="mt-4 space-y-3 animate-fadeInUp">
-      {/* Selected Items Display */}
       {allSelections.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
           <span className="text-xs font-medium text-gray-600 w-full">Sélectionné ({allSelections.length}):</span>
@@ -251,7 +229,6 @@ const FloatingBubbles = ({
         </div>
       )}
 
-      {/* Suggestion Bubbles */}
       <div className="flex flex-wrap gap-2">
         {suggestions.map((suggestion, index) => {
           const isSelected = selected.includes(suggestion);
@@ -272,7 +249,6 @@ const FloatingBubbles = ({
         })}
       </div>
 
-      {/* Custom Input Section */}
       {allowCustomInput && (
         !showCustomInputField ? (
           <button
@@ -315,7 +291,6 @@ const FloatingBubbles = ({
         )
       )}
 
-      {/* Validate Button */}
       {allSelections.length > 0 && (
         <button
           onClick={onValidate}
@@ -329,29 +304,6 @@ const FloatingBubbles = ({
   );
 };
 
-/**
- * Floating Chat Widget Component
- *
- * A React component that renders as a floating chat bubble in the bottom-right corner.
- * When clicked, it opens a chat window where users can interact with an AI nutritionist.
- *
- * Features:
- * - Floating bubble that can be toggled open/closed
- * - Chat interface with message history
- * - Product recommendations with "Add to Cart" functionality
- * - Responsive design with smooth animations
- * - Integrates with /api/chat endpoint
- *
- * Usage:
- * <ChatWidget />
- *
- * The component automatically handles:
- * - Message state management
- * - API communication with /api/chat
- * - Product card rendering from AI responses
- * - Loading states and error handling
- */
-// Onboarding question types
 type OnboardingQuestion = 
   | 'age'
   | 'gender'
@@ -360,6 +312,7 @@ type OnboardingQuestion =
   | 'goals'
   | 'allergies'
   | 'budget'
+  | 'additional_info'
   | 'complete';
 
 interface OnboardingData {
@@ -370,11 +323,15 @@ interface OnboardingData {
   goals?: string[];
   allergies?: string[];
   budget?: { min: number; max: number; currency: string };
+  additionalInfo?: string;
 }
 
-export default function ChatWidget() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+interface FullPageChatProps {
+  isConsultationStarted: boolean;
+  onBack?: () => void;
+}
+
+export default function FullPageChat({ isConsultationStarted, onBack }: FullPageChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -393,8 +350,8 @@ export default function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const messageIdCounterRef = useRef(0);
+  const inputBaseAtRecognitionStartRef = useRef<string>("");
 
-  // Generate unique message ID
   const generateMessageId = (): string => {
     messageIdCounterRef.current += 1;
     return `${Date.now()}_${messageIdCounterRef.current}_${Math.random().toString(36).substr(2, 9)}`;
@@ -408,9 +365,6 @@ export default function ChatWidget() {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Helper function to get question info with bubble configuration
-  // Keep the base typed text when starting voice input so interim/final transcripts append correctly
-  const inputBaseAtRecognitionStartRef = useRef<string>("");
   const getQuestionInfo = (step: OnboardingQuestion): {
     question: string;
     progress: string;
@@ -433,34 +387,34 @@ export default function ChatWidget() {
     } = {
       age: {
         question: "Quel est votre âge?",
-        progress: "[1/7]",
-        examples: "Exemples: 25, j'ai 30 ans, I'm 28 (1–120 uniquement)",
+        progress: "[1/8]",
+        examples: "Exemples: j'ai 30 ans",
         hasBubbles: false,
       },
       gender: {
         question: "Quel est votre sexe?",
-        progress: "[2/7]",
+        progress: "[2/8]",
         examples: "Sélectionnez une option",
         suggestions: ["Homme", "Femme", "Préfère ne pas dire"],
         hasBubbles: true,
         allowMultiple: false,
-        allowCustomInput: false, // no custom options for gender
+        allowCustomInput: false,
       },
       weight: {
         question: "Quel est votre poids? (en kg) - Vous pouvez taper 'passer' pour ignorer",
-        progress: "[3/7]",
+        progress: "[3/8]",
         examples: "Exemples: 70 kg, 75.5 kg",
         hasBubbles: false,
       },
       height: {
         question: "Quelle est votre taille? (en cm) - Vous pouvez taper 'passer' pour ignorer",
-        progress: "[4/7]",
+        progress: "[4/8]",
         examples: "Exemples: 175 cm, 180 cm",
         hasBubbles: false,
       },
       goals: {
         question: "Quels sont vos objectifs de santé?",
-        progress: "[5/7]",
+        progress: "[5/8]",
         examples: "Vous pouvez sélectionner plusieurs options",
         suggestions: ["Perte de poids", "Énergie", "Bien-être", "Sport", "Musculation", "Sommeil", "Immunité"],
         hasBubbles: true,
@@ -469,7 +423,7 @@ export default function ChatWidget() {
       },
       allergies: {
         question: "Avez-vous des allergies ou suivez-vous un régime particulier?",
-        progress: "[6/7]",
+        progress: "[6/8]",
         examples: "Vous pouvez sélectionner plusieurs options ou taper 'aucune'",
         suggestions: ["Lactose", "Gluten", "Halal", "Végétarien", "Végétalien", "Sans noix", "Aucune"],
         hasBubbles: true,
@@ -477,21 +431,28 @@ export default function ChatWidget() {
         allowCustomInput: true,
       },
       budget: {
-        question:"Quel budget mensuel prévoyez-vous pour vos compléments alimentaires?",
-        progress: "[7/7]",
+        question:"Quel budget mensuel prévoyez-vous pour les produits de bien-être?",
+        progress: "[7/8]",
         examples: "Sélectionnez une option ou ajoutez votre budget personnalisé",
         suggestions: ["0-50 EUR", "50-100 EUR", "100-150 EUR", "150-200 EUR", "200+ EUR"],
         hasBubbles: true,
         allowMultiple: false,
         allowCustomInput: true,
       },
+      additional_info: {
+        question: "Y a-t-il autre chose que vous aimeriez me dire? (médicaments, conditions médicales, etc.)",
+        progress: "[8/8]",
+        examples: "Vous pouvez taper 'passer' ou 'rien' si vous n'avez rien à ajouter",
+        hasBubbles: false,
+      },
     };
 
     return questions[step] || { question: "", progress: "", hasBubbles: false };
   };
 
-  // Generate or retrieve user ID and check for existing profile
   useEffect(() => {
+    if (!isConsultationStarted) return;
+
     const initializeUser = async () => {
       const storedUserId = localStorage.getItem("chat_user_id");
       let currentUserId: string;
@@ -507,26 +468,17 @@ export default function ChatWidget() {
         setUserId(currentUserId);
       }
 
-      // Check if user profile exists
       try {
         const response = await fetch(`/api/user?userId=${currentUserId}`);
         if (response.ok) {
           const profile = await response.json();
-          console.log("📋 User Profile Check:", {
-            userId: currentUserId,
-            profileExists: !!(profile && profile.age && profile.gender),
-            profile: profile
-          });
-          
           if (profile && profile.age && profile.gender) {
-            // Profile exists, skip onboarding
-            console.log("✅ Existing user profile found:", profile);
             setIsOnboardingComplete(true);
             setOnboardingStep('complete');
             setMessages([
               {
                 id: "1",
-                text: `Welcome back! 👋 I have your profile information. How can I help you with your nutrition journey today?`,
+                text: `Bonjour! 👋 J'ai votre profil. Comment puis-je vous aider aujourd'hui avec votre parcours nutritionnel?`,
                 isUser: false,
                 timestamp: new Date(),
               },
@@ -536,13 +488,11 @@ export default function ChatWidget() {
           }
         }
       } catch (error) {
-        console.error("❌ Error checking user profile:", error);
+        console.error("Error checking user profile:", error);
       }
 
-      // No profile found, start onboarding
       setIsCheckingProfile(false);
       
-      // Start onboarding inline
       const questionInfo = getQuestionInfo('age');
       setMessages([
         {
@@ -563,11 +513,9 @@ export default function ChatWidget() {
     };
 
     initializeUser();
-  }, []);
+  }, [isConsultationStarted]);
 
-  // Initialize Speech Recognition
   useEffect(() => {
-    // Check for browser support
     const SpeechRecognitionCtor =
       (window as WindowWithSpeechRecognition).SpeechRecognition ||
       (window as WindowWithSpeechRecognition).webkitSpeechRecognition;
@@ -576,9 +524,7 @@ export default function ChatWidget() {
       setIsVoiceSupported(true);
       const recognition = new SpeechRecognitionCtor();
       recognition.continuous = false;
-      // Enable interim results so users can see text while speaking
       recognition.interimResults = true;
-      // Prefer browser locale; default to fr-FR if French, else en-US
       try {
         const browserLang =
           (typeof navigator !== "undefined" && navigator.language) || "en-US";
@@ -594,7 +540,6 @@ export default function ChatWidget() {
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        // Aggregate interim and final transcripts to show live text
         let interimTranscript = "";
         let finalTranscript = "";
         const results: SpeechRecognitionResultList = event.results;
@@ -614,7 +559,6 @@ export default function ChatWidget() {
         setInputMessage(combined);
       };
 
-      // Stop automatically when speech ends to finalize the result
       recognition.onspeechend = () => {
         try {
           recognition.stop();
@@ -626,20 +570,13 @@ export default function ChatWidget() {
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         try {
           setIsListening(false);
-          
           const errorType = event?.error || "";
-          
-          // Handle different error types - silently ignore expected errors
           if (errorType === "no-speech" || errorType === "aborted") {
-            // These are expected errors - don't log or propagate
             return;
           }
-          
-          // Handle other error types
           switch (errorType) {
             case "audio-capture":
               console.log("Audio capture error:", event);
-              console.warn("No microphone found or microphone not accessible.");
               break;
             case "not-allowed":
               alert("Microphone access denied. Please enable microphone permissions in your browser settings.");
@@ -648,20 +585,17 @@ export default function ChatWidget() {
               console.warn("Network error occurred during speech recognition.");
               break;
             default:
-              // Only log truly unexpected errors
               if (errorType) {
                 console.error("Speech recognition error:", errorType);
               }
           }
         } catch {
-          // Silently handle any errors in the error handler itself
-          // This prevents React from logging the error
+          // Silently handle errors
         }
       };
 
       recognition.onend = () => {
         setIsListening(false);
-        // Reset base so the next recording starts fresh
         inputBaseAtRecognitionStartRef.current = "";
       };
 
@@ -675,20 +609,17 @@ export default function ChatWidget() {
     };
   }, []);
 
-  // Parse user input based on current onboarding step
   const parseOnboardingResponse = (input: string, step: OnboardingQuestion): Partial<OnboardingData> | null => {
     const lowerInput = input.toLowerCase().trim();
     
     switch (step) {
       case 'age': {
-        // Extract any number and validate strict range 1–120
         const ageMatch = input.match(/\d+/);
         if (ageMatch) {
           const age = parseInt(ageMatch[0], 10);
           if (age >= 1 && age <= 120) return { age };
           return null;
         }
-        // Try to extract from text like "I am 25 years old"
         const textAgeMatch = lowerInput.match(/(?:i am|j'ai|je suis|i'm)\s*(\d+)/);
         if (textAgeMatch) {
           const age = parseInt(textAgeMatch[1], 10);
@@ -711,15 +642,12 @@ export default function ChatWidget() {
       }
       
       case 'weight': {
-        // Check for skip
-        if (lowerInput.includes('skip') || lowerInput.includes('passer') || lowerInput.includes('passer')) {
-          return { weight: undefined }; // Allow skipping
+        if (lowerInput.includes('skip') || lowerInput.includes('passer')) {
+          return { weight: undefined };
         }
-        // Reject imperial units; enforce metric (kg)
         if (/(?:lbs?|pounds?)/i.test(input)) {
           return null;
         }
-        // Extract weight in kg (look for numbers, assume kg if no unit)
         const weightMatch = input.match(/(\d+(?:[.,]\d+)?)\s*(?:kg|kilo|kilogrammes?|kilogramme)?/i);
         if (weightMatch) {
           const weight = parseFloat(weightMatch[1].replace(',', '.'));
@@ -729,15 +657,12 @@ export default function ChatWidget() {
       }
       
       case 'height': {
-        // Check for skip
-        if (lowerInput.includes('skip') || lowerInput.includes('passer') || lowerInput.includes('passer')) {
-          return { height: undefined }; // Allow skipping
+        if (lowerInput.includes('skip') || lowerInput.includes('passer')) {
+          return { height: undefined };
         }
-        // Reject imperial units; enforce metric (cm)
         if (/(?:ft|feet|in|inch|'|")/i.test(input)) {
           return null;
         }
-        // Extract height in cm
         const heightMatch = input.match(/(\d+(?:[.,]\d+)?)\s*(?:cm|centimètres?|centimètre)?/i);
         if (heightMatch) {
           const height = parseFloat(heightMatch[1].replace(',', '.'));
@@ -776,9 +701,7 @@ export default function ChatWidget() {
           }
         }
         
-        // If no goals found but user said something, accept common goals
         if (goals.length === 0 && lowerInput.length > 3) {
-          // Default to wellness if user provided any text
           return { goals: ['wellness'] };
         }
         
@@ -808,7 +731,6 @@ export default function ChatWidget() {
           'soy': 'soy',
         };
         
-        // If user says "none" or "aucune", return empty array
         if (lowerInput.includes('aucune') || lowerInput.includes('none') || 
             lowerInput.includes('pas') || lowerInput.includes('rien') ||
             lowerInput.includes('non')) {
@@ -821,19 +743,15 @@ export default function ChatWidget() {
           }
         }
         
-        // Always return, even if empty (user might have said "none")
         return { allergies };
       }
       
       case 'budget': {
-        // Extract budget range - more lenient
         const numbers = input.match(/\d+/g);
         if (numbers && numbers.length >= 1) {
           const firstNum = parseInt(numbers[0]);
-          // If only one number, create a range
           const secondNum = numbers.length >= 2 ? parseInt(numbers[1]) : firstNum + 50;
           
-          // Determine currency (default to EUR for French)
           let currency = 'EUR';
           if (lowerInput.includes('usd') || lowerInput.includes('dollar') || lowerInput.includes('$')) currency = 'USD';
           if (lowerInput.includes('eur') || lowerInput.includes('euro') || lowerInput.includes('€')) currency = 'EUR';
@@ -841,12 +759,10 @@ export default function ChatWidget() {
           const min = Math.min(firstNum, secondNum);
           const max = Math.max(firstNum, secondNum);
           
-          // More lenient: accept any reasonable budget
           if (min >= 0) {
             return { budget: { min, max: max >= min ? max : min + 50, currency } };
           }
         }
-        // Try to extract from text like "around 100 euros"
         const textBudgetMatch = lowerInput.match(/(?:environ|around|about|jusqu'à|up to|max)\s*(\d+)/);
         if (textBudgetMatch) {
           const amount = parseInt(textBudgetMatch[1]);
@@ -857,13 +773,27 @@ export default function ChatWidget() {
         return null;
       }
       
+      case 'additional_info': {
+        // Allow skipping with 'passer', 'rien', 'none', 'nothing'
+        if (lowerInput.includes('passer') || lowerInput.includes('rien') || 
+            lowerInput.includes('none') || lowerInput.includes('nothing') ||
+            lowerInput.includes('non') || lowerInput.includes('pas')) {
+          return { additionalInfo: "" };
+        }
+        // Accept any text input for additional info
+        if (input.trim().length > 0) {
+          return { additionalInfo: input.trim() };
+        }
+        return null;
+      }
+      
       default:
         return null;
     }
   };
 
   const getNextQuestion = (currentStep: OnboardingQuestion): { step: OnboardingQuestion; question: string; progress: string } => {
-    const nextSteps: OnboardingQuestion[] = ['age', 'gender', 'weight', 'height', 'goals', 'allergies', 'budget', 'complete'];
+    const nextSteps: OnboardingQuestion[] = ['age', 'gender', 'weight', 'height', 'goals', 'allergies', 'budget', 'additional_info', 'complete'];
     const currentIndex = nextSteps.indexOf(currentStep);
     const nextStep = nextSteps[currentIndex + 1] || 'complete';
     const questionInfo = getQuestionInfo(nextStep);
@@ -878,9 +808,8 @@ export default function ChatWidget() {
   const goToPreviousQuestion = (): boolean => {
     if (onboardingHistory.length <= 1) return false;
     
-    // Remove current step from history
     const newHistory = [...onboardingHistory];
-    newHistory.pop(); // Remove current
+    newHistory.pop();
     const previousStep = newHistory[newHistory.length - 1];
     
     setOnboardingHistory(newHistory);
@@ -898,7 +827,6 @@ export default function ChatWidget() {
     return true;
   };
 
-  // Handle bubble selection
   const handleBubbleClick = (suggestion: string) => {
     const info = getQuestionInfo(onboardingStep);
     if (!info.hasBubbles) return;
@@ -923,7 +851,6 @@ export default function ChatWidget() {
     setCustomInputs((prev) => prev.filter((v) => v !== value));
   };
 
-  // Process bubble-based answers
   const processBubbleAnswer = async () => {
     if (isLoading || isCheckingProfile) return;
 
@@ -935,7 +862,6 @@ export default function ChatWidget() {
 
     setIsLoading(true);
 
-    // Create user message showing selections
     const userMessage: Message = {
       id: generateMessageId(),
       text: allSelections.join(", "),
@@ -1028,32 +954,24 @@ export default function ChatWidget() {
         setOnboardingHistory((prev) => [...prev, onboardingStep]);
       }
 
-      // Reset bubbles
       setSelectedBubbles([]);
       setCustomInputs([]);
       setShowCustomInput(false);
       setCustomInputValue("");
 
-      // If last question
+      // Don't save yet if budget is completed - wait for additional_info
       if (onboardingStep === "budget" && updatedData.budget) {
-        const summaryText =
-          `📋 Récapitulatif:\n\n` +
-          `• Âge: ${updatedData.age}\n` +
-          `• Sexe: ${updatedData.gender}\n` +
-          `${updatedData.weight ? `• Poids: ${updatedData.weight} kg\n` : ""}` +
-          `${updatedData.height ? `• Taille: ${updatedData.height} cm\n` : ""}` +
-          `• Objectifs: ${(updatedData.goals || []).join(", ") || "Aucun"}\n` +
-          `• Allergies/Régimes: ${(updatedData.allergies || []).join(", ") || "Aucune"}\n` +
-          `• Budget: ${updatedData.budget.min}-${updatedData.budget.max} ${updatedData.budget.currency}\n\n` +
-          `Enregistrement en cours...`;
-        const summaryMessage: Message = {
+        const next = getNextQuestion(onboardingStep);
+        setOnboardingHistory((prev) => [...prev, next.step]);
+        setOnboardingStep(next.step);
+
+        const nextQuestionMessage: Message = {
           id: generateMessageId(),
-          text: summaryText,
+          text: `Merci! ${next.progress}\n\n${next.question}\n\n💡 Astuce: Tapez 'retour' pour revenir à la question précédente, ou 'résumé' pour voir vos réponses.`,
           isUser: false,
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, summaryMessage]);
-        await saveUserProfile(updatedData);
+        setMessages((prev) => [...prev, nextQuestionMessage]);
         setIsLoading(false);
         return;
       }
@@ -1083,19 +1001,7 @@ export default function ChatWidget() {
   };
 
   const saveUserProfile = async (finalData: OnboardingData) => {
-    console.log("💾 Attempting to save user profile:", {
-      userId,
-      finalData
-    });
-    
     if (!userId || !finalData.age || !finalData.gender || !finalData.budget) {
-      console.error("❌ Missing required data for profile:", {
-        userId,
-        hasAge: !!finalData.age,
-        hasGender: !!finalData.gender,
-        hasBudget: !!finalData.budget,
-        finalData
-      });
       return;
     }
     
@@ -1108,9 +1014,8 @@ export default function ChatWidget() {
       goals: finalData.goals || [],
       allergies: finalData.allergies || [],
       budget: finalData.budget,
+      additionalInfo: finalData.additionalInfo || "",
     };
-    
-    console.log("📤 Sending profile to API:", profilePayload);
     
     try {
       const response = await fetch("/api/user", {
@@ -1122,8 +1027,6 @@ export default function ChatWidget() {
       });
 
       if (response.ok) {
-        const savedProfile = await response.json();
-        console.log("✅ User profile saved successfully:", savedProfile);
         setIsOnboardingComplete(true);
         setOnboardingStep('complete');
         const completionMessage: Message = {
@@ -1134,15 +1037,10 @@ export default function ChatWidget() {
         };
         setMessages((prev) => [...prev, completionMessage]);
       } else {
-        const errorData = await response.json();
-        console.error("❌ API Error saving profile:", {
-          status: response.status,
-          error: errorData
-        });
-        throw new Error(errorData.error || "Failed to save profile");
+        throw new Error("Failed to save profile");
       }
     } catch (error) {
-      console.error("❌ Error saving user profile:", error);
+      console.error("Error saving user profile:", error);
       const errorMessage: Message = {
         id: generateMessageId(),
         text: "Désolé, une erreur s'est produite lors de l'enregistrement. Veuillez réessayer.",
@@ -1154,7 +1052,7 @@ export default function ChatWidget() {
   };
 
   const sendMessage = async () => {
-    if (!inputMessage.trim() || isLoading || isCheckingProfile) return;
+    if (!inputMessage.trim() || isLoading || isCheckingProfile || !isConsultationStarted) return;
 
     const userMessage: Message = {
       id: generateMessageId(),
@@ -1168,11 +1066,9 @@ export default function ChatWidget() {
     setInputMessage("");
     setIsLoading(true);
 
-    // Handle onboarding flow
     if (!isOnboardingComplete && onboardingStep !== 'complete') {
       const lowerInput = currentInput.toLowerCase().trim();
       
-      // Check for navigation commands
       if (lowerInput === 'retour' || lowerInput === 'back' || lowerInput === 'précédent' || lowerInput === 'previous') {
         const wentBack = goToPreviousQuestion();
         if (wentBack) {
@@ -1191,7 +1087,6 @@ export default function ChatWidget() {
         }
       }
       
-      // Check for summary request
       if (lowerInput === 'résumé' || lowerInput === 'summary' || lowerInput === 'récapitulatif') {
         const summaryMessage: Message = {
           id: generateMessageId(),
@@ -1202,7 +1097,8 @@ export default function ChatWidget() {
             `• Taille: ${onboardingData.height ? `${onboardingData.height} cm` : 'Non renseigné'}\n` +
             `• Objectifs: ${onboardingData.goals && onboardingData.goals.length > 0 ? onboardingData.goals.join(', ') : 'Non renseigné'}\n` +
             `• Allergies/Régimes: ${onboardingData.allergies && onboardingData.allergies.length > 0 ? onboardingData.allergies.join(', ') : 'Aucune'}\n` +
-            `• Budget: ${onboardingData.budget ? `${onboardingData.budget.min}-${onboardingData.budget.max} ${onboardingData.budget.currency}` : 'Non renseigné'}\n\n` +
+            `• Budget: ${onboardingData.budget ? `${onboardingData.budget.min}-${onboardingData.budget.max} ${onboardingData.budget.currency}` : 'Non renseigné'}\n` +
+            `• Informations supplémentaires: ${onboardingData.additionalInfo || 'Aucune'}\n\n` +
             `Tapez 'retour' pour modifier une réponse précédente.`,
           isUser: false,
           timestamp: new Date(),
@@ -1212,11 +1108,10 @@ export default function ChatWidget() {
         return;
       }
       
-      // For bubble questions, require using bubbles UI unless adding a custom input
       const qInfo = getQuestionInfo(onboardingStep);
       if (qInfo.hasBubbles && !showCustomInput) {
         const errorMessage: Message = {
-          id: (Date.now() + 1).toString(),
+          id: generateMessageId(),
           text: "Veuillez utiliser les bulles de suggestion ci-dessus pour répondre à cette question, ou cliquez sur 'Ajouter une réponse personnalisée'.",
           isUser: false,
           timestamp: new Date(),
@@ -1228,31 +1123,16 @@ export default function ChatWidget() {
 
       const parsed = parseOnboardingResponse(currentInput, onboardingStep);
       
-      console.log("🔍 Onboarding Step:", {
-        step: onboardingStep,
-        userInput: currentInput,
-        parsed: parsed,
-        currentData: onboardingData
-      });
-      
       if (parsed) {
         const updatedData = { ...onboardingData, ...parsed };
         setOnboardingData(updatedData);
         
-        // Update history
         if (!onboardingHistory.includes(onboardingStep)) {
           setOnboardingHistory((prev) => [...prev, onboardingStep]);
         }
         
-        console.log("✅ Data updated:", {
-          step: onboardingStep,
-          newData: parsed,
-          updatedData: updatedData
-        });
-        
-        // Check if this is the last question (budget)
-        if (onboardingStep === 'budget' && updatedData.budget) {
-          // Show summary before saving
+        // When additional_info is completed, show summary and save
+        if (onboardingStep === 'additional_info' && updatedData.additionalInfo !== undefined) {
           const summaryText = `📋 Récapitulatif:\n\n` +
             `• Âge: ${updatedData.age}\n` +
             `• Sexe: ${updatedData.gender}\n` +
@@ -1260,7 +1140,8 @@ export default function ChatWidget() {
             `${updatedData.height ? `• Taille: ${updatedData.height} cm\n` : ''}` +
             `• Objectifs: ${(updatedData.goals || []).join(', ') || 'Aucun'}\n` +
             `• Allergies/Régimes: ${(updatedData.allergies || []).join(', ') || 'Aucune'}\n` +
-            `• Budget: ${updatedData.budget.min}-${updatedData.budget.max} ${updatedData.budget.currency}\n\n` +
+            `• Budget: ${updatedData.budget?.min}-${updatedData.budget?.max} ${updatedData.budget?.currency}\n` +
+            `• Informations supplémentaires: ${updatedData.additionalInfo || 'Aucune'}\n\n` +
             `Enregistrement en cours...`;
           
           const summaryMessage: Message = {
@@ -1271,34 +1152,26 @@ export default function ChatWidget() {
           };
           setMessages((prev) => [...prev, summaryMessage]);
           
-          // All questions answered, save profile
-          console.log("💾 Saving complete user profile:", updatedData);
           await saveUserProfile(updatedData);
           setIsLoading(false);
           return;
         }
         
-        // Move to next question
         const next = getNextQuestion(onboardingStep);
         setOnboardingHistory((prev) => [...prev, next.step]);
         setOnboardingStep(next.step);
         
         const nextQuestionMessage: Message = {
-          id: (Date.now() + 1).toString(),
+          id: generateMessageId(),
           text: `Merci! ${next.progress}\n\n${next.question}\n\n💡 Astuce: Tapez 'retour' pour revenir à la question précédente, ou 'résumé' pour voir vos réponses.`,
           isUser: false,
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, nextQuestionMessage]);
       } else {
-        // Invalid response, ask again with better error message
-        console.log("⚠️ Could not parse response:", {
-          step: onboardingStep,
-          input: currentInput
-        });
         const questionInfo = getQuestionInfo(onboardingStep);
         const retryMessage: Message = {
-          id: (Date.now() + 1).toString(),
+          id: generateMessageId(),
           text: `Je n'ai pas compris votre réponse. ${questionInfo.examples ? `\n\n💡 ${questionInfo.examples}` : ''}\n\n${questionInfo.progress} ${questionInfo.question}\n\n💡 Vous pouvez aussi taper 'retour' pour revenir en arrière ou 'passer' pour ignorer cette question (si applicable).`,
           isUser: false,
           timestamp: new Date(),
@@ -1310,7 +1183,6 @@ export default function ChatWidget() {
       return;
     }
 
-    // Normal chat flow (after onboarding)
     trackEvent("chat_message_sent", {
       category: "engagement",
       messageLength: currentInput.length,
@@ -1331,10 +1203,9 @@ export default function ChatWidget() {
       }
 
       const data = await response.json();
-      console.log("API Response:", data);
 
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: generateMessageId(),
         text:
           data.reply ||
           "I'm sorry, I couldn't process your request. Please try again.",
@@ -1373,7 +1244,7 @@ export default function ChatWidget() {
       });
 
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: generateMessageId(),
         text: "Sorry, I encountered an error. Please try again.",
         isUser: false,
         timestamp: new Date(),
@@ -1399,7 +1270,6 @@ export default function ChatWidget() {
       setIsListening(false);
     } else {
       try {
-        // Capture the current input so interim transcripts display live without duplication
         inputBaseAtRecognitionStartRef.current = inputMessage;
         recognitionRef.current.start();
         trackEvent("voice_input_started", {
@@ -1412,307 +1282,174 @@ export default function ChatWidget() {
     }
   };
 
+  if (!isConsultationStarted) {
+    return null;
+  }
+
   return (
-    <>
-      {/* Floating Chat Bubble */}
-      {!isOpen && (
-        <button
-          onClick={() => {
-            setIsOpen(true);
-            // Track chat opened event
-            trackChatOpened(userId || undefined, "floating_bubble");
-          }}
-          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-nutrition text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center z-[9999] animate-bounce"
-        >
-          <svg
-            className="w-6 h-6 sm:w-8 sm:h-8"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-            />
-          </svg>
-        </button>
-      )}
-
-      {/* Chat Window */}
-      {isOpen && (
-        <div className={`fixed ${isExpanded ? 'inset-0 w-screen h-screen' : 'bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[calc(100vh-2rem)] sm:h-[600px] max-h-[600px]'} bg-white ${isExpanded ? 'rounded-none' : 'rounded-2xl sm:rounded-3xl'} shadow-2xl border border-gray-200 overflow-hidden z-[9999] flex flex-col transition-all duration-300`}>
-          {/* Header */}
-          <div className="bg-gradient-nutrition px-4 sm:px-6 py-3 sm:py-4 text-white flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Avatar isUser={false} />
-              <div>
-                <h3 className="font-bold text-lg">AI Nutritionist</h3>
-                <p className="text-sm text-green-100">Online • Ready to help</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              {/* Expand/Collapse Button */}
-              <button
-                onClick={() => {
-                  setIsExpanded(!isExpanded);
-                  trackEvent("chat_expanded", {
-                    category: "engagement",
-                    userId,
-                    expanded: !isExpanded,
-                  });
-                }}
-                className="text-white hover:text-green-200 transition-colors duration-200 p-1"
-                title={isExpanded ? "Réduire" : "Agrandir"}
-              >
-                {isExpanded ? (
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-                    />
-                  </svg>
-                )}
-              </button>
-              {/* Close Button */}
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  setIsExpanded(false);
-                  // Track chat closed event
-                  trackEvent("chat_closed", {
-                    category: "engagement",
-                    userId,
-                  });
-                }}
-                className="text-white hover:text-green-200 transition-colors duration-200 p-1"
-                title="Fermer"
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
+    <div className="fixed inset-0 w-screen h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 z-50 flex flex-col">
+      {/* Header */}
+      <div 
+        className="w-full text-white shadow-lg px-4 sm:px-6 py-4 flex items-center justify-between"
+        style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}
+      >
+        <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Avatar isUser={false} />
+            <div>
+              <h3 className="font-bold text-lg text-white">Nutritionniste virtuel</h3>
+              <p className="text-sm text-green-100">En ligne • Prêt à vous aider</p>
             </div>
           </div>
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="text-white hover:text-green-200 transition-colors duration-200 flex items-center space-x-2"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              <span>Retour</span>
+            </button>
+          )}
+        </div>
+      </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-white">
-            {messages.map((message, index) => (
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="max-w-4xl mx-auto space-y-4">
+          {messages.map((message, index) => (
+            <div
+              key={message.id}
+              className={`flex items-start space-x-3 ${
+                message.isUser ? "flex-row-reverse space-x-reverse" : ""
+              } animate-fadeInUp`}
+              style={{ 
+                animationDelay: `${index * 0.1}s`,
+                animation: 'fadeInUp 0.6s ease-out forwards'
+              }}
+            >
+              {!message.isUser && <Avatar isUser={false} />}
               <div
-                key={message.id}
-                className={`flex items-start space-x-3 ${
-                  message.isUser ? "flex-row-reverse space-x-reverse" : ""
-                } animate-fadeInUp`}
-                style={{ animationDelay: `${index * 0.1}s` }}
+                className={`max-w-[75%] px-4 py-3 rounded-2xl ${
+                  message.isUser
+                    ? "bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-br-lg shadow-lg"
+                    : "bg-white text-gray-800 border border-green-200 rounded-bl-lg shadow-sm"
+                }`}
               >
-                {!message.isUser && <Avatar isUser={false} />}
-                <div
-                  className={`max-w-[75%] px-4 py-3 rounded-2xl ${
-                    message.isUser
-                      ? "bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-br-lg shadow-lg"
-                      : "bg-gradient-to-br from-green-50 to-emerald-50 text-gray-800 border border-green-200 rounded-bl-lg shadow-sm"
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {message.text}
-                  </p>
+                <p className={`text-sm sm:text-base leading-relaxed whitespace-pre-wrap ${
+                  message.isUser ? "text-white" : "text-gray-800"
+                }`}>
+                  {message.text}
+                </p>
 
-                  {/* Floating Bubbles for Onboarding Questions */}
-                  {!message.isUser && !isOnboardingComplete && onboardingStep !== 'complete' && (() => {
-                    const info = getQuestionInfo(onboardingStep);
-                    const isLastMessage = messages[messages.length - 1]?.id === message.id;
-                    if (isLastMessage && info.hasBubbles && info.suggestions) {
-                      return (
-                        <FloatingBubbles
-                          suggestions={info.suggestions}
-                          selected={selectedBubbles}
-                          customInputs={customInputs}
-                          onBubbleClick={handleBubbleClick}
-                          onCustomInputAdd={handleCustomInputAdd}
-                          onCustomInputRemove={handleCustomInputRemove}
-                          showCustomInputField={showCustomInput}
-                          onToggleCustomInput={() => {
-                            setShowCustomInput(!showCustomInput);
-                            if (showCustomInput) setCustomInputValue("");
-                          }}
-                          customInputValue={customInputValue}
-                          onCustomInputChange={setCustomInputValue}
-                          onValidate={processBubbleAnswer}
-                          canValidate={!isLoading && (selectedBubbles.length > 0 || customInputs.length > 0)}
-                          allowCustomInput={info.allowCustomInput !== false}
-                        />
-                      );
-                    }
-                    return null;
-                  })()}
-
-                  {/* Product Recommendations */}
-                  {message.recommendedProducts &&
-                    message.recommendedProducts.length > 0 && (
-                      <div className="mt-4">
-                        <p className="text-xs font-medium text-gray-600 mb-3">
-                          Recommended Products:
-                        </p>
-                        <div className="grid grid-cols-1 gap-3">
-                          {message.recommendedProducts.map((product, idx) => (
-                            <ProductCard key={idx} product={product} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                  <p
-                    className={`text-xs mt-3 ${
-                      message.isUser ? "text-gray-300" : "text-gray-400"
-                    }`}
-                  >
-                    {message.timestamp.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-                {message.isUser && <Avatar isUser={true} />}
-              </div>
-            ))}
-
-            {isLoading && (
-              <div className="flex items-start space-x-3 animate-fadeInUp">
-                <Avatar isUser={false} />
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 text-gray-800 px-4 py-3 rounded-2xl rounded-bl-lg border border-green-200 shadow-sm">
-                  <TypingIndicator />
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-t border-green-200">
-            <div className="flex items-end space-x-2">
-              {/* Voice Input Button */}
-              {isVoiceSupported && (
-                <button
-                  onClick={toggleVoiceInput}
-                  disabled={isLoading}
-                  className={`p-3 rounded-2xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isListening
-                      ? "bg-red-500 text-white animate-pulse shadow-lg"
-                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
-                  title={isListening ? "Stop recording" : "Start voice input"}
-                >
-                  {isListening ? (
-                    <svg
-                      className="w-5 h-5"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-                      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-                      />
-                    </svg>
-                  )}
-                </button>
-              )}
-              <div className="flex-1 relative">
-                {(() => {
-                  const info = !isOnboardingComplete ? getQuestionInfo(onboardingStep) : null;
-                  const hideInput = !!(info && info.hasBubbles && showCustomInput);
-                  if (hideInput) {
-                    return null;
-                  }
+              {!message.isUser && !isOnboardingComplete && onboardingStep !== 'complete' && (() => {
+                const info = getQuestionInfo(onboardingStep);
+                const isLastMessage = messages[messages.length - 1]?.id === message.id;
+                if (isLastMessage && info.hasBubbles && info.suggestions) {
                   return (
-                    <textarea
-                      value={inputMessage}
-                      onChange={(e) => setInputMessage(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      placeholder={
-                        isCheckingProfile
-                          ? "Chargement..."
-                          : isListening
-                          ? "Listening... Speak now..."
-                          : !isOnboardingComplete
-                          ? "Répondez à la question..."
-                          : "Ask about nutrition, supplements..."
-                      }
-                      className={`w-full px-4 py-3 pr-12 border border-green-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none transition-all duration-200 placeholder-gray-500 bg-white shadow-sm text-sm ${
-                        isListening ? "ring-2 ring-red-500 border-red-500" : ""
-                      }`}
-                      rows={1}
-                      disabled={isLoading || isListening || isCheckingProfile}
-                      style={{
-                        minHeight: "44px",
-                        maxHeight: "100px",
-                        height: "auto",
+                    <FloatingBubbles
+                      suggestions={info.suggestions}
+                      selected={selectedBubbles}
+                      customInputs={customInputs}
+                      onBubbleClick={handleBubbleClick}
+                      onCustomInputAdd={handleCustomInputAdd}
+                      onCustomInputRemove={handleCustomInputRemove}
+                      showCustomInputField={showCustomInput}
+                      onToggleCustomInput={() => {
+                        setShowCustomInput(!showCustomInput);
+                        if (showCustomInput) setCustomInputValue("");
                       }}
-                      onInput={(e) => {
-                        const target = e.target as HTMLTextAreaElement;
-                        target.style.height = "auto";
-                        target.style.height = Math.min(target.scrollHeight, 100) + "px";
-                      }}
+                      customInputValue={customInputValue}
+                      onCustomInputChange={setCustomInputValue}
+                      onValidate={processBubbleAnswer}
+                      canValidate={!isLoading && (selectedBubbles.length > 0 || customInputs.length > 0)}
+                      allowCustomInput={info.allowCustomInput !== false}
                     />
                   );
-                })()}
-                {isListening && (
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs text-red-500 font-medium">Recording</span>
+                }
+                return null;
+              })()}
+
+              {message.recommendedProducts &&
+                message.recommendedProducts.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-gray-600 mb-3">
+                      Produits recommandés :
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {message.recommendedProducts.map((product, idx) => (
+                        <ProductCard key={idx} product={product} />
+                      ))}
+                    </div>
                   </div>
                 )}
-              </div>
-              <button
-                onClick={sendMessage}
-                disabled={!inputMessage.trim() || isLoading || isListening || isCheckingProfile}
-                className="p-3 bg-gradient-nutrition text-white rounded-2xl hover:from-green-600 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+
+              <p
+                className={`text-xs mt-3 ${
+                  message.isUser ? "text-gray-300" : "text-gray-400"
+                }`}
               >
+                {message.timestamp.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            </div>
+            {message.isUser && <Avatar isUser={true} />}
+          </div>
+          ))}
+        </div>
+
+        {isLoading && (
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-start space-x-3 animate-fadeInUp">
+              <Avatar isUser={false} />
+              <div className="bg-white text-gray-800 px-4 py-3 rounded-2xl rounded-bl-lg border border-green-200 shadow-sm">
+                <TypingIndicator />
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="bg-white border-t border-gray-200 shadow-lg p-4">
+        <div className="max-w-4xl mx-auto flex items-end space-x-3">
+          {isVoiceSupported && (
+            <button
+              onClick={toggleVoiceInput}
+              disabled={isLoading}
+              className={`p-3 rounded-2xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                isListening
+                  ? "bg-red-500 text-white animate-pulse shadow-lg"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+              title={isListening ? "Stop recording" : "Start voice input"}
+            >
+              {isListening ? (
                 <svg
-                  className="w-4 h-4"
+                  className="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                </svg>
+              ) : (
+                <svg
+                  className="w-5 h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1721,14 +1458,81 @@ export default function ChatWidget() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
                   />
                 </svg>
-              </button>
-            </div>
+              )}
+            </button>
+          )}
+          <div className="flex-1 relative">
+            {(() => {
+              const info = !isOnboardingComplete ? getQuestionInfo(onboardingStep) : null;
+              const hideInput = !!(info && info.hasBubbles && showCustomInput);
+              if (hideInput) {
+                return null;
+              }
+              return (
+                <textarea
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={
+                    isCheckingProfile
+                      ? "Chargement..."
+                      : isListening
+                      ? "Listening... Speak now..."
+                      : !isOnboardingComplete
+                      ? "Répondez à la question..."
+                      : "Ask about nutrition, supplements..."
+                  }
+                  className={`w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none transition-all duration-200 placeholder-gray-500 bg-white text-sm sm:text-base text-gray-900 ${
+                    isListening ? "ring-2 ring-red-500 border-red-500" : ""
+                  }`}
+                  rows={1}
+                  disabled={isLoading || isListening || isCheckingProfile}
+                  style={{
+                    minHeight: "44px",
+                    maxHeight: "120px",
+                    height: "auto",
+                  }}
+                  onInput={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = "auto";
+                    target.style.height = Math.min(target.scrollHeight, 120) + "px";
+                  }}
+                />
+              );
+            })()}
+            {isListening && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-red-500 font-medium">Recording</span>
+              </div>
+            )}
           </div>
+          <button
+            onClick={sendMessage}
+            disabled={!inputMessage.trim() || isLoading || isListening || isCheckingProfile}
+            className="p-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-2xl hover:from-green-600 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+            style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}
+          >
+            <svg
+              className="w-5 h-5 sm:w-6 sm:h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
+            </svg>
+          </button>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }
+

@@ -247,7 +247,68 @@
     .vigaia-input-container {
       display: flex;
       align-items: flex-end;
-      gap: 12px;
+      gap: 8px;
+    }
+
+    .vigaia-voice-button {
+      padding: 12px;
+      background: #e5e7eb;
+      color: #374151;
+      border: none;
+      border-radius: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .vigaia-voice-button:hover {
+      background: #d1d5db;
+    }
+
+    .vigaia-voice-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .vigaia-voice-button.vigaia-listening {
+      background: #ef4444;
+      color: white;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .vigaia-voice-button.vigaia-listening .vigaia-voice-icon {
+      display: none;
+    }
+
+    .vigaia-voice-button.vigaia-listening .vigaia-voice-icon-recording {
+      display: block !important;
+    }
+
+    .vigaia-voice-button .vigaia-voice-icon {
+      width: 20px;
+      height: 20px;
+    }
+
+    .vigaia-voice-button .vigaia-voice-icon-recording {
+      width: 20px;
+      height: 20px;
+    }
+
+    .vigaia-input-field.vigaia-listening {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.7;
+      }
     }
 
     .vigaia-input-field {
@@ -427,13 +488,154 @@
                     }
                ];
                this.isLoading = false;
+               this.isListening = false;
+               this.isVoiceSupported = false;
+               this.recognition = null;
                this.init();
           }
 
           init() {
                this.injectStyles();
                this.createWidget();
+               this.initSpeechRecognition();
                this.bindEvents();
+          }
+
+          initSpeechRecognition() {
+               const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+               
+               if (SpeechRecognition) {
+                    this.isVoiceSupported = true;
+                    this.recognition = new SpeechRecognition();
+                    this.recognition.continuous = false;
+                    // Enable interim results to display live transcripts
+                    this.recognition.interimResults = true;
+                    try {
+                         const browserLang = (navigator && navigator.language) ? navigator.language : 'en-US';
+                         this.recognition.lang = browserLang.toLowerCase().startsWith('fr') ? 'fr-FR' : browserLang;
+                    } catch {
+                         this.recognition.lang = 'en-US';
+                    }
+
+                    this.recognition.onstart = () => {
+                         this.isListening = true;
+                         this.updateVoiceButton();
+                         const inputField = document.getElementById('vigaia-input-field');
+                         if (inputField) {
+                              // Capture the current input so we can append transcripts without duplication
+                              this.inputBaseAtStart = inputField.value || '';
+                              inputField.placeholder = 'Listening... Speak now...';
+                              inputField.classList.add('vigaia-listening');
+                         }
+                    };
+
+                    this.recognition.onresult = (event) => {
+                         const inputField = document.getElementById('vigaia-input-field');
+                         if (inputField) {
+                              let interimTranscript = '';
+                              let finalTranscript = '';
+                              const startIndex = event.resultIndex || 0;
+                              for (let i = startIndex; i < event.results.length; i++) {
+                                   const result = event.results[i];
+                                   const text = (result[0] && result[0].transcript) ? result[0].transcript : '';
+                                   if (result.isFinal) {
+                                        finalTranscript += text;
+                                   } else {
+                                        interimTranscript += text;
+                                   }
+                              }
+                              const base = this.inputBaseAtStart || '';
+                              const spacer = base ? ' ' : '';
+                              inputField.value = (base + spacer + (finalTranscript + interimTranscript).trim()).trim();
+                              // Trigger input event for auto-resize
+                              inputField.dispatchEvent(new Event('input'));
+                         }
+                         // Do not end listening on partial results; onend will reset UI
+                    };
+
+                    this.recognition.onerror = (event) => {
+                         this.isListening = false;
+                         this.updateVoiceButton();
+                         const inputField = document.getElementById('vigaia-input-field');
+                         if (inputField) {
+                              inputField.placeholder = 'Ask about nutrition, supplements...';
+                              inputField.classList.remove('vigaia-listening');
+                         }
+                         
+                         // Handle different error types
+                         switch (event.error) {
+                              case 'no-speech':
+                                   // This is expected when user doesn't speak - don't log as error
+                                   break;
+                              case 'audio-capture':
+                                   console.warn('No microphone found or microphone not accessible.');
+                                   break;
+                              case 'not-allowed':
+                                   alert('Microphone access denied. Please enable microphone permissions in your browser settings.');
+                                   break;
+                              case 'network':
+                                   console.warn('Network error occurred during speech recognition.');
+                                   break;
+                              case 'aborted':
+                                   // User or system aborted - this is expected, don't log
+                                   break;
+                              default:
+                                   // Log other unexpected errors
+                                   console.error('Speech recognition error:', event.error);
+                         }
+                    };
+
+                    this.recognition.onend = () => {
+                         this.isListening = false;
+                         this.updateVoiceButton();
+                         const inputField = document.getElementById('vigaia-input-field');
+                         if (inputField) {
+                              inputField.placeholder = 'Ask about nutrition, supplements...';
+                              inputField.classList.remove('vigaia-listening');
+                         }
+                         // Reset base for next recording
+                         this.inputBaseAtStart = '';
+                    };
+               }
+          }
+
+          toggleVoiceInput() {
+               if (!this.recognition) return;
+
+               if (this.isListening) {
+                    this.recognition.stop();
+                    this.isListening = false;
+                    this.updateVoiceButton();
+               } else {
+                    try {
+                         // Capture base text before starting
+                         const inputField = document.getElementById('vigaia-input-field');
+                         this.inputBaseAtStart = inputField ? (inputField.value || '') : '';
+                         this.recognition.start();
+                    } catch (error) {
+                         console.error('Error starting voice recognition:', error);
+                    }
+               }
+          }
+
+          updateVoiceButton() {
+               const voiceButton = document.getElementById('vigaia-voice-button');
+               if (voiceButton) {
+                    const iconNormal = voiceButton.querySelector('.vigaia-voice-icon');
+                    const iconRecording = voiceButton.querySelector('.vigaia-voice-icon-recording');
+                    
+                    if (this.isListening) {
+                         voiceButton.classList.add('vigaia-listening');
+                         voiceButton.title = 'Stop recording';
+                         if (iconNormal) iconNormal.style.display = 'none';
+                         if (iconRecording) iconRecording.style.display = 'block';
+                    } else {
+                         voiceButton.classList.remove('vigaia-listening');
+                         voiceButton.title = 'Start voice input';
+                         if (iconNormal) iconNormal.style.display = 'block';
+                         if (iconRecording) iconRecording.style.display = 'none';
+                    }
+               }
           }
 
           injectStyles() {
@@ -486,6 +688,17 @@
           </div>
           <div class="vigaia-chat-input">
             <div class="vigaia-input-container">
+              ${this.isVoiceSupported ? `
+              <button class="vigaia-voice-button" id="vigaia-voice-button" title="Start voice input">
+                <svg class="vigaia-voice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                <svg class="vigaia-voice-icon-recording" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                  <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                </svg>
+              </button>
+              ` : ''}
               <textarea 
                 class="vigaia-input-field" 
                 id="vigaia-input-field" 
@@ -592,6 +805,16 @@
                     this.closeChat();
                });
 
+               // Voice button
+               if (this.isVoiceSupported) {
+                    const voiceButton = document.getElementById('vigaia-voice-button');
+                    if (voiceButton) {
+                         voiceButton.addEventListener('click', () => {
+                              this.toggleVoiceInput();
+                         });
+                    }
+               }
+
                // Send button
                document.getElementById('vigaia-send-button').addEventListener('click', () => {
                     this.sendMessage();
@@ -619,7 +842,7 @@
                const inputField = document.getElementById('vigaia-input-field');
                const message = inputField.value.trim();
 
-               if (!message || this.isLoading) return;
+               if (!message || this.isLoading || this.isListening) return;
 
                // Add user message
                const userMessage = {

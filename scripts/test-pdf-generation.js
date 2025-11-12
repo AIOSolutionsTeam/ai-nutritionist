@@ -1,7 +1,16 @@
-const mongoose = require('mongoose');
+// Load environment variables from .env.local or .env
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env' });
+
+import mongoose from 'mongoose';
+
+// Import PDF generator (ES6 import for TypeScript module)
+import { pdfGenerator, createSampleNutritionPlan } from '../src/lib/pdf';
 
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ai-nutritionist';
+console.log('MONGODB_URI:', MONGODB_URI || '(using default)');
 
 // UserProfile schema (simplified for this script)
 const UserProfileSchema = new mongoose.Schema({
@@ -89,9 +98,6 @@ async function testPDFGeneration() {
 
           // Test PDF generation
           console.log('Testing PDF generation...');
-
-          // Import the PDF generator (this will test if the imports work)
-          const { pdfGenerator, createSampleNutritionPlan } = require('../src/lib/pdf');
 
           // Create nutrition plan
           const nutritionPlan = createSampleNutritionPlan(userProfile);

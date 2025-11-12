@@ -11,6 +11,8 @@ export interface IUserProfile extends Document {
      userId: string;
      age: number;
      gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+     weight?: number; // Weight in kg
+     height?: number; // Height in cm
      goals: string[];
      allergies: string[];
      budget: {
@@ -41,6 +43,16 @@ const UserProfileSchema = new Schema<IUserProfile>({
           type: String,
           required: true,
           enum: ['male', 'female', 'other', 'prefer-not-to-say']
+     },
+     weight: {
+          type: Number,
+          min: 1,
+          max: 500
+     },
+     height: {
+          type: Number,
+          min: 50,
+          max: 250
      },
      goals: {
           type: [String],
@@ -151,6 +163,8 @@ class DatabaseService {
           userId: string;
           age: number;
           gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+          weight?: number;
+          height?: number;
           goals: string[];
           allergies: string[];
           budget: {
@@ -180,6 +194,8 @@ class DatabaseService {
      public async updateUserProfile(userId: string, updates: Partial<{
           age: number;
           gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+          weight?: number;
+          height?: number;
           goals: string[];
           allergies: string[];
           budget: {

@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
           const body = await request.json();
 
           // Validate required fields
-          const { userId, age, gender, goals, allergies, budget } = body;
+          const { userId, age, gender, weight, height, goals, allergies, budget } = body;
 
           if (!userId) {
                return NextResponse.json(
@@ -126,6 +126,8 @@ export async function POST(request: NextRequest) {
                const updatedProfile = await dbService.updateUserProfile(userId, {
                     age,
                     gender,
+                    weight: weight || undefined,
+                    height: height || undefined,
                     goals: goals || [],
                     allergies: allergies || [],
                     budget: {
@@ -149,6 +151,8 @@ export async function POST(request: NextRequest) {
                     userId,
                     age,
                     gender,
+                    weight: weight || undefined,
+                    height: height || undefined,
                     goals: goals || [],
                     allergies: allergies || [],
                     budget: {
@@ -164,6 +168,8 @@ export async function POST(request: NextRequest) {
                userId: userProfile.userId,
                age: userProfile.age,
                gender: userProfile.gender,
+               weight: userProfile.weight,
+               height: userProfile.height,
                goals: userProfile.goals,
                allergies: userProfile.allergies,
                budget: userProfile.budget,
