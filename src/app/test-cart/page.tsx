@@ -22,8 +22,8 @@ export default function TestCartPage() {
 
       const data = await response.json();
       setTestResult(JSON.stringify(data, null, 2));
-    } catch (error: any) {
-      setTestResult(`Error: ${error?.message || String(error)}`);
+    } catch (error: unknown) {
+      setTestResult(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -32,8 +32,8 @@ export default function TestCartPage() {
       const response = await fetch("/cart.js");
       const data = await response.json();
       setTestResult(JSON.stringify(data, null, 2));
-    } catch (error: any) {
-      setTestResult(`Error: ${error?.message || String(error)}`);
+    } catch (error: unknown) {
+      setTestResult(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

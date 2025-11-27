@@ -1,7 +1,7 @@
 // Analytics service for tracking user interactions and app metrics
 export interface AnalyticsEvent {
      event: string
-     properties: Record<string, any>
+     properties: Record<string, string | number | boolean>
      timestamp: string
      userId?: string
      sessionId?: string
@@ -10,14 +10,14 @@ export interface AnalyticsEvent {
 // Google Analytics 4 event interface
 export interface GA4Event {
      name: string
-     parameters?: Record<string, any>
+     parameters?: Record<string, string | number | boolean>
 }
 
 // Extend Window interface for Google Analytics
 declare global {
      interface Window {
-          dataLayer: any[]
-          gtag: (...args: any[]) => void
+          dataLayer: unknown[]
+          gtag: (...args: unknown[]) => void
      }
 }
 
@@ -64,8 +64,8 @@ export class AnalyticsService {
 
                // Initialize gtag
                window.dataLayer = window.dataLayer || []
-               function gtag(...args: any[]) {
-                    window.dataLayer.push(args)
+               function gtag(...args: unknown[]) {
+                    window.dataLayer.push(...args)
                }
                gtag('js', new Date())
                gtag('config', this.config.ga4MeasurementId, {
@@ -74,20 +74,20 @@ export class AnalyticsService {
                })
 
                     // Make gtag available globally
-                    ; (window as any).gtag = gtag
+                    window.gtag = gtag
           }
      }
 
      // Main trackEvent function for Google Analytics
-     async trackEvent(eventName: string, data: Record<string, any> = {}): Promise<void> {
+     async trackEvent(eventName: string, data: Record<string, string | number | boolean> = {}): Promise<void> {
           try {
                if (this.config.debug) {
                     console.log('Analytics Event:', { eventName, data })
                }
 
                // Track with Google Analytics 4
-               if (typeof window !== 'undefined' && (window as any).gtag) {
-                    (window as any).gtag('event', eventName, {
+               if (typeof window !== 'undefined' && window.gtag) {
+                    window.gtag('event', eventName, {
                          event_category: data.category || 'engagement',
                          event_label: data.label,
                          value: data.value,
@@ -99,12 +99,17 @@ export class AnalyticsService {
                }
 
                // Also track with our internal analytics
+               // Extract userId from data and ensure it's a string
+               const userId = typeof data.userId === 'string' ? data.userId : undefined
+               // eslint-disable-next-line @typescript-eslint/no-unused-vars
+               const { userId: _userId, ...properties } = data // Remove userId from properties to avoid duplication
+               
                const eventData: AnalyticsEvent = {
                     event: eventName,
-                    properties: data,
+                    properties,
                     timestamp: new Date().toISOString(),
                     sessionId: this.sessionId,
-                    userId: data.userId
+                    ...(userId && { userId })
                }
 
                // Send to our analytics endpoint if configured
@@ -138,7 +143,7 @@ export class AnalyticsService {
           }
      }
 
-     trackPageView(page: string, properties: Record<string, any> = {}): void {
+     trackPageView(page: string, properties: Record<string, string | number | boolean> = {}): void {
           this.trackEvent('page_view', {
                page,
                ...properties
@@ -150,7 +155,7 @@ export class AnalyticsService {
                message: message.substring(0, 100), // Truncate for privacy
                isUser,
                messageLength: message.length,
-               userId
+               ...(userId && { userId })
           })
      }
 
@@ -158,11 +163,11 @@ export class AnalyticsService {
           this.trackEvent('supplement_recommendation', {
                supplement,
                recommendationType: 'ai_generated',
-               userId
+               ...(userId && { userId })
           })
      }
 
-     trackUserRegistration(userId: string, properties: Record<string, any> = {}): void {
+     trackUserRegistration(userId: string, properties: Record<string, string | number | boolean> = {}): void {
           this.trackEvent('user_registration', {
                ...properties,
                userId
@@ -176,7 +181,7 @@ export class AnalyticsService {
           })
      }
 
-     trackError(error: string, context: Record<string, any> = {}): void {
+     trackError(error: string, context: Record<string, string | number | boolean> = {}): void {
           this.trackEvent('error', {
                error,
                ...context
@@ -192,8 +197,8 @@ export class AnalyticsService {
           this.trackEvent('chat_opened', {
                category: 'engagement',
                label: source || 'unknown',
-               userId,
-               source
+               ...(userId && { userId }),
+               ...(source && { source })
           })
      }
 
@@ -204,9 +209,9 @@ export class AnalyticsService {
           this.trackEvent('product_recommended', {
                category: 'ecommerce',
                product_name: productName,
-               product_id: productId,
+               ...(productId && { product_id: productId }),
                recommendation_type: recommendationType || 'ai_generated',
-               userId
+               ...(userId && { userId })
           })
      }
 
@@ -217,11 +222,11 @@ export class AnalyticsService {
           this.trackEvent('add_to_cart', {
                category: 'ecommerce',
                product_name: productName,
-               product_id: productId,
-               price,
+               ...(productId && { product_id: productId }),
+               ...(price !== undefined && { price }),
                quantity,
-               value: price ? price * quantity : undefined,
-               userId
+               ...(price !== undefined && { value: price * quantity }),
+               ...(userId && { userId })
           })
      }
 
@@ -232,13 +237,14 @@ export class AnalyticsService {
           this.trackEvent('plan_downloaded', {
                category: 'engagement',
                plan_type: planType,
-               plan_id: planId,
+               ...(planId && { plan_id: planId }),
                format: format || 'pdf',
-               userId
+               ...(userId && { userId })
           })
      }
 
-     async getUserMetrics(userId: string): Promise<UserMetrics> {
+     // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     async getUserMetrics(_userId: string): Promise<UserMetrics> {
           try {
                // TODO: Implement actual metrics retrieval
                return {

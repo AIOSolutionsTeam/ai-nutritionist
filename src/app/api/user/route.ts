@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Handle duplicate key errors
-          if (error instanceof Error && error.name === 'MongoServerError' && (error as any).code === 11000) {
+          if (error instanceof Error && error.name === 'MongoServerError' && 'code' in error && (error as { code: number }).code === 11000) {
                return NextResponse.json(
                     { error: 'User profile already exists' },
                     { status: 409 }
@@ -237,7 +237,13 @@ export async function PUT(request: NextRequest) {
           // Validate and update profile
           const { age, gender, goals, allergies, budget } = body;
 
-          const updateData: any = {};
+          const updateData: Partial<{
+               age: number;
+               gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+               goals: string[];
+               allergies: string[];
+               budget: { min: number; max: number; currency: string };
+          }> = {};
 
           if (age !== undefined) {
                if (typeof age !== 'number' || age < 1 || age > 120) {

@@ -130,7 +130,7 @@ class PDFGenerator {
      /**
       * Add header with title and date
       */
-     private async addHeader(doc: any, nutritionPlan: NutritionPlan): Promise<void> {
+     private async addHeader(doc: InstanceType<typeof PDFDocument>, nutritionPlan: NutritionPlan): Promise<void> {
           // Title
           doc.fontSize(this.config.fontSizes.title)
                .fillColor(this.config.colors.primary)
@@ -166,7 +166,7 @@ class PDFGenerator {
      /**
       * Add user profile section
       */
-     private async addUserProfile(doc: any, userProfile: IUserProfile): Promise<void> {
+     private async addUserProfile(doc: InstanceType<typeof PDFDocument>, userProfile: IUserProfile): Promise<void> {
           this.addSectionHeader(doc, 'Your Profile');
 
           const profileData = [
@@ -192,7 +192,7 @@ class PDFGenerator {
      /**
       * Add nutritional recommendations
       */
-     private async addNutritionalRecommendations(doc: any, recommendations: NutritionPlan['recommendations']): Promise<void> {
+     private async addNutritionalRecommendations(doc: InstanceType<typeof PDFDocument>, recommendations: NutritionPlan['recommendations']): Promise<void> {
           this.addSectionHeader(doc, 'Daily Nutritional Targets');
 
           // Daily calories
@@ -226,7 +226,7 @@ class PDFGenerator {
      /**
       * Add meal plan
       */
-     private async addMealPlan(doc: any, mealPlan: NutritionPlan['recommendations']['mealPlan']): Promise<void> {
+     private async addMealPlan(doc: InstanceType<typeof PDFDocument>, mealPlan: NutritionPlan['recommendations']['mealPlan']): Promise<void> {
           this.addSectionHeader(doc, 'Daily Meal Plan');
 
           const meals = [
@@ -236,7 +236,7 @@ class PDFGenerator {
                { name: 'Snacks', items: mealPlan.snacks },
           ];
 
-          meals.forEach((meal, mealIndex) => {
+          meals.forEach((meal) => {
                doc.fontSize(this.config.fontSizes.subtitle)
                     .fillColor(this.config.colors.secondary)
                     .text(meal.name, this.config.margin, doc.y);
@@ -256,7 +256,7 @@ class PDFGenerator {
      /**
       * Add hydration guide
       */
-     private async addHydrationGuide(doc: any, hydration: NutritionPlan['recommendations']['hydration']): Promise<void> {
+     private async addHydrationGuide(doc: InstanceType<typeof PDFDocument>, hydration: NutritionPlan['recommendations']['hydration']): Promise<void> {
           this.addSectionHeader(doc, 'Hydration Guide');
 
           doc.fontSize(this.config.fontSizes.body)
@@ -278,7 +278,7 @@ class PDFGenerator {
      /**
       * Add supplements section
       */
-     private async addSupplements(doc: any, supplements: Product[]): Promise<void> {
+     private async addSupplements(doc: InstanceType<typeof PDFDocument>, supplements: Product[]): Promise<void> {
           this.addSectionHeader(doc, 'Recommended Supplements');
 
           if (supplements.length === 0) {
@@ -289,7 +289,7 @@ class PDFGenerator {
                return;
           }
 
-          supplements.forEach((supplement, index) => {
+          supplements.forEach((supplement) => {
                // Check if we need a new page
                if (doc.y > this.config.pageHeight - 200) {
                     doc.addPage();
@@ -338,7 +338,7 @@ class PDFGenerator {
      /**
       * Add personalized tips
       */
-     private async addPersonalizedTips(doc: any, tips: string[]): Promise<void> {
+     private async addPersonalizedTips(doc: InstanceType<typeof PDFDocument>, tips: string[]): Promise<void> {
           this.addSectionHeader(doc, 'Personalized Health Tips');
 
           tips.forEach((tip, index) => {
@@ -361,7 +361,7 @@ class PDFGenerator {
      /**
       * Add weekly goals
       */
-     private async addWeeklyGoals(doc: any, goals: string[]): Promise<void> {
+     private async addWeeklyGoals(doc: InstanceType<typeof PDFDocument>, goals: string[]): Promise<void> {
           this.addSectionHeader(doc, 'Weekly Goals');
 
           goals.forEach((goal, index) => {
@@ -384,7 +384,7 @@ class PDFGenerator {
      /**
       * Add footer
       */
-     private async addFooter(doc: any): Promise<void> {
+     private async addFooter(doc: InstanceType<typeof PDFDocument>): Promise<void> {
           const pageRange = doc.bufferedPageRange();
           const startPage = pageRange.start;
           const endPage = pageRange.start + pageRange.count - 1;
@@ -404,7 +404,7 @@ class PDFGenerator {
      /**
       * Add section header
       */
-     private addSectionHeader(doc: any, title: string): void {
+     private addSectionHeader(doc: InstanceType<typeof PDFDocument>, title: string): void {
           // Check if we need a new page
           if (doc.y > this.config.pageHeight - 150) {
                doc.addPage();

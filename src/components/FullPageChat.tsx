@@ -1293,7 +1293,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     trackEvent("chat_message_sent", {
       category: "engagement",
       messageLength: currentInput.length,
-      userId,
+      ...(userId && { userId }),
     });
 
     try {
@@ -1344,7 +1344,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         responseLength: data.reply?.length || 0,
         hasProducts: (data.recommendedProducts || []).length > 0,
         productCount: (data.recommendedProducts || []).length,
-        userId,
+        ...(userId && { userId }),
       });
 
       if (data.recommendedProducts && data.recommendedProducts.length > 0) {
@@ -1363,7 +1363,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       trackEvent("chat_error", {
         category: "error",
         errorType: "api_error",
-        userId,
+        ...(userId && { userId }),
       });
 
       const errorMessage: Message = {
@@ -1397,7 +1397,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         recognitionRef.current.start();
         trackEvent("voice_input_started", {
           category: "engagement",
-          userId,
+          ...(userId && { userId }),
         });
       } catch (error) {
         console.error("Error starting voice recognition:", error);

@@ -235,7 +235,7 @@ export default function ChatWidget() {
     trackEvent("chat_message_sent", {
       category: "engagement",
       messageLength: currentInput.length,
-      userId,
+      ...(userId && { userId }),
     });
 
     try {
@@ -255,7 +255,7 @@ export default function ChatWidget() {
         },
         body: JSON.stringify({ 
           message: currentInput, 
-          userId,
+          ...(userId && { userId }),
           conversationHistory 
         }),
       });
@@ -285,7 +285,7 @@ export default function ChatWidget() {
         responseLength: data.reply?.length || 0,
         hasProducts: (data.recommendedProducts || []).length > 0,
         productCount: (data.recommendedProducts || []).length,
-        userId,
+        ...(userId && { userId }),
       });
 
       // Track individual product recommendations
@@ -306,7 +306,7 @@ export default function ChatWidget() {
       trackEvent("chat_error", {
         category: "error",
         errorType: "api_error",
-        userId,
+        ...(userId ? { userId } : {}),
       });
 
       const errorMessage: Message = {
@@ -374,7 +374,7 @@ export default function ChatWidget() {
                 // Track chat closed event
                 trackEvent("chat_closed", {
                   category: "engagement",
-                  userId,
+                  ...(userId && { userId }),
                 });
               }}
               className="text-white hover:text-green-200 transition-colors duration-200"

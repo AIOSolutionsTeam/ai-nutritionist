@@ -52,11 +52,11 @@ export function handleAdvancedTracking() {
 
 // Example 7: Error tracking
 export function handleError(error: Error, context: string) {
-     analytics.trackError(error.message, {
-          context,
-          stack: error.stack,
-          timestamp: new Date().toISOString()
-     })
+      analytics.trackError(error.message, {       
+           context,
+           stack: error.stack || '',
+           timestamp: new Date().toISOString()    
+      })
 }
 
 // Example 8: Page view tracking

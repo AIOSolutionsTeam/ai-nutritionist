@@ -10,10 +10,10 @@ export async function GET(request: NextRequest) {
                const models = await geminiService.listAvailableModels()
                return NextResponse.json({
                     provider: 'gemini',
-                    models: models.map((model: any) => ({
+                    models: models.map((model: { name: string; displayName?: string; supportedGenerationMethods?: string[] }) => ({
                          name: model.name,
-                         displayName: model.displayName,
-                         supportedGenerationMethods: model.supportedGenerationMethods
+                         displayName: model.displayName || model.name,
+                         supportedGenerationMethods: model.supportedGenerationMethods || []
                     }))
                })
           }

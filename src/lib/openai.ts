@@ -215,6 +215,7 @@ IMPORTANT:
           }
      }
 
+     // eslint-disable-next-line @typescript-eslint/no-unused-vars
      async getSupplementRecommendations(_userProfile: unknown): Promise<NutritionRecommendation[]> {
           // This method can be expanded to use OpenAI for more sophisticated recommendations
           return [
@@ -518,6 +519,7 @@ IMPORTANT:
           throw new Error('All Gemini models failed to generate response')
      }
 
+     // eslint-disable-next-line @typescript-eslint/no-unused-vars
      async getSupplementRecommendations(_userProfile: unknown): Promise<NutritionRecommendation[]> {
           // This method can be expanded to use Gemini for more sophisticated recommendations
           return [

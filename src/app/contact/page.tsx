@@ -10,7 +10,7 @@ export default function Contact() {
               Get in Touch
             </h2>
             <p className="text-gray-600 mb-6">
-              Have questions about our AI nutritionist platform? We'd love to
+              Have questions about our AI nutritionist platform? We&apos;d love to
               hear from you.
             </p>
 

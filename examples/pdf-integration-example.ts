@@ -1,11 +1,11 @@
 // Example: Integrating PDF generation into the chat widget
 // This shows how to add PDF generation functionality to the existing chat system
 
-import { pdfGenerator, createSampleNutritionPlan } from '@/lib/pdf';
-import { dbService } from '@/lib/db';
+import { pdfGenerator, createSampleNutritionPlan } from '../src/lib/pdf';
+import { dbService } from '../src/lib/db';
 
 // Example function to generate PDF from chat interaction
-export async function generatePDFFromChat(userId: string, chatHistory: any[]) {
+export async function generatePDFFromChat(userId: string, chatHistory: Array<{ text: string; isUser: boolean }>) {
      try {
           // Get user profile
           const userProfile = await dbService.getUserProfile(userId);
@@ -40,7 +40,7 @@ export async function generatePDFFromChat(userId: string, chatHistory: any[]) {
 }
 
 // Helper function to extract tips from chat history
-function extractTipsFromChat(chatHistory: any[]): string[] {
+function extractTipsFromChat(chatHistory: Array<{ text: string; isUser: boolean }>): string[] {
      const tips: string[] = [];
 
      // Look for specific patterns in chat messages
@@ -80,7 +80,7 @@ function extractTipsFromChat(chatHistory: any[]): string[] {
 }
 
 // Helper function to extract goals from chat history
-function extractGoalsFromChat(chatHistory: any[]): string[] {
+function extractGoalsFromChat(chatHistory: Array<{ text: string; isUser: boolean }>): string[] {
      const goals: string[] = [];
 
      chatHistory.forEach(message => {
@@ -123,12 +123,14 @@ export function addPDFGenerationToChatWidget() {
           const result = await generatePDFFromChat(userId, chatHistory);
 
           if (result.success) {
-               // Show success message and provide download link
-               showNotification('PDF generated successfully!', 'success');
-               openPDFInNewTab(result.pdfUrl);
+                // Show success message and provide download link
+                showNotification('PDF generated successfully!', 'success');
+                if (result.pdfUrl) {
+                    openPDFInNewTab(result.pdfUrl);
+                }
           } else {
                // Show error message
-               showNotification(result.error, 'error');
+               showNotification(result.error || 'Unknown error', 'error');
           }
      };
 
@@ -137,13 +139,13 @@ export function addPDFGenerationToChatWidget() {
           // Add PDF generation button to chat interface
           renderPDFButton: () => (
                <button
-        onClick= { handleGeneratePDF }
-        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-          >
-          Generate Nutrition Plan PDF
-               </ button >
-    )
-};
+                    onClick={handleGeneratePDF}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+               >
+                    Generate Nutrition Plan PDF
+               </button>
+          )
+     };
 }
 
 // Example: Enhanced nutrition plan with chat insights

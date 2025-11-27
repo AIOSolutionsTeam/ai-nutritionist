@@ -5,7 +5,7 @@ import { useState } from "react";
 export default function TestPDFPage() {
   const [userId, setUserId] = useState("test-user-123");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<{ pdfUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const generatePDF = async () => {
@@ -141,11 +141,11 @@ export default function TestPDFPage() {
           </h3>
           <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
             <li>Enter a user ID (or use the default test-user-123)</li>
-            <li>Click "Generate Nutrition Plan PDF"</li>
+            <li>Click &quot;Generate Nutrition Plan PDF&quot;</li>
             <li>
               The system will create a sample user profile and generate a PDF
             </li>
-            <li>Click "View PDF" to download or view the generated PDF</li>
+            <li>Click &quot;View PDF&quot; to download or view the generated PDF</li>
           </ol>
         </div>
       </div>

@@ -17,7 +17,7 @@ export interface EmailTemplate {
      to: string
      subject: string
      template: string
-     data: Record<string, any>
+     data: Record<string, string | number | boolean>
 }
 
 export interface EmailResult {
@@ -72,14 +72,14 @@ export class EmailService {
           }
      }
 
-     private generateEmailHTML(template: string, data: Record<string, any>): string {
+     private generateEmailHTML(template: string, data: Record<string, string | number | boolean>): string {
           // Simple template replacement - you can enhance this with a proper templating engine
           let html = this.getEmailTemplate(template)
 
           // Replace placeholders with data
           Object.keys(data).forEach(key => {
                const placeholder = new RegExp(`{{${key}}}`, 'g')
-               html = html.replace(placeholder, data[key] || '')
+               html = html.replace(placeholder, String(data[key] || ''))
           })
 
           return html
@@ -141,7 +141,7 @@ export class EmailService {
           })
      }
 
-     async sendNutritionReport(userEmail: string, reportData: any): Promise<EmailResult> {
+     async sendNutritionReport(userEmail: string, reportData: Record<string, string | number | boolean>): Promise<EmailResult> {
           return this.sendEmail({
                to: userEmail,
                subject: 'Your Personalized Nutrition Report',

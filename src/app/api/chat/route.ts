@@ -91,14 +91,6 @@ function formatUserProfileContext(userProfile: IUserProfile | null): string {
      contextParts.push(`Âge: ${userProfile.age} ans`)
      contextParts.push(`Sexe: ${userProfile.gender === 'male' ? 'Homme' : userProfile.gender === 'female' ? 'Femme' : userProfile.gender}`)
      
-     // Physical info (if available)
-     if (userProfile.weight) {
-          contextParts.push(`Poids: ${userProfile.weight} kg`)
-     }
-     if (userProfile.height) {
-          contextParts.push(`Taille: ${userProfile.height} cm`)
-     }
-     
      // Goals
      if (userProfile.goals && userProfile.goals.length > 0) {
           const goalsText = userProfile.goals.map(g => {
@@ -391,7 +383,7 @@ export async function POST(request: NextRequest) {
                     // Track product search attempt
                     analytics.trackEvent('product_search_initiated', {
                          category: 'ecommerce',
-                         searchQueries: searchQueries,
+                         searchQueries: searchQueries.join(', '),
                          queryCount: searchQueries.length,
                          userId: userId || 'anonymous'
                     })
