@@ -46,7 +46,7 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Organic Multivitamin Complex",
           price: 29.99,
-          image: "https://images.unsplash.com/photo-1550572017-edd951aa0b65?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=1",
           variantId: "gid://shopify/ProductVariant/1",
           available: true,
           currency: "USD"
@@ -54,7 +54,7 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Omega-3 Fish Oil Supplement",
           price: 24.99,
-          image: "https://images.unsplash.com/photo-1559181567-c3190ca9959b?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=2",
           variantId: "gid://shopify/ProductVariant/2",
           available: true,
           currency: "USD"
@@ -62,7 +62,7 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Vitamin D3 + K2 Capsules",
           price: 19.99,
-          image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=3",
           variantId: "gid://shopify/ProductVariant/3",
           available: true,
           currency: "USD"
@@ -70,7 +70,7 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Probiotic Gut Health Formula",
           price: 34.99,
-          image: "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=4",
           variantId: "gid://shopify/ProductVariant/4",
           available: true,
           currency: "USD"
@@ -78,15 +78,15 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Collagen Peptides Powder",
           price: 39.99,
-          image: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=5",
           variantId: "gid://shopify/ProductVariant/5",
-          available: false,
+          available: true,
           currency: "USD"
      },
      {
           title: "Magnesium Glycinate Tablets",
           price: 22.99,
-          image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=6",
           variantId: "gid://shopify/ProductVariant/6",
           available: true,
           currency: "USD"
@@ -94,7 +94,7 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Turmeric Curcumin Extract",
           price: 27.99,
-          image: "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=7",
           variantId: "gid://shopify/ProductVariant/7",
           available: true,
           currency: "USD"
@@ -102,10 +102,174 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Ashwagandha Stress Support",
           price: 31.99,
-          image: "https://images.unsplash.com/photo-1550572017-edd951aa0b65?w=400&h=400&fit=crop",
+          image: "https://picsum.photos/400/400?random=8",
           variantId: "gid://shopify/ProductVariant/8",
           available: true,
           currency: "USD"
+     },
+     {
+          title: "Whey Protein Isolate",
+          price: 44.99,
+          image: "https://picsum.photos/400/400?random=9",
+          variantId: "gid://shopify/ProductVariant/9",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "BCAA Recovery Formula",
+          price: 32.99,
+          image: "https://picsum.photos/400/400?random=10",
+          variantId: "gid://shopify/ProductVariant/10",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Creatine Monohydrate",
+          price: 18.99,
+          image: "https://picsum.photos/400/400?random=11",
+          variantId: "gid://shopify/ProductVariant/11",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Iron + Vitamin C Complex",
+          price: 16.99,
+          image: "https://picsum.photos/400/400?random=12",
+          variantId: "gid://shopify/ProductVariant/12",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Calcium + Vitamin D3",
+          price: 21.99,
+          image: "https://picsum.photos/400/400?random=13",
+          variantId: "gid://shopify/ProductVariant/13",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Prebiotic Fiber Supplement",
+          price: 26.99,
+          image: "https://picsum.photos/400/400?random=14",
+          variantId: "gid://shopify/ProductVariant/14",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Vitamin B-Complex",
+          price: 17.99,
+          image: "https://picsum.photos/400/400?random=15",
+          variantId: "gid://shopify/ProductVariant/15",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Zinc + Vitamin C",
+          price: 14.99,
+          image: "https://picsum.photos/400/400?random=16",
+          variantId: "gid://shopify/ProductVariant/16",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Melatonin Sleep Support",
+          price: 19.99,
+          image: "https://picsum.photos/400/400?random=17",
+          variantId: "gid://shopify/ProductVariant/17",
+          available: true,
+          currency: "USD"
+     },
+     {
+          title: "Coenzyme Q10 (CoQ10)",
+          price: 35.99,
+          image: "https://picsum.photos/400/400?random=18",
+          variantId: "gid://shopify/ProductVariant/18",
+          available: true,
+          currency: "USD"
+     }
+];
+
+/**
+ * Product combinations that work well together
+ */
+export interface ProductCombo {
+     name: string;
+     description: string;
+     products: string[]; // Product titles or keywords
+     benefits: string;
+     targetAudience?: string[];
+}
+
+const PRODUCT_COMBOS: ProductCombo[] = [
+     {
+          name: "Bone Health Combo",
+          description: "Essential nutrients for strong bones",
+          products: ["Vitamin D3 + K2 Capsules", "Calcium + Vitamin D3", "Magnesium Glycinate Tablets"],
+          benefits: "Vitamin D3 enhances calcium absorption, K2 directs calcium to bones, and Magnesium supports bone density.",
+          targetAudience: ["seniors", "women", "osteoporosis"]
+     },
+     {
+          name: "Athlete Performance Stack",
+          description: "Optimal combination for athletes and active individuals",
+          products: ["Whey Protein Isolate", "BCAA Recovery Formula", "Creatine Monohydrate", "Magnesium Glycinate Tablets"],
+          benefits: "Protein supports muscle recovery, BCAAs reduce fatigue, Creatine enhances strength, and Magnesium prevents cramps.",
+          targetAudience: ["athletes", "fitness", "muscle_gain", "sport"]
+     },
+     {
+          name: "Energy & Vitality Combo",
+          description: "Boost daily energy and reduce fatigue",
+          products: ["Vitamin B-Complex", "Iron + Vitamin C Complex", "Coenzyme Q10 (CoQ10)"],
+          benefits: "B-Complex converts food to energy, Iron prevents anemia-related fatigue, and CoQ10 supports cellular energy production.",
+          targetAudience: ["energy", "fatigue", "wellness"]
+     },
+     {
+          name: "Immune Support Stack",
+          description: "Strengthen your immune system",
+          products: ["Vitamin D3 + K2 Capsules", "Zinc + Vitamin C", "Probiotic Gut Health Formula"],
+          benefits: "Vitamin D and Zinc are crucial for immune function, Vitamin C supports white blood cells, and Probiotics maintain gut health (70% of immune system).",
+          targetAudience: ["immunity", "wellness", "health"]
+     },
+     {
+          name: "Gut Health Duo",
+          description: "Complete digestive wellness",
+          products: ["Probiotic Gut Health Formula", "Prebiotic Fiber Supplement"],
+          benefits: "Probiotics introduce beneficial bacteria, while Prebiotics feed them, creating a healthy gut microbiome.",
+          targetAudience: ["digestive", "gut health", "wellness"]
+     },
+     {
+          name: "Anti-Inflammatory Combo",
+          description: "Natural inflammation support",
+          products: ["Turmeric Curcumin Extract", "Omega-3 Fish Oil Supplement", "Magnesium Glycinate Tablets"],
+          benefits: "Turmeric and Omega-3 reduce inflammation, while Magnesium supports muscle relaxation and recovery.",
+          targetAudience: ["inflammation", "recovery", "wellness"]
+     },
+     {
+          name: "Stress & Sleep Support",
+          description: "Calm mind and restful sleep",
+          products: ["Ashwagandha Stress Support", "Magnesium Glycinate Tablets", "Melatonin Sleep Support"],
+          benefits: "Ashwagandha reduces stress, Magnesium promotes relaxation, and Melatonin regulates sleep cycles.",
+          targetAudience: ["stress", "sleep", "better_sleep", "wellness"]
+     },
+     {
+          name: "Heart Health Combo",
+          description: "Cardiovascular wellness support",
+          products: ["Omega-3 Fish Oil Supplement", "Coenzyme Q10 (CoQ10)", "Magnesium Glycinate Tablets"],
+          benefits: "Omega-3 supports heart health, CoQ10 provides cellular energy for heart muscle, and Magnesium helps maintain normal heart rhythm.",
+          targetAudience: ["heart health", "cardiovascular", "seniors"]
+     },
+     {
+          name: "Women's Wellness Pack",
+          description: "Essential nutrients for women's health",
+          products: ["Iron + Vitamin C Complex", "Calcium + Vitamin D3", "Organic Multivitamin Complex"],
+          benefits: "Iron prevents anemia (common in women), Calcium and D3 support bone health, and Multivitamin fills nutritional gaps.",
+          targetAudience: ["women", "female"]
+     },
+     {
+          name: "Recovery & Repair Stack",
+          description: "Post-workout recovery essentials",
+          products: ["Whey Protein Isolate", "BCAA Recovery Formula", "Turmeric Curcumin Extract", "Magnesium Glycinate Tablets"],
+          benefits: "Protein and BCAAs repair muscle tissue, Turmeric reduces post-exercise inflammation, and Magnesium prevents muscle cramps.",
+          targetAudience: ["athletes", "recovery", "fitness", "sport"]
      }
 ];
 
@@ -210,6 +374,154 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
 }
 
 /**
+ * Get recommended product combinations based on user profile
+ * @param userGoals - User's health goals
+ * @param userAge - User's age
+ * @param userGender - User's gender
+ * @returns ProductCombo[] - Array of recommended combinations
+ */
+export function getRecommendedCombos(
+     userGoals?: string[],
+     userAge?: number,
+     userGender?: string
+): ProductCombo[] {
+     const recommendedCombos: ProductCombo[] = [];
+
+     // Check if user is an athlete or into fitness
+     const isAthlete = userGoals?.some(goal =>
+          goal.includes('fitness') || goal.includes('sport') || goal.includes('muscle') || goal.includes('athlete')
+     );
+
+     // Check if user is senior (65+)
+     const isSenior = userAge && userAge >= 65;
+
+     // Check if user is female
+     const isFemale = userGender === 'female';
+
+     // Check for specific goals
+     const hasEnergyGoal = userGoals?.some(goal => goal.includes('energy'));
+     const hasSleepGoal = userGoals?.some(goal => goal.includes('sleep'));
+     const hasImmunityGoal = userGoals?.some(goal => goal.includes('immunity'));
+
+     // Athlete-specific combos
+     if (isAthlete) {
+          recommendedCombos.push(
+               PRODUCT_COMBOS.find(c => c.name === "Athlete Performance Stack")!,
+               PRODUCT_COMBOS.find(c => c.name === "Recovery & Repair Stack")!
+          );
+     }
+
+     // Senior-specific combos
+     if (isSenior) {
+          recommendedCombos.push(
+               PRODUCT_COMBOS.find(c => c.name === "Bone Health Combo")!,
+               PRODUCT_COMBOS.find(c => c.name === "Heart Health Combo")!
+          );
+     }
+
+     // Female-specific combos
+     if (isFemale) {
+          recommendedCombos.push(
+               PRODUCT_COMBOS.find(c => c.name === "Women's Wellness Pack")!
+          );
+     }
+
+     // Goal-based combos
+     if (hasEnergyGoal) {
+          recommendedCombos.push(
+               PRODUCT_COMBOS.find(c => c.name === "Energy & Vitality Combo")!
+          );
+     }
+
+     if (hasSleepGoal) {
+          recommendedCombos.push(
+               PRODUCT_COMBOS.find(c => c.name === "Stress & Sleep Support")!
+          );
+     }
+
+     if (hasImmunityGoal) {
+          recommendedCombos.push(
+               PRODUCT_COMBOS.find(c => c.name === "Immune Support Stack")!
+          );
+     }
+
+     // General wellness combos (always include if no specific match)
+     if (recommendedCombos.length === 0) {
+          recommendedCombos.push(
+               PRODUCT_COMBOS.find(c => c.name === "Gut Health Duo")!,
+               PRODUCT_COMBOS.find(c => c.name === "Immune Support Stack")!
+          );
+     }
+
+     // Remove duplicates and return
+     return recommendedCombos.filter((combo, index, self) =>
+          index === self.findIndex(c => c.name === combo.name)
+     );
+}
+
+/**
+ * Get products from a combo by product titles
+ * @param combo - ProductCombo object
+ * @returns ProductSearchResult[] - Array of products in the combo
+ */
+export function getComboProducts(combo: ProductCombo): ProductSearchResult[] {
+     const comboProducts: ProductSearchResult[] = [];
+
+     for (const productTitle of combo.products) {
+          const product = MOCK_PRODUCTS.find(p =>
+               p.title.toLowerCase().includes(productTitle.toLowerCase()) ||
+               productTitle.toLowerCase().includes(p.title.toLowerCase())
+          );
+          if (product) {
+               comboProducts.push(product);
+          }
+     }
+
+     return comboProducts;
+}
+
+/**
+ * Find combos that contain some of the recommended products
+ * @param recommendedProducts - Array of recommended products
+ * @returns ProductCombo | null - Best matching combo or null
+ */
+export function findMatchingCombo(recommendedProducts: ProductSearchResult[]): ProductCombo | null {
+     if (!recommendedProducts || recommendedProducts.length === 0) {
+          return null;
+     }
+
+     const recommendedTitles = recommendedProducts.map(p => p.title.toLowerCase());
+
+     // Find combos that contain at least 2 of the recommended products
+     let bestMatch: { combo: ProductCombo; matchCount: number } | null = null;
+
+     for (const combo of PRODUCT_COMBOS) {
+          const comboProducts = getComboProducts(combo);
+          let matchCount = 0;
+
+          for (const recommendedTitle of recommendedTitles) {
+               const hasMatch = comboProducts.some(comboProduct =>
+                    comboProduct.title.toLowerCase() === recommendedTitle ||
+                    recommendedTitle.includes(comboProduct.title.toLowerCase()) ||
+                    comboProduct.title.toLowerCase().includes(recommendedTitle)
+               );
+               if (hasMatch) {
+                    matchCount++;
+               }
+          }
+
+          // If combo contains at least 2 recommended products, it's a good match
+          if (matchCount >= 2) {
+               if (!bestMatch || matchCount > bestMatch.matchCount) {
+                    bestMatch = { combo, matchCount };
+               }
+          }
+     }
+
+     return bestMatch ? bestMatch.combo : null;
+}
+
+/**
  * Get mock products based on search query
  * @param query - Search query string
  * @returns ProductSearchResult[] - Array of matching mock products
@@ -217,22 +529,66 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
 function getMockProducts(query: string): ProductSearchResult[] {
      const lowercaseQuery = query.toLowerCase();
 
-     // Filter mock products based on query
-     const filteredProducts = MOCK_PRODUCTS.filter(product =>
-          product.title.toLowerCase().includes(lowercaseQuery) ||
-          lowercaseQuery.includes('vitamin') && product.title.toLowerCase().includes('vitamin') ||
-          lowercaseQuery.includes('supplement') && product.title.toLowerCase().includes('supplement') ||
-          lowercaseQuery.includes('omega') && product.title.toLowerCase().includes('omega') ||
-          lowercaseQuery.includes('probiotic') && product.title.toLowerCase().includes('probiotic') ||
-          lowercaseQuery.includes('collagen') && product.title.toLowerCase().includes('collagen') ||
-          lowercaseQuery.includes('magnesium') && product.title.toLowerCase().includes('magnesium') ||
-          lowercaseQuery.includes('turmeric') && product.title.toLowerCase().includes('turmeric') ||
-          lowercaseQuery.includes('ashwagandha') && product.title.toLowerCase().includes('ashwagandha')
-     );
+     // Expanded keyword matching
+     const keywordMap: { [key: string]: string[] } = {
+          'vitamin': ['vitamin', 'multivitamin', 'd3', 'b-complex', 'c', 'k2'],
+          'protein': ['protein', 'whey', 'isolate'],
+          'omega': ['omega', 'fish oil'],
+          'probiotic': ['probiotic', 'prebiotic', 'gut'],
+          'magnesium': ['magnesium'],
+          'calcium': ['calcium'],
+          'iron': ['iron'],
+          'zinc': ['zinc'],
+          'creatine': ['creatine'],
+          'bcaa': ['bcaa', 'amino'],
+          'collagen': ['collagen'],
+          'turmeric': ['turmeric', 'curcumin'],
+          'ashwagandha': ['ashwagandha', 'stress'],
+          'melatonin': ['melatonin', 'sleep'],
+          'coq10': ['coq10', 'coenzyme'],
+          'energy': ['b-complex', 'iron', 'coq10'],
+          'recovery': ['protein', 'bcaa', 'creatine', 'magnesium'],
+          'immune': ['vitamin d', 'zinc', 'vitamin c', 'probiotic'],
+          'bone': ['calcium', 'vitamin d', 'magnesium'],
+          'heart': ['omega', 'coq10', 'magnesium']
+     };
 
-     // If no specific matches, return first 3 products
+     // Find matching keywords
+     const matchingKeywords: string[] = [];
+     for (const [key, values] of Object.entries(keywordMap)) {
+          if (lowercaseQuery.includes(key)) {
+               matchingKeywords.push(...values);
+          }
+     }
+
+     // Filter products based on query and keywords
+     const filteredProducts = MOCK_PRODUCTS.filter(product => {
+          const productTitleLower = product.title.toLowerCase();
+          
+          // Direct title match
+          if (productTitleLower.includes(lowercaseQuery)) {
+               return true;
+          }
+
+          // Keyword match
+          for (const keyword of matchingKeywords) {
+               if (productTitleLower.includes(keyword)) {
+                    return true;
+               }
+          }
+
+          return false;
+     });
+
+     // If no specific matches, return empty array instead of default products
+     // This prevents showing irrelevant products when the query is too generic
      if (filteredProducts.length === 0) {
+          // Only return default products if query is very generic (like "supplement" or "vitamin")
+          // and we have matching keywords
+          if (matchingKeywords.length > 0 && (lowercaseQuery === 'supplement' || lowercaseQuery === 'vitamin' || lowercaseQuery === 'nutrition')) {
           return MOCK_PRODUCTS.slice(0, 3);
+          }
+          return [];
      }
 
      // Return top 3 matches

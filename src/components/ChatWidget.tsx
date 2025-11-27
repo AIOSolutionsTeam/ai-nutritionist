@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Image from "next/image";
+import ReactMarkdown from "react-markdown";
 import {
   trackChatOpened,
   trackProductRecommended,
@@ -58,37 +60,73 @@ const Avatar = ({ isUser }: { isUser: boolean }) => (
 
 // Product Card component
 const ProductCard = ({ product }: { product: ProductSearchResult }) => {
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     // Track add to cart event
     trackAddToCart(product.title, product.variantId, product.price, 1);
 
-    // TODO: Implement add to cart functionality
-    console.log("Adding to cart:", product);
+    try {
+      const numericVariantId = product.variantId.includes("/")
+        ? product.variantId.split("/").pop()
+        : product.variantId;
 
-    // Example implementation options:
-    // 1. Add to local state/cart context
-    // 2. Call Shopify Storefront API to add to cart
-    // 3. Send to your backend cart service
-    // 4. Use a cart library like use-shopping-cart
+      const isDev = process.env.NODE_ENV === "development";
+      const isShopifyDomain =
+        typeof window !== "undefined" &&
+        (window.location.hostname.includes("myshopify.com") ||
+          window.location.hostname.includes("shopify.com"));
 
-    // Example with Shopify Storefront API:
-    // const mutation = `
-    //   mutation cartLinesAdd($cartId: ID!, $lines: [CartLineInput!]!) {
-    //     cartLinesAdd(cartId: $cartId, lines: $lines) {
-    //       cart { id }
-    //       userErrors { field message }
-    //     }
-    //   }
-    // `;
+      if (isDev && !isShopifyDomain) {
+        console.log("🧪 TEST MODE: Simulating add to cart", {
+          product: product.title,
+          variantId: numericVariantId,
+        });
+        await new Promise((r) => setTimeout(r, 400));
+        alert(
+          `🧪 TEST MODE\n\nProduit "${product.title}" simulé comme ajouté au panier.\nVariant: ${numericVariantId}`
+        );
+        return;
+      }
+
+      const response = await fetch("/cart/add.js", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: numericVariantId, quantity: 1 }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || (data && data.status === 422)) {
+        alert("Désolé, ce produit n'est pas disponible.");
+        return;
+      }
+
+      alert("Produit ajouté au panier! 🛒");
+
+      // Optional: update cart count in theme
+      try {
+        const cartRes = await fetch("/cart.js");
+        const cart = await cartRes.json();
+        window.dispatchEvent(
+          new CustomEvent("cart:updated", {
+            detail: { item_count: cart.item_count },
+          })
+        );
+      } catch (e) {
+        console.log("Cart count update skipped", e);
+      }
+    } catch (error) {
+      console.error("Error adding to cart:", error);
+      alert("Désolé, une erreur s'est produite lors de l'ajout au panier.");
+    }
   };
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
-      <div className="aspect-square overflow-hidden rounded-t-lg">
-        <img
+      <div className="aspect-square overflow-hidden rounded-t-lg relative">
+        <Image
           src={product.image}
           alt={product.title}
-          className="w-full h-full object-cover"
+          fill
+          className="object-cover"
         />
       </div>
       <div className="p-4">
@@ -104,7 +142,7 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
         </h3>
         <div className="flex items-center justify-between">
           <span className="text-lg font-bold text-green-600">
-            ${product.price.toFixed(2)}
+            {product.price.toFixed(2)} {product.currency || 'TND'}
           </span>
           <button
             onClick={handleAddToCart}
@@ -201,12 +239,25 @@ export default function ChatWidget() {
     });
 
     try {
+      // Build conversation history from existing messages
+      const conversationHistory = messages
+        .filter(msg => msg.text && msg.text.trim().length > 0) // Only include non-empty messages
+        .map(msg => ({
+          role: msg.isUser ? 'user' as const : 'assistant' as const,
+          content: msg.text
+        }))
+        .slice(-10) // Limit to last 10 messages to avoid token limits
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message: currentInput, userId }),
+        body: JSON.stringify({ 
+          message: currentInput, 
+          userId,
+          conversationHistory 
+        }),
       });
 
       if (!response.ok) {
@@ -362,9 +413,32 @@ export default function ChatWidget() {
                       : "bg-gradient-to-br from-green-50 to-emerald-50 text-gray-800 border border-green-200 rounded-bl-lg shadow-sm"
                   }`}
                 >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {message.text}
-                  </p>
+                  <div className={`text-sm leading-relaxed prose prose-sm max-w-none ${
+                    message.isUser 
+                      ? "prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-em:text-gray-200" 
+                      : "prose-headings:text-gray-900 prose-p:text-gray-800 prose-strong:text-gray-900 prose-em:text-gray-700"
+                  }`}>
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold text-inherit">{children}</strong>,
+                        em: ({ children }) => <em className="italic text-inherit">{children}</em>,
+                        ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                        li: ({ children }) => <li className="ml-2">{children}</li>,
+                        code: ({ children }) => (
+                          <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs font-mono">
+                            {children}
+                          </code>
+                        ),
+                        h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-2 first:mt-0">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-2 first:mt-0">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-1 first:mt-0">{children}</h3>,
+                      }}
+                    >
+                      {message.text}
+                    </ReactMarkdown>
+                  </div>
 
                   {/* Product Recommendations */}
                   {message.recommendedProducts &&
