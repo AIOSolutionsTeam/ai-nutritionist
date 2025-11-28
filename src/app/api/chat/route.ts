@@ -317,12 +317,17 @@ export async function POST(request: NextRequest) {
                                         hasSupplementKeywords ||
                                         hasSpecificSupplement
           
+          // Decide whether we should search for products.
+          // In addition to explicit triggers, also search when the AI reply mentions a specific supplement
+          // (e.g., "magnésium", "mélatonine"), which is a strong signal of product intent in this context.
           const shouldSearchProducts = !!(
                hasExplicitProducts ||
                (hasExplicitTrigger && hasSupplementMentions) ||
                (hasExplicitTrigger && replyLower.includes('sélection')) ||
                userHasProductIntent ||
                userHasSpecificSupplement ||
+               hasSpecificSupplement ||                  // NEW: reply mentions a specific supplement
+               hasSupplementKeywords ||                 // NEW: reply contains supplement-related keywords
                (hasSupplementMentions && (replyLower.includes('voici') || replyLower.includes('sélection')))
           )
 

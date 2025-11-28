@@ -144,6 +144,13 @@ You must respond with ONLY a valid JSON object. Do NOT wrap it in markdown code 
   "disclaimer": "Appropriate disclaimer when needed (optional)"
 }
 
+CRITICAL - RESPONSE COMPLETENESS:
+- ALWAYS ensure your JSON response is COMPLETE and properly closed with closing braces and brackets.
+- If listing products, make sure the "products" array is fully included before the response ends.
+- NEVER truncate your response mid-sentence or mid-JSON structure.
+- If you're running out of space, prioritize completing the JSON structure over verbose explanations.
+- The "reply" field should be concise when listing products - focus on the product information in the "products" array.
+
 IMPORTANT: 
 - If the user's question doesn't require product recommendations, set "products" to an empty array [].
 - Always write in French unless the user writes in another language.
@@ -550,13 +557,13 @@ IMPORTANT:
 export const openaiService = new OpenAIService({
      apiKey: process.env.OPENAI_API_KEY || '',
      model: 'gpt-4o',
-     maxTokens: 500,
+     maxTokens: 2000, // Increased from 500 to allow complete responses with product lists
      temperature: 0.7
 })
 
 export const geminiService = new GeminiService({
      apiKey: process.env.GEMINI_API_KEY || '',
      model: 'gemini-flash-latest',
-     maxOutputTokens: 2000,
+     maxOutputTokens: 4000, // Increased from 2000 to allow complete responses with product lists
      temperature: 0.7
 })

@@ -1,3 +1,6 @@
+"use client";
+
+import Link from "next/link";
 import ChatWidget from "../components/ChatWidget";
 
 export default function Home() {
@@ -32,6 +35,16 @@ export default function Home() {
               Your personal health assistant for nutrition advice, supplement
               recommendations, and wellness guidance
             </p>
+            
+            {/* Commencer ma consultation Button */}
+            <div className="mt-8 animate-fadeInUp" style={{ animationDelay: "0.4s" }}>
+              <Link
+                href="/nutritionniste"
+                className="inline-block px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-lg font-semibold rounded-full shadow-xl hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 transform hover:scale-105"
+              >
+                Commencer ma consultation
+              </Link>
+            </div>
           </div>
         </div>
       </header>

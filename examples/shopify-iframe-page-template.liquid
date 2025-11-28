@@ -1,0 +1,174 @@
+{% comment %}
+  Shopify Page Template for AI Nutritionist Full-Page Experience
+  Template: page.nutritionniste.liquid
+  
+  Instructions:
+  1. Create this file in your theme: templates/page.nutritionniste.liquid
+  2. Replace YOUR_DEPLOYED_APP_URL with your actual deployment URL
+  3. Assign this template to your page in Shopify Admin
+{% endcomment %}
+
+{% comment %} Replace with your deployed app URL {% endcomment %}
+{% assign nutritionist_app_url = 'https://your-deployed-app.com/nutritionniste' %}
+
+<div class="nutrition-iframe-container" style="width: 100%; height: 100vh; min-height: 800px;">
+  <iframe 
+    id="nutritionist-iframe"
+    src="{{ nutritionist_app_url }}"
+    width="100%"
+    height="100%"
+    frameborder="0"
+    style="border: none; min-height: 800px;"
+    allow="clipboard-read; clipboard-write">
+  </iframe>
+</div>
+
+{% comment %}
+  PostMessage Handler for Cart Integration
+  This script handles cart requests from the embedded iframe
+{% endcomment %}
+<script>
+  (function() {
+    'use strict';
+    
+    // Configuration
+    const ALLOWED_ORIGINS = [
+      'https://your-deployed-app.com',
+      'https://ai-nutritionist-v1.vercel.app'
+      // Add your production domains here
+    ];
+    
+    // Validate origin (in development, you may want to comment this out)
+    function isValidOrigin(origin) {
+      // Allow all origins in development
+      if (window.location.hostname === 'localhost' || window.location.hostname.includes('myshopify.com')) {
+        return true; // More permissive for development/testing
+      }
+      return ALLOWED_ORIGINS.includes(origin);
+    }
+    
+    // Listen for messages from the iframe
+    window.addEventListener('message', function(event) {
+      // Security: Validate origin
+      if (!isValidOrigin(event.origin)) {
+        console.warn('Blocked message from unauthorized origin:', event.origin);
+        return;
+      }
+      
+      // Handle add to cart requests
+      if (event.data && event.data.type === 'shopify-add-to-cart') {
+        const { requestId, variantId, quantity } = event.data;
+        
+        console.log('Received add to cart request:', { requestId, variantId, quantity });
+        
+        // Use Shopify's Cart API to add the product
+        fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: variantId,
+            quantity: quantity || 1
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          // Check for errors
+          if (data.status === 422) {
+            console.error('Cart add failed:', data);
+            // Send error response back to iframe
+            event.source.postMessage({
+              type: 'shopify-cart-response',
+              requestId: requestId,
+              success: false,
+              message: 'Désolé, ce produit n\'est pas disponible.'
+            }, event.origin);
+            return;
+          }
+          
+          // Get updated cart
+          return fetch('/cart.js')
+            .then(response => response.json())
+            .then(cart => {
+              console.log('Cart updated successfully:', cart);
+              
+              // Send success response back to iframe
+              event.source.postMessage({
+                type: 'shopify-cart-response',
+                requestId: requestId,
+                success: true,
+                message: 'Produit ajouté au panier! 🛒',
+                cart: {
+                  item_count: cart.item_count
+                }
+              }, event.origin);
+              
+              // Update cart count in theme
+              const cartCountElements = document.querySelectorAll(
+                '.cart-count, [data-cart-count], .cart__count, .cart-item-count'
+              );
+              cartCountElements.forEach(el => {
+                el.textContent = cart.item_count;
+              });
+              
+              // Dispatch custom event for theme integration
+              window.dispatchEvent(new CustomEvent('cart:updated', {
+                detail: { 
+                  item_count: cart.item_count,
+                  cart: cart
+                }
+              }));
+              
+              // Trigger cart drawer/sidebar update if your theme supports it
+              if (typeof window.theme !== 'undefined' && window.theme.cart) {
+                // Theme-specific cart update (adjust based on your theme)
+                if (window.theme.cart.updateCart) {
+                  window.theme.cart.updateCart();
+                }
+              }
+            });
+        })
+        .catch(error => {
+          console.error('Error adding to cart:', error);
+          // Send error response back to iframe
+          event.source.postMessage({
+            type: 'shopify-cart-response',
+            requestId: requestId,
+            success: false,
+            message: 'Désolé, une erreur s\'est produite lors de l\'ajout au panier.'
+          }, event.origin);
+        });
+      }
+    });
+    
+    // Optional: Send initial connection message to iframe
+    window.addEventListener('load', function() {
+      const iframe = document.getElementById('nutritionist-iframe');
+      if (iframe && iframe.contentWindow) {
+        // Notify iframe that parent is ready
+        iframe.contentWindow.postMessage({
+          type: 'shopify-parent-ready'
+        }, '*'); // In production, use specific origin
+      }
+    });
+  })();
+</script>
+
+{% comment %}
+  Optional: Add styles for better iframe integration
+{% endcomment %}
+<style>
+  .nutrition-iframe-container {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  @media (max-width: 768px) {
+    .nutrition-iframe-container {
+      height: 100vh;
+      height: 100dvh; /* Dynamic viewport height for mobile */
+    }
+  }
+</style>
+

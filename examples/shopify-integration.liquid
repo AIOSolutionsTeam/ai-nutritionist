@@ -42,6 +42,11 @@
                 if (cartCount) {
                   cartCount.textContent = cart.item_count;
                 }
+                
+                // Dispatch custom event for theme integration
+                window.dispatchEvent(new CustomEvent('cart:updated', {
+                  detail: { item_count: cart.item_count }
+                }));
               });
           }
         })
@@ -55,13 +60,96 @@
 </script>
 
 {% comment %}
-  Alternative: Add via Shopify Script Tag API (for app developers)
+  ============================================
+  IFRAME INTEGRATION - PostMessage Handler
+  ============================================
+  If you're embedding the full-page app in an iframe,
+  add this script to handle cart requests from the iframe.
   
-  POST /admin/api/2023-10/script_tags.json
-  {
-    "script_tag": {
-      "event": "onload",
-      "src": "https://chat.vigaia.ai/widget.min.js"
-    }
-  }
+  Add this to your page template (e.g., templates/page.nutritionniste.liquid)
+{% endcomment %}
+
+{% comment %}
+<script>
+  (function() {
+    // Listen for messages from the iframe
+    window.addEventListener('message', function(event) {
+      // Security: In production, validate event.origin
+      // if (event.origin !== 'https://your-deployed-app.com') return;
+      
+      // Handle add to cart requests
+      if (event.data && event.data.type === 'shopify-add-to-cart') {
+        const { requestId, variantId, quantity } = event.data;
+        
+        // Use Shopify's Cart API to add the product
+        fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: variantId,
+            quantity: quantity || 1
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          // Check for errors
+          if (data.status === 422) {
+            // Send error response back to iframe
+            event.source.postMessage({
+              type: 'shopify-cart-response',
+              requestId: requestId,
+              success: false,
+              message: 'Désolé, ce produit n\'est pas disponible.'
+            }, event.origin);
+            return;
+          }
+          
+          // Get updated cart
+          return fetch('/cart.js')
+            .then(response => response.json())
+            .then(cart => {
+              // Send success response back to iframe
+              event.source.postMessage({
+                type: 'shopify-cart-response',
+                requestId: requestId,
+                success: true,
+                message: 'Produit ajouté au panier! 🛒',
+                cart: {
+                  item_count: cart.item_count
+                }
+              }, event.origin);
+              
+              // Update cart count in theme
+              const cartCountElements = document.querySelectorAll('.cart-count, [data-cart-count]');
+              cartCountElements.forEach(el => {
+                el.textContent = cart.item_count;
+              });
+              
+              // Dispatch custom event for theme integration
+              window.dispatchEvent(new CustomEvent('cart:updated', {
+                detail: { item_count: cart.item_count }
+              }));
+            });
+        })
+        .catch(error => {
+          console.error('Error adding to cart:', error);
+          // Send error response back to iframe
+          event.source.postMessage({
+            type: 'shopify-cart-response',
+            requestId: requestId,
+            success: false,
+            message: 'Désolé, une erreur s\'est produite lors de l\'ajout au panier.'
+          }, event.origin);
+        });
+      }
+    });
+  })();
+</script>
+{% endcomment %}
+
+{% comment %}
+  Alternative: Add via Shopify Script Tag API (for app developers)
+  This allows you to inject the script programmatically via the Shopify Admin API
 {% endcomment %}

@@ -8,6 +8,7 @@ import {
   trackAddToCart,
   trackEvent,
 } from "../utils/analytics";
+import { addToShopifyCart } from "../utils/shopifyCart";
 
 // TypeScript definitions for Web Speech API
 interface SpeechRecognition extends EventTarget {
@@ -119,62 +120,12 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
   const handleAddToCart = async () => {
     trackAddToCart(product.title, product.variantId, product.price, 1);
     
-    try {
-      // Convert GraphQL variant ID to numeric ID if needed
-      const numericVariantId = product.variantId.includes("/")
-        ? product.variantId.split("/").pop()
-        : product.variantId;
-
-      // Local/test fallback: simulate in dev when not on a Shopify domain
-      const isDev = process.env.NODE_ENV === "development";
-      const isShopifyDomain =
-        typeof window !== "undefined" &&
-        (window.location.hostname.includes("myshopify.com") ||
-          window.location.hostname.includes("shopify.com"));
-
-      if (isDev && !isShopifyDomain) {
-        console.log("🧪 TEST MODE: Simulating add to cart", {
-          product: product.title,
-          variantId: numericVariantId,
-        });
-        await new Promise((r) => setTimeout(r, 400));
-        alert(
-          `🧪 TEST MODE\n\nProduit "${product.title}" simulé comme ajouté au panier.\nVariant: ${numericVariantId}`
-        );
-        return;
-      }
-
-      // Direct Shopify Cart API (works when app is served under the Shopify domain via App Proxy)
-      const response = await fetch("/cart/add.js", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: numericVariantId, quantity: 1 }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || (data && data.status === 422)) {
-        alert("Désolé, ce produit n'est pas disponible.");
-        return;
-      }
-
-      alert("Produit ajouté au panier! 🛒");
-
-      // Optional: update cart count in theme
-      try {
-        const cartRes = await fetch("/cart.js");
-        const cart = await cartRes.json();
-        window.dispatchEvent(
-          new CustomEvent("cart:updated", {
-            detail: { item_count: cart.item_count },
-          })
-        );
-      } catch (e) {
-        // non-fatal
-        console.log("Cart count update skipped", e);
-      }
-    } catch (error) {
-      console.error("Error adding to cart:", error);
-      alert("Désolé, une erreur s'est produite lors de l'ajout au panier.");
+    const result = await addToShopifyCart(product.variantId, 1);
+    
+    if (result.success) {
+      alert(result.message);
+    } else {
+      alert(result.message);
     }
   };
 
