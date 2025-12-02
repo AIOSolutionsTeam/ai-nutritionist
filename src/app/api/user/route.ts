@@ -5,14 +5,18 @@ import { dbService, IUserProfile } from '../../../lib/db';
 let isDbConnected = false;
 
 async function ensureDbConnection() {
-     if (!isDbConnected) {
-          try {
+     try {
+          // Check actual connection state using dbService method
+          if (!dbService.isConnectedToDatabase()) {
                await dbService.connect();
                isDbConnected = true;
-          } catch (error) {
-               console.error('Failed to connect to database:', error);
-               throw new Error('Database connection failed');
+          } else {
+               isDbConnected = true;
           }
+     } catch (error) {
+          console.error('Failed to connect to database:', error);
+          isDbConnected = false;
+          throw new Error('Database connection failed');
      }
 }
 

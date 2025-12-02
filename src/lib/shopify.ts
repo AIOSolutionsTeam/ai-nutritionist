@@ -46,148 +46,204 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
           title: "Organic Multivitamin Complex",
           price: 29.99,
-          image: "https://picsum.photos/400/400?random=1",
-          variantId: "gid://shopify/ProductVariant/1",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_14c00d70-9d2e-419e-9baa-78bd2af173c3.png?v=1763652220",
+          variantId: "gid://shopify/ProductVariant/62681126797681",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Omega-3 Fish Oil Supplement",
           price: 24.99,
-          image: "https://picsum.photos/400/400?random=2",
-          variantId: "gid://shopify/ProductVariant/2",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_60b92062-c15a-4a1f-902a-946a8c7a45a5.png?v=1763652159",
+          variantId: "gid://shopify/ProductVariant/62681126928753",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Vitamin D3 + K2 Capsules",
           price: 19.99,
-          image: "https://picsum.photos/400/400?random=3",
-          variantId: "gid://shopify/ProductVariant/3",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_15c99cb0-7ac1-4ad1-a6cb-eceaaba1d8b2.png?v=1763651483",
+          variantId: "gid://shopify/ProductVariant/62681126961521",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Probiotic Gut Health Formula",
           price: 34.99,
-          image: "https://picsum.photos/400/400?random=4",
-          variantId: "gid://shopify/ProductVariant/4",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_67744ed1-2658-46d8-9f8d-6428819068ad.png?v=1763651191",
+          variantId: "gid://shopify/ProductVariant/62681126994289",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Collagen Peptides Powder",
           price: 39.99,
-          image: "https://picsum.photos/400/400?random=5",
-          variantId: "gid://shopify/ProductVariant/5",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_faf2f84c-143b-4cc4-94c8-25aaffe35d7c.png?v=1763651141",
+          variantId: "gid://shopify/ProductVariant/62681127027057",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Magnesium Glycinate Tablets",
           price: 22.99,
-          image: "https://picsum.photos/400/400?random=6",
-          variantId: "gid://shopify/ProductVariant/6",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_b5e2d2b7-a5f2-4ff7-88a8-61b748b6b5af.png?v=1763651044",
+          variantId: "gid://shopify/ProductVariant/62681127059825",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Turmeric Curcumin Extract",
           price: 27.99,
-          image: "https://picsum.photos/400/400?random=7",
-          variantId: "gid://shopify/ProductVariant/7",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/turmeric-curcumin-extract.png?v=1763650471",
+          variantId: "gid://shopify/ProductVariant/62681127092593",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Ashwagandha Stress Support",
           price: 31.99,
           image: "https://picsum.photos/400/400?random=8",
-          variantId: "gid://shopify/ProductVariant/8",
+          variantId: "gid://shopify/ProductVariant/62681127125361",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Whey Protein Isolate",
           price: 44.99,
-          image: "https://picsum.photos/400/400?random=9",
-          variantId: "gid://shopify/ProductVariant/9",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_2a67b129-0518-49fc-a6c5-851857bf646d.png?v=1763650371",
+          variantId: "gid://shopify/ProductVariant/62681127158129",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "BCAA Recovery Formula",
           price: 32.99,
-          image: "https://picsum.photos/400/400?random=10",
-          variantId: "gid://shopify/ProductVariant/10",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_312711ed-3129-40ed-b9f5-479dfca5e17f.png?v=1763650333",
+          variantId: "gid://shopify/ProductVariant/62681127190897",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Creatine Monohydrate",
           price: 18.99,
-          image: "https://picsum.photos/400/400?random=11",
-          variantId: "gid://shopify/ProductVariant/11",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_551c98d1-4e55-49b1-ba69-60ae0c02e959.png?v=1763650271",
+          variantId: "gid://shopify/ProductVariant/62681127223665",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Iron + Vitamin C Complex",
           price: 16.99,
-          image: "https://picsum.photos/400/400?random=12",
-          variantId: "gid://shopify/ProductVariant/12",
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_92b73ca0-2679-4758-9d21-91b9707ca3be.png?v=1763650232",
+          variantId: "gid://shopify/ProductVariant/62681127256433",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Calcium + Vitamin D3",
           price: 21.99,
           image: "https://picsum.photos/400/400?random=13",
-          variantId: "gid://shopify/ProductVariant/13",
+          variantId: "gid://shopify/ProductVariant/62681127289201",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Prebiotic Fiber Supplement",
           price: 26.99,
           image: "https://picsum.photos/400/400?random=14",
-          variantId: "gid://shopify/ProductVariant/14",
+          variantId: "gid://shopify/ProductVariant/62681127321969",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Vitamin B-Complex",
           price: 17.99,
           image: "https://picsum.photos/400/400?random=15",
-          variantId: "gid://shopify/ProductVariant/15",
+          variantId: "gid://shopify/ProductVariant/62681127354737",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Zinc + Vitamin C",
           price: 14.99,
           image: "https://picsum.photos/400/400?random=16",
-          variantId: "gid://shopify/ProductVariant/16",
+          variantId: "gid://shopify/ProductVariant/62681127387505",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Melatonin Sleep Support",
           price: 19.99,
           image: "https://picsum.photos/400/400?random=17",
-          variantId: "gid://shopify/ProductVariant/17",
+          variantId: "gid://shopify/ProductVariant/62681127420273",
           available: true,
-          currency: "USD"
+          currency: "TND"
      },
      {
           title: "Coenzyme Q10 (CoQ10)",
           price: 35.99,
           image: "https://picsum.photos/400/400?random=18",
-          variantId: "gid://shopify/ProductVariant/18",
+          variantId: "gid://shopify/ProductVariant/62681127453041",
           available: true,
-          currency: "USD"
+          currency: "TND"
+     },
+     {
+          title: "Vitamin B12 Methylcobalamin",
+          price: 15.99,
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_056e76a9-8d5e-41f4-b53b-cd849e90da5a.png?v=1763643181",
+          variantId: "gid://shopify/ProductVariant/62681127485809",
+          available: true,
+          currency: "TND"
+     },
+     {
+          title: "Glucosamine + Chondroitin",
+          price: 28.99,
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_ca37c6c4-7c66-4f01-ac34-85dcf96b839f.png?v=1763643149",
+          variantId: "gid://shopify/ProductVariant/62681127518577",
+          available: true,
+          currency: "TND"
+     },
+     {
+          title: "Green Tea Extract",
+          price: 23.99,
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_6a902145-2fb2-460e-94c5-39af92ab784f.png?v=1763643102",
+          variantId: "gid://shopify/ProductVariant/62681127551345",
+          available: true,
+          currency: "TND"
+     },
+     {
+          title: "Ginseng Energy Support",
+          price: 33.99,
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/ginseng-energy-support.png?v=1763643034",
+          variantId: "gid://shopify/ProductVariant/62681127584113",
+          available: true,
+          currency: "TND"
+     },
+     {
+          title: "Selenium Supplement",
+          price: 13.99,
+          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/selenium-supplement.png?v=1763642978",
+          variantId: "gid://shopify/ProductVariant/62681127616881",
+          available: true,
+          currency: "TND"
+     },
+     {
+          title: "Vegan Protein Powder",
+          price: 42.99,
+          image: "https://picsum.photos/400/400?random=24",
+          variantId: "gid://shopify/ProductVariant/62681127649649",
+          available: true,
+          currency: "TND"
      }
 ];
+
+
+
+
+
+
+
+
 
 /**
  * Product combinations that work well together
@@ -285,8 +341,10 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
 
      // If no credentials, return mock data
      if (!shopifyDomain || !shopifyToken) {
-          console.log('Shopify credentials not found, using mock data');
-          return getMockProducts(query);
+          console.log(`[Shopify] Credentials not found (domain: ${shopifyDomain ? 'set' : 'missing'}, token: ${shopifyToken ? 'set' : 'missing'}), using mock data for query: "${query}"`);
+          const mockProducts = getMockProducts(query);
+          console.log(`[Shopify] Mock products returned: ${mockProducts.length} products`);
+          return mockProducts;
      }
 
      try {
@@ -364,12 +422,15 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
                };
           });
 
+          console.log(`[Shopify] Successfully fetched ${products.length} products for query: "${query}"`);
           return products;
      } catch (error) {
-          console.error('Error searching Shopify products:', error);
+          console.error('[Shopify] Error searching products:', error);
           // Fallback to mock data on error
-          console.log('Falling back to mock data due to error');
-          return getMockProducts(query);
+          console.log(`[Shopify] Falling back to mock data due to error for query: "${query}"`);
+          const mockProducts = getMockProducts(query);
+          console.log(`[Shopify] Mock products returned: ${mockProducts.length} products`);
+          return mockProducts;
      }
 }
 
@@ -527,30 +588,55 @@ export function findMatchingCombo(recommendedProducts: ProductSearchResult[]): P
  * @returns ProductSearchResult[] - Array of matching mock products
  */
 function getMockProducts(query: string): ProductSearchResult[] {
-     const lowercaseQuery = query.toLowerCase();
+     const lowercaseQuery = query.toLowerCase().trim();
+
+     // If query is empty or very short, return default products
+     if (!lowercaseQuery || lowercaseQuery.length < 2) {
+          console.log('Mock products: Empty or very short query, returning default products');
+          return MOCK_PRODUCTS.slice(0, 3);
+     }
 
      // Expanded keyword matching
      const keywordMap: { [key: string]: string[] } = {
           'vitamin': ['vitamin', 'multivitamin', 'd3', 'b-complex', 'c', 'k2'],
+          'vitamine': ['vitamin', 'multivitamin', 'd3', 'b-complex', 'c', 'k2'],
           'protein': ['protein', 'whey', 'isolate'],
+          'protéine': ['protein', 'whey', 'isolate'],
           'omega': ['omega', 'fish oil'],
+          'oméga': ['omega', 'fish oil'],
           'probiotic': ['probiotic', 'prebiotic', 'gut'],
+          'probiotique': ['probiotic', 'prebiotic', 'gut'],
           'magnesium': ['magnesium'],
+          'magnésium': ['magnesium'],
           'calcium': ['calcium'],
           'iron': ['iron'],
+          'fer': ['iron'],
           'zinc': ['zinc'],
           'creatine': ['creatine'],
+          'créatine': ['creatine'],
           'bcaa': ['bcaa', 'amino'],
           'collagen': ['collagen'],
+          'collagène': ['collagen'],
           'turmeric': ['turmeric', 'curcumin'],
+          'curcuma': ['turmeric', 'curcumin'],
           'ashwagandha': ['ashwagandha', 'stress'],
           'melatonin': ['melatonin', 'sleep'],
+          'mélatonine': ['melatonin', 'sleep'],
           'coq10': ['coq10', 'coenzyme'],
           'energy': ['b-complex', 'iron', 'coq10'],
+          'énergie': ['b-complex', 'iron', 'coq10'],
           'recovery': ['protein', 'bcaa', 'creatine', 'magnesium'],
+          'récupération': ['protein', 'bcaa', 'creatine', 'magnesium'],
           'immune': ['vitamin d', 'zinc', 'vitamin c', 'probiotic'],
+          'immunité': ['vitamin d', 'zinc', 'vitamin c', 'probiotic'],
           'bone': ['calcium', 'vitamin d', 'magnesium'],
-          'heart': ['omega', 'coq10', 'magnesium']
+          'os': ['calcium', 'vitamin d', 'magnesium'],
+          'heart': ['omega', 'coq10', 'magnesium'],
+          'cœur': ['omega', 'coq10', 'magnesium'],
+          'supplement': ['vitamin', 'multivitamin', 'mineral'],
+          'supplément': ['vitamin', 'multivitamin', 'mineral'],
+          'complément': ['vitamin', 'multivitamin', 'mineral'],
+          'nutrition': ['multivitamin', 'vitamin', 'mineral']
      };
 
      // Find matching keywords
@@ -580,19 +666,37 @@ function getMockProducts(query: string): ProductSearchResult[] {
           return false;
      });
 
-     // If no specific matches, return empty array instead of default products
-     // This prevents showing irrelevant products when the query is too generic
-     if (filteredProducts.length === 0) {
-          // Only return default products if query is very generic (like "supplement" or "vitamin")
-          // and we have matching keywords
-          if (matchingKeywords.length > 0 && (lowercaseQuery === 'supplement' || lowercaseQuery === 'vitamin' || lowercaseQuery === 'nutrition')) {
-          return MOCK_PRODUCTS.slice(0, 3);
-          }
-          return [];
+     // If we found matches, return them
+     if (filteredProducts.length > 0) {
+          console.log(`Mock products: Found ${filteredProducts.length} matches for query "${query}"`);
+          return filteredProducts.slice(0, 3);
      }
 
-     // Return top 3 matches
-     return filteredProducts.slice(0, 3);
+     // If no matches but we have matching keywords, return products related to those keywords
+     if (matchingKeywords.length > 0) {
+          const keywordBasedProducts = MOCK_PRODUCTS.filter(product => {
+               const productTitleLower = product.title.toLowerCase();
+               return matchingKeywords.some(keyword => productTitleLower.includes(keyword));
+          });
+          
+          if (keywordBasedProducts.length > 0) {
+               console.log(`Mock products: Found ${keywordBasedProducts.length} keyword-based matches for query "${query}"`);
+               return keywordBasedProducts.slice(0, 3);
+          }
+     }
+
+     // As a last resort, if query contains common supplement-related terms, return default products
+     const genericTerms = ['supplement', 'supplément', 'complément', 'vitamin', 'vitamine', 'nutrition', 'health', 'santé', 'produit', 'product'];
+     const hasGenericTerm = genericTerms.some(term => lowercaseQuery.includes(term));
+     
+     if (hasGenericTerm) {
+          console.log(`Mock products: Generic query "${query}", returning default products`);
+          return MOCK_PRODUCTS.slice(0, 3);
+     }
+
+     // If still no match, return empty array (but log it for debugging)
+     console.log(`Mock products: No matches found for query "${query}", returning empty array`);
+     return [];
 }
 
 /**

@@ -299,7 +299,18 @@ export async function POST(request: NextRequest) {
           const hasSpecificSupplement = replyLower.match(/\b(vitamine [a-z]|vitamine d|vitamine c|magnésium|oméga|probiotique|collagène|protéine|créatine|fer|zinc|calcium|mélatonine|melatonin)\b/i)
 
           // Detect user intent directly from the user's message
-          const userHasProductIntent = ['produit', 'produits', 'complément', 'supplément', 'recommande', 'recommander', 'montre moi', 'montrez moi', 'quel produit'].some(t => userLower.includes(t))
+          // Include phrases that explicitly request product lists
+          const productListPhrases = [
+               'lister', 'liste', 'list', 
+               'donner moi', 'donnez moi', 'donne moi', 'donnez-moi', 'donne-moi',
+               'montre moi', 'montrez moi', 'montre-moi', 'montrez-moi',
+               'produit', 'produits', 
+               'complément', 'compléments', 'supplément', 'suppléments',
+               'recommande', 'recommander', 'recommandation', 'recommandations',
+               'quel produit', 'quels produits',
+               'aide moi', 'aidez moi', 'aide-moi', 'aidez-moi'
+          ]
+          const userHasProductIntent = productListPhrases.some(t => userLower.includes(t))
           const userHasSpecificSupplement = userLower.match(/\b(vitamine [a-z]|vitamine d|vitamine c|magnésium|oméga|probiotique|collagène|protéine|créatine|fer|zinc|calcium|mélatonine|melatonin)\b/i)
 
           // Also consider supplement-related keywords in the AI reply
@@ -395,8 +406,12 @@ export async function POST(request: NextRequest) {
 
                     // Search for products using the first query (most relevant)
                     if (searchQueries.length > 0) {
+                         console.log(`[API] Searching for products with query: "${searchQueries[0]}"`)
                          recommendedProducts = await searchProducts(searchQueries[0])
-                         console.log('Found products:', recommendedProducts.length)
+                         console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
+                         if (recommendedProducts.length > 0) {
+                              console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
+                         }
 
                          // If we found products, also search for complementary products
                          if (recommendedProducts.length > 0) {
@@ -516,6 +531,9 @@ export async function POST(request: NextRequest) {
                provider: selectedProvider,
                timestamp: new Date().toISOString()
           }
+
+          // Log response summary for debugging
+          console.log(`[API] Response summary - Products: ${recommendedProducts.length}, Combos: ${recommendedCombos.length}, HasSuggestedCombo: ${!!suggestedCombo}`)
 
           // Track successful API response
           analytics.trackEvent('chat_api_response', {

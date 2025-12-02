@@ -96,13 +96,13 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
           {product.title}
         </h3>
         <div className="flex items-center justify-between">
-          <span className="text-lg font-bold text-green-600">
+          <span className="text-lg font-bold text-[#6B8E6B]">
             {product.price.toFixed(2)} {product.currency || 'TND'}
           </span>
           <button
             onClick={handleAddToCart}
             disabled={!product.available}
-            className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
+            className="px-3 py-1.5 bg-[#6B8E6B] text-white text-xs font-medium rounded-md hover:bg-[#5a7a5a] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
           >
             {product.available ? "Add to Cart" : "Out of Stock"}
           </button>
@@ -257,16 +257,34 @@ export default function ChatWidget() {
     } catch (error) {
       console.error("Error sending message:", error);
 
+      // Determine error type and provide helpful message
+      let errorText = "Sorry, I encountered an error. Please try again.";
+      
+      if (error instanceof TypeError && error.message === "Failed to fetch") {
+        errorText = "⚠️ Unable to connect to server. Please make sure the development server is running.\n\nTo start the server, run:\n`npm run dev` or `yarn dev`";
+      } else if (error instanceof Error) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          errorText = "⚠️ Network connection error. Please check your Internet connection and ensure the server is running.";
+        } else if (error.message.includes("HTTP error")) {
+          errorText = `⚠️ Server error (${error.message}). Please try again in a few moments.`;
+        } else {
+          errorText = `⚠️ Error: ${error.message}`;
+        }
+      }
+
       // Track error event
       trackEvent("chat_error", {
         category: "error",
-        errorType: "api_error",
+        errorType: error instanceof TypeError && error.message === "Failed to fetch" 
+          ? "network_error" 
+          : "api_error",
+        errorMessage: error instanceof Error ? error.message : String(error),
         ...(userId ? { userId } : {}),
       });
 
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: "Sorry, I encountered an error. Please try again.",
+        text: errorText,
         isUser: false,
         timestamp: new Date(),
       };
@@ -293,7 +311,7 @@ export default function ChatWidget() {
             // Track chat opened event
             trackChatOpened(userId || undefined, "floating_bubble");
           }}
-          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-nutrition text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center z-[9999] animate-bounce"
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-primary text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center z-[9999] animate-bounce"
         >
           <svg
             className="w-6 h-6 sm:w-8 sm:h-8"
@@ -315,12 +333,12 @@ export default function ChatWidget() {
       {isOpen && (
         <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[calc(100vh-2rem)] sm:h-[600px] max-h-[600px] bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200 overflow-hidden z-[9999] flex flex-col">
           {/* Header */}
-          <div className="bg-gradient-nutrition px-4 sm:px-6 py-3 sm:py-4 text-white flex items-center justify-between">
+          <div className="bg-gradient-primary px-4 sm:px-6 py-3 sm:py-4 text-white flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Avatar isUser={false} />
               <div>
                 <h3 className="font-bold text-lg">AI Nutritionist</h3>
-                <p className="text-sm text-green-100">Online • Ready to help</p>
+                <p className="text-sm text-white/80">Online • Ready to help</p>
               </div>
             </div>
             <button
@@ -332,7 +350,7 @@ export default function ChatWidget() {
                   ...(userId && { userId }),
                 });
               }}
-              className="text-white hover:text-green-200 transition-colors duration-200"
+              className="text-white hover:text-white/70 transition-colors duration-200"
             >
               <svg
                 className="w-6 h-6"
@@ -365,7 +383,7 @@ export default function ChatWidget() {
                   className={`max-w-[75%] px-4 py-3 rounded-2xl ${
                     message.isUser
                       ? "bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-br-lg shadow-lg"
-                      : "bg-gradient-to-br from-green-50 to-emerald-50 text-gray-800 border border-green-200 rounded-bl-lg shadow-sm"
+                      : "bg-gradient-to-br from-[#F5D5D5]/20 to-[#F5D5D5]/10 text-[#1A1A1A] border border-[#F5D5D5]/30 rounded-bl-lg shadow-sm"
                   }`}
                 >
                   <div className={`text-sm leading-relaxed prose prose-sm max-w-none ${
@@ -428,7 +446,7 @@ export default function ChatWidget() {
             {isLoading && (
               <div className="flex items-start space-x-3 animate-fadeInUp">
                 <Avatar isUser={false} />
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 text-gray-800 px-4 py-3 rounded-2xl rounded-bl-lg border border-green-200 shadow-sm">
+                <div className="bg-gradient-to-br from-[#F5D5D5]/20 to-[#F5D5D5]/10 text-[#1A1A1A] px-4 py-3 rounded-2xl rounded-bl-lg border border-[#F5D5D5]/30 shadow-sm">
                   <TypingIndicator />
                 </div>
               </div>
@@ -437,7 +455,7 @@ export default function ChatWidget() {
           </div>
 
           {/* Input */}
-          <div className="p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-t border-green-200">
+          <div className="p-3 sm:p-4 bg-gradient-to-r from-[#F5D5D5]/10 to-[#F5D5D5]/5 border-t border-[#F5D5D5]/20">
             <div className="flex items-end space-x-3">
               <div className="flex-1 relative">
                 <textarea
@@ -445,7 +463,7 @@ export default function ChatWidget() {
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Ask about nutrition, supplements..."
-                  className="w-full px-4 py-3 pr-12 border border-green-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none transition-all duration-200 placeholder-gray-500 bg-white shadow-sm text-sm"
+                  className="w-full px-4 py-3 pr-12 border border-[#6B6B6B]/20 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#F5C842] focus:border-transparent resize-none transition-all duration-200 placeholder-[#6B6B6B] bg-white shadow-sm text-sm"
                   rows={1}
                   disabled={isLoading}
                   style={{
@@ -464,7 +482,7 @@ export default function ChatWidget() {
               <button
                 onClick={sendMessage}
                 disabled={!inputMessage.trim() || isLoading}
-                className="p-3 bg-gradient-nutrition text-white rounded-2xl hover:from-green-600 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+                className="p-3 bg-gradient-primary text-white rounded-2xl hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#F5C842] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
               >
                 <svg
                   className="w-4 h-4"

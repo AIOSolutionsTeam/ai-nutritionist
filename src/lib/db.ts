@@ -111,17 +111,34 @@ class DatabaseService {
      }
 
      public async connect(): Promise<void> {
-          if (this.isConnected) {
-               console.log('Already connected to MongoDB');
+          // Check actual mongoose connection state, not just our flag
+          if (mongoose.connection.readyState === 1) {
+               this.isConnected = true;
                return;
           }
 
+          if (this.isConnected && mongoose.connection.readyState === 2) {
+               // Connection is in progress, wait for it
+               return new Promise((resolve, reject) => {
+                    mongoose.connection.once('connected', () => {
+                         this.isConnected = true;
+                         resolve();
+                    });
+                    mongoose.connection.once('error', reject);
+                    setTimeout(() => reject(new Error('Connection timeout')), 10000);
+               });
+          }
+
           try {
-               await mongoose.connect(MONGODB_URI);
+               await mongoose.connect(MONGODB_URI, {
+                    serverSelectionTimeoutMS: 10000, // 10 seconds
+                    socketTimeoutMS: 45000, // 45 seconds
+               });
                this.isConnected = true;
                console.log('Connected to MongoDB successfully');
           } catch (error) {
                console.error('MongoDB connection error:', error);
+               this.isConnected = false;
                throw error;
           }
      }
@@ -160,6 +177,10 @@ class DatabaseService {
           };
      }): Promise<IUserProfile> {
           try {
+               // Ensure connection is ready before creating
+               if (mongoose.connection.readyState !== 1) {
+                    await this.connect();
+               }
                const userProfile = new UserProfile(userData);
                return await userProfile.save();
           } catch (error) {
@@ -170,6 +191,10 @@ class DatabaseService {
 
      public async getUserProfile(userId: string): Promise<IUserProfile | null> {
           try {
+               // Ensure connection is ready before querying
+               if (mongoose.connection.readyState !== 1) {
+                    await this.connect();
+               }
                return await UserProfile.findOne({ userId });
           } catch (error) {
                console.error('Error getting user profile:', error);
@@ -189,6 +214,10 @@ class DatabaseService {
           };
      }>): Promise<IUserProfile | null> {
           try {
+               // Ensure connection is ready before updating
+               if (mongoose.connection.readyState !== 1) {
+                    await this.connect();
+               }
                return await UserProfile.findOneAndUpdate(
                     { userId },
                     { ...updates, lastInteraction: new Date() },
@@ -259,14 +288,17 @@ export const dbService = DatabaseService.getInstance();
 // Connection event handlers
 mongoose.connection.on('connected', () => {
      console.log('Mongoose connected to MongoDB');
+     dbService['isConnected'] = true;
 });
 
 mongoose.connection.on('error', (error) => {
      console.error('Mongoose connection error:', error);
+     dbService['isConnected'] = false;
 });
 
 mongoose.connection.on('disconnected', () => {
      console.log('Mongoose disconnected from MongoDB');
+     dbService['isConnected'] = false;
 });
 
 // Graceful shutdown

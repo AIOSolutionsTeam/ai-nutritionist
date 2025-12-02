@@ -73,6 +73,8 @@ interface Message {
   recommendedCombos?: RecommendedCombo[];
   suggestedCombo?: RecommendedCombo; // Combo to ask user about
   pendingComboResponse?: boolean; // Whether we're waiting for user to respond about combo
+  isTyping?: boolean; // Whether this message is currently being typewritten
+  displayedText?: string; // The text currently displayed (for typewriter effect)
 }
 
 interface ProductSearchResult {
@@ -114,6 +116,125 @@ const Avatar = ({ isUser }: { isUser: boolean }) => (
     {isUser ? "👤" : "🥗"}
   </div>
 );
+
+// Product Grid with Staggered Animation
+const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSearchResult[]; messageId: string }) => {
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  useEffect(() => {
+    // Reset when products change
+    setVisibleCount(0);
+    
+    // Show products one by one with delay
+    if (products.length > 0) {
+      const timers: NodeJS.Timeout[] = [];
+      
+      products.forEach((_, index) => {
+        const timer = setTimeout(() => {
+          setVisibleCount(prev => Math.max(prev, index + 1));
+        }, index * 220); // 220ms delay between each product (slowed down)
+        timers.push(timer);
+      });
+
+      return () => {
+        timers.forEach(timer => clearTimeout(timer));
+      };
+    }
+  }, [products, messageId]);
+
+  return (
+    <div className="mt-4">
+      <p className="text-xs font-medium text-gray-600 mb-3">
+        Produits recommandés :
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {products.map((product, idx) => (
+          <div
+            key={idx}
+            className={`transition-all duration-500 ${
+              idx < visibleCount
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-4'
+            }`}
+            style={{
+              transitionDelay: `${idx * 80}ms`,
+            }}
+          >
+            <ProductCard product={product} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Combo Grid with Staggered Animation
+const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedCombo[]; messageId: string }) => {
+  const [visibleComboCount, setVisibleComboCount] = useState(0);
+
+  useEffect(() => {
+    // Reset when combos change
+    setVisibleComboCount(0);
+    
+    // Show combos one by one with delay
+    if (combos.length > 0) {
+      const timers: NodeJS.Timeout[] = [];
+      
+      combos.forEach((_, index) => {
+        const timer = setTimeout(() => {
+          setVisibleComboCount(prev => Math.max(prev, index + 1));
+        }, index * 200); // 200ms delay between each combo
+        timers.push(timer);
+      });
+
+      return () => {
+        timers.forEach(timer => clearTimeout(timer));
+      };
+    }
+  }, [combos, messageId]);
+
+  return (
+    <div className="mt-6 pt-4 border-t border-gray-200">
+      <p className="text-sm font-semibold text-gray-700 mb-4">
+        💡 Combinaisons recommandées pour vous :
+      </p>
+      <div className="space-y-4">
+        {combos.map((combo, comboIdx) => (
+          <div
+            key={comboIdx}
+            className={`transition-all duration-500 ${
+              comboIdx < visibleComboCount
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-4'
+            }`}
+            style={{
+              transitionDelay: `${comboIdx * 100}ms`,
+            }}
+          >
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
+              <div className="mb-3">
+                <h4 className="font-semibold text-gray-900 mb-1">
+                  {combo.name}
+                </h4>
+                <p className="text-xs text-gray-600 mb-2">
+                  {combo.description}
+                </p>
+                <p className="text-xs text-gray-700 italic">
+                  💡 {combo.benefits}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">
+                {combo.products.map((product, productIdx) => (
+                  <ProductCard key={productIdx} product={product} />
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 // Product Card component
 const ProductCard = ({ product }: { product: ProductSearchResult }) => {
@@ -375,6 +496,9 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const messageIdCounterRef = useRef(0);
   const inputBaseAtRecognitionStartRef = useRef<string>("");
+  const typewriterIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const typewriterTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const activeTypingMessagesRef = useRef<Set<string>>(new Set());
 
   const generateMessageId = (): string => {
     messageIdCounterRef.current += 1;
@@ -386,8 +510,165 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   };
 
   useEffect(() => {
-    scrollToBottom();
+    // Check if any message is currently typing
+    const isTyping = messages.some(msg => !msg.isUser && msg.isTyping);
+    
+    if (isTyping) {
+      // During typing, scroll less frequently (every 200ms) to avoid too aggressive scrolling
+      const scrollInterval = setInterval(() => {
+        scrollToBottom();
+      }, 200);
+      
+      return () => clearInterval(scrollInterval);
+    } else {
+      // When not typing, scroll immediately
+      scrollToBottom();
+    }
   }, [messages, isLoading]);
+
+  // Typewriter effect for AI messages - ChatGPT/Gemini style with chunks and pauses
+  useEffect(() => {
+    const intervalsMap = typewriterIntervalsRef.current;
+    const timeoutsMap = typewriterTimeoutsRef.current;
+    const activeTyping = activeTypingMessagesRef.current;
+    
+    // Only process messages that need typing initialization
+    messages.forEach((message) => {
+      // Only apply typewriter to non-user messages that haven't been fully displayed
+      if (!message.isUser && message.isTyping && message.displayedText !== undefined) {
+        const fullText = message.text;
+        const currentDisplayed = message.displayedText || "";
+        
+        // Skip if already being processed
+        if (intervalsMap.has(message.id) || timeoutsMap.has(message.id) || activeTyping.has(message.id)) {
+          return;
+        }
+
+        // If text is already fully displayed, mark as complete (but don't start typing)
+        if (currentDisplayed.length >= fullText.length) {
+          activeTyping.delete(message.id);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === message.id
+                ? { ...msg, isTyping: false, displayedText: fullText }
+                : msg
+            )
+          );
+          return;
+        }
+
+        // Mark this message as actively typing BEFORE starting
+        activeTyping.add(message.id);
+
+        // Smart chunk-based typing function
+        const typeNextChunk = () => {
+          setMessages((prev) => {
+            const msg = prev.find((m) => m.id === message.id);
+            if (!msg || !msg.isTyping) {
+              intervalsMap.delete(message.id);
+              const timeout = timeoutsMap.get(message.id);
+              if (timeout) {
+                clearTimeout(timeout);
+                timeoutsMap.delete(message.id);
+              }
+              activeTyping.delete(message.id);
+              return prev;
+            }
+
+            const current = msg.displayedText || "";
+            if (current.length >= fullText.length) {
+              intervalsMap.delete(message.id);
+              const timeout = timeoutsMap.get(message.id);
+              if (timeout) {
+                clearTimeout(timeout);
+                timeoutsMap.delete(message.id);
+              }
+              activeTyping.delete(message.id);
+              return prev.map((m) =>
+                m.id === message.id
+                  ? { ...m, isTyping: false, displayedText: fullText }
+                  : m
+              );
+            }
+
+            // Get remaining text
+            const remaining = fullText.slice(current.length);
+            
+            // Determine chunk size based on what's coming next
+            let chunkSize = 1;
+            let pauseAfter = false;
+            
+            // Check for punctuation that should trigger a pause
+            const nextChar = remaining[0];
+            const nextFewChars = remaining.slice(0, 10);
+            
+            // If we're at punctuation, add a longer pause after typing it
+            if (/[.!?。！？]\s/.test(nextFewChars)) {
+              // Type the punctuation and space, then pause
+              chunkSize = remaining.match(/^[.!?。！？]\s*/)?.[0]?.length || 1;
+              pauseAfter = true;
+            } else if (/[.,;:，；：]\s/.test(nextFewChars)) {
+              // Shorter pause for commas, semicolons, colons
+              chunkSize = remaining.match(/^[.,;:，；：]\s*/)?.[0]?.length || 1;
+              pauseAfter = true;
+            } else if (nextChar === '\n') {
+              // Pause after newlines
+              chunkSize = remaining.match(/^\n+/)?.[0]?.length || 1;
+              pauseAfter = true;
+            } else {
+              // Type in smaller chunks for more controlled typing
+              const wordMatch = remaining.match(/^\S+/);
+              if (wordMatch) {
+                const word = wordMatch[0];
+                // Type 1-3 characters at a time for words (reduced from 2-5)
+                chunkSize = Math.min(word.length, Math.floor(Math.random() * 2) + 1);
+              } else {
+                // For spaces and other characters, type 1 at a time
+                chunkSize = 1;
+              }
+            }
+
+            // Ensure we don't exceed remaining text
+            chunkSize = Math.min(chunkSize, remaining.length);
+            const nextChars = fullText.slice(0, current.length + chunkSize);
+            
+            // Schedule next chunk - slower and more controlled
+            const baseDelay = 30; // Base typing speed (increased from 15ms for slower feel)
+            const randomVariation = Math.random() * 8 - 4; // ±4ms variation for natural feel
+            const delay = pauseAfter 
+              ? baseDelay * 6 + randomVariation // Longer pause after punctuation (180ms + variation)
+              : baseDelay + randomVariation; // Normal typing speed (30ms + variation)
+            
+            const timeout = setTimeout(() => {
+              typeNextChunk();
+            }, Math.max(5, delay)); // Minimum 5ms delay
+            
+            timeoutsMap.set(message.id, timeout);
+            
+            return prev.map((m) =>
+              m.id === message.id
+                ? { ...m, displayedText: nextChars }
+                : m
+            );
+          });
+        };
+
+        // Start typing immediately
+        typeNextChunk();
+      }
+    });
+
+    // Cleanup function - only clean up on unmount
+    return () => {
+      // Cleanup all timeouts and intervals on unmount
+      intervalsMap.forEach((interval) => clearInterval(interval));
+      intervalsMap.clear();
+      timeoutsMap.forEach((timeout: NodeJS.Timeout) => clearTimeout(timeout));
+      timeoutsMap.clear();
+      activeTyping.clear();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]); // Only depend on message count to avoid infinite loops
 
   const getQuestionInfo = (step: OnboardingQuestion): {
     question: string;
@@ -550,11 +831,21 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       recognition.continuous = false;
       recognition.interimResults = true;
       try {
-        const browserLang =
-          (typeof navigator !== "undefined" && navigator.language) || "en-US";
-        recognition.lang = browserLang?.toLowerCase().startsWith("fr")
-          ? "fr-FR"
-          : "en-US";
+        // Check for French language in browser preferences
+        let isFrench = false;
+        if (typeof navigator !== "undefined") {
+          // Check navigator.languages array (all preferred languages)
+          if (navigator.languages && Array.isArray(navigator.languages)) {
+            isFrench = navigator.languages.some(lang => 
+              lang && typeof lang === "string" && lang.toLowerCase().startsWith("fr")
+            );
+          }
+          // Also check primary language as fallback
+          if (!isFrench && navigator.language) {
+            isFrench = navigator.language.toLowerCase().startsWith("fr");
+          }
+        }
+        recognition.lang = isFrench ? "fr-FR" : "en-US";
       } catch {
         recognition.lang = "en-US";
       }
@@ -1061,13 +1352,67 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         };
         setMessages((prev) => [...prev, completionMessage]);
       } else {
-        throw new Error("Failed to save profile");
+        // Try to parse error response from API
+        let errorText = "Désolé, une erreur s'est produite lors de l'enregistrement.";
+        try {
+          const errorData = await response.json();
+          const apiError = errorData.error || errorData.message;
+          
+          // Map API error messages to user-friendly French messages
+          if (response.status === 503 || apiError?.includes('Database connection')) {
+            errorText = "⚠️ Impossible de se connecter à la base de données. Veuillez réessayer dans quelques instants. Si le problème persiste, vérifiez votre connexion Internet.";
+          } else if (response.status === 400 || apiError?.includes('Validation')) {
+            errorText = "⚠️ Les informations fournies ne sont pas valides. Veuillez vérifier vos réponses et réessayer.";
+          } else if (response.status === 409 || apiError?.includes('already exists')) {
+            errorText = "ℹ️ Votre profil existe déjà. Je vais utiliser les informations existantes. Comment puis-je vous aider aujourd'hui?";
+            // If profile already exists, treat it as success
+            setIsOnboardingComplete(true);
+            setOnboardingStep('complete');
+          } else if (response.status === 500) {
+            errorText = "⚠️ Une erreur serveur s'est produite. Veuillez réessayer dans quelques instants.";
+          } else if (apiError) {
+            errorText = `⚠️ ${apiError}`;
+          }
+        } catch {
+          // If we can't parse the error, use status-based messages
+          if (response.status === 503) {
+            errorText = "⚠️ Service temporairement indisponible. Veuillez réessayer dans quelques instants.";
+          } else if (response.status >= 500) {
+            errorText = "⚠️ Erreur serveur. Veuillez réessayer dans quelques instants.";
+          } else if (response.status >= 400) {
+            errorText = "⚠️ Erreur lors de l'enregistrement. Veuillez vérifier vos informations et réessayer.";
+          }
+        }
+        
+        const errorMessage: Message = {
+          id: generateMessageId(),
+          text: errorText + "\n\n💡 Vous pouvez réessayer en tapant 'retour' puis en validant à nouveau vos réponses.",
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error("Error saving user profile:", error);
+      
+      // Handle network errors and other exceptions
+      let errorText = "Désolé, une erreur s'est produite lors de l'enregistrement.";
+      
+      if (error instanceof TypeError && error.message === "Failed to fetch") {
+        errorText = "⚠️ Impossible de se connecter au serveur. Veuillez vérifier votre connexion Internet et réessayer.";
+      } else if (error instanceof Error) {
+        if (error.message.includes("NetworkError") || error.message.includes("network")) {
+          errorText = "⚠️ Erreur de connexion réseau. Veuillez vérifier votre connexion Internet et réessayer.";
+        } else if (error.message.includes("timeout")) {
+          errorText = "⚠️ La requête a pris trop de temps. Veuillez réessayer.";
+        } else {
+          errorText = `⚠️ Erreur: ${error.message}`;
+        }
+      }
+      
       const errorMessage: Message = {
         id: generateMessageId(),
-        text: "Désolé, une erreur s'est produite lors de l'enregistrement. Veuillez réessayer.",
+        text: errorText + "\n\n💡 Vous pouvez réessayer en tapant 'retour' puis en validant à nouveau vos réponses.",
         isUser: false,
         timestamp: new Date(),
       };
@@ -1275,17 +1620,32 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
       const data = await response.json();
 
+      // Debug logging for product display issues
+      if (process.env.NODE_ENV === 'development' || typeof window !== 'undefined') {
+        console.log('[Frontend] API Response received:', {
+          hasReply: !!data.reply,
+          replyLength: data.reply?.length || 0,
+          recommendedProductsCount: (data.recommendedProducts || []).length,
+          recommendedProducts: data.recommendedProducts,
+          recommendedCombosCount: (data.recommendedCombos || []).length,
+          hasSuggestedCombo: !!data.suggestedCombo
+        });
+      }
+
+      const fullText = data.reply ||
+        "I'm sorry, I couldn't process your request. Please try again.";
+      
       const aiMessage: Message = {
         id: generateMessageId(),
-        text:
-          data.reply ||
-          "I'm sorry, I couldn't process your request. Please try again.",
+        text: fullText,
         isUser: false,
         timestamp: new Date(),
         recommendedProducts: data.recommendedProducts || [],
         recommendedCombos: data.recommendedCombos || [],
         suggestedCombo: data.suggestedCombo || undefined,
         pendingComboResponse: data.suggestedCombo ? true : false, // Ask about combo if one is suggested
+        isTyping: true, // Start with typewriter effect
+        displayedText: "", // Start with empty text
       };
 
       setMessages((prev) => [...prev, aiMessage]);
@@ -1311,15 +1671,33 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     } catch (error) {
       console.error("Error sending message:", error);
 
+      // Determine error type and provide helpful message
+      let errorText = "Sorry, I encountered an error. Please try again.";
+      
+      if (error instanceof TypeError && error.message === "Failed to fetch") {
+        errorText = "⚠️ Impossible de se connecter au serveur. Veuillez vérifier que le serveur de développement est en cours d'exécution.\n\nPour démarrer le serveur, exécutez :\n`npm run dev` ou `yarn dev`";
+      } else if (error instanceof Error) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          errorText = "⚠️ Erreur de connexion réseau. Veuillez vérifier votre connexion Internet et que le serveur est en cours d'exécution.";
+        } else if (error.message.includes("HTTP error")) {
+          errorText = `⚠️ Erreur serveur (${error.message}). Veuillez réessayer dans quelques instants.`;
+        } else {
+          errorText = `⚠️ Erreur : ${error.message}`;
+        }
+      }
+
       trackEvent("chat_error", {
         category: "error",
-        errorType: "api_error",
+        errorType: error instanceof TypeError && error.message === "Failed to fetch" 
+          ? "network_error" 
+          : "api_error",
+        errorMessage: error instanceof Error ? error.message : String(error),
         ...(userId && { userId }),
       });
 
       const errorMessage: Message = {
         id: generateMessageId(),
-        text: "Sorry, I encountered an error. Please try again.",
+        text: errorText,
         isUser: false,
         timestamp: new Date(),
       };
@@ -1444,7 +1822,9 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                       h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-1 first:mt-0">{children}</h3>,
                     }}
                   >
-                    {message.text}
+                    {message.isTyping && message.displayedText !== undefined 
+                      ? message.displayedText + (message.displayedText.length < message.text.length ? "|" : "")
+                      : message.text}
                   </ReactMarkdown>
                 </div>
 
@@ -1477,20 +1857,15 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
               })()}
 
               {message.recommendedProducts &&
-                message.recommendedProducts.length > 0 && (
-                  <div className="mt-4">
-                    <p className="text-xs font-medium text-gray-600 mb-3">
-                      Produits recommandés :
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {message.recommendedProducts.map((product, idx) => (
-                        <ProductCard key={idx} product={product} />
-                      ))}
-                    </div>
-                  </div>
+                message.recommendedProducts.length > 0 &&
+                !message.isTyping && (
+                  <ProductGridWithAnimation 
+                    products={message.recommendedProducts}
+                    messageId={message.id}
+                  />
                 )}
 
-              {message.pendingComboResponse && message.suggestedCombo && (
+              {message.pendingComboResponse && message.suggestedCombo && !message.isTyping && (
                 <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
                   <p className="text-sm font-medium text-gray-800 mb-2">
                     💡 J&apos;ai remarqué qu&apos;une combinaison de produits pourrait vous intéresser !
@@ -1505,37 +1880,12 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
               )}
 
               {message.recommendedCombos &&
-                message.recommendedCombos.length > 0 && (
-                  <div className="mt-6 pt-4 border-t border-gray-200">
-                    <p className="text-sm font-semibold text-gray-700 mb-4">
-                      💡 Combinaisons recommandées pour vous :
-                    </p>
-                    <div className="space-y-4">
-                      {message.recommendedCombos.map((combo, comboIdx) => (
-                        <div
-                          key={comboIdx}
-                          className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200"
-                        >
-                          <div className="mb-3">
-                            <h4 className="font-semibold text-gray-900 mb-1">
-                              {combo.name}
-                            </h4>
-                            <p className="text-xs text-gray-600 mb-2">
-                              {combo.description}
-                            </p>
-                            <p className="text-xs text-gray-700 italic">
-                              💡 {combo.benefits}
-                            </p>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">
-                            {combo.products.map((product, productIdx) => (
-                              <ProductCard key={productIdx} product={product} />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                message.recommendedCombos.length > 0 &&
+                !message.isTyping && (
+                  <ComboGridWithAnimation 
+                    combos={message.recommendedCombos}
+                    messageId={message.id}
+                  />
                 )}
 
               <p

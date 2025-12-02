@@ -10,7 +10,8 @@
     "build-widget": "node scripts/build-widget.js",
     "test-widget": "open public/test.html",
     "create-test-user": "node scripts/create-test-user.js",
-    "test-db": "node scripts/test-db-connection.js"
+    "test-db": "node scripts/test-db-connection.js",
+    "update-mock-data": "node scripts/update-mock-data.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
