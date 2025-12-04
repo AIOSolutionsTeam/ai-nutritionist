@@ -8,12 +8,12 @@ export default function About() {
       {/* Hero Section */}
       <section className="section-padding bg-gradient-to-br from-[#F5C842]/10 via-white to-[#FEFDFB]">
         <div className="max-w-4xl mx-auto px-6 lg:px-12 text-center animate-fadeInUp">
-          <span className="subheading text-[#6B6B6B] block mb-4">About Us</span>
+          <span className="subheading text-[#6B6B6B] block mb-4">À Propos de Nous</span>
           <h1 className="headline text-5xl lg:text-6xl font-light text-[#1A1A1A] mb-8">
-            About AI Nutritionist
+            À Propos de Nutritionniste IA
           </h1>
           <p className="text-xl lg:text-2xl text-[#6B6B6B] font-light leading-relaxed max-w-3xl mx-auto">
-            An intelligent platform that provides personalized supplement recommendations based on your health goals, dietary preferences, and lifestyle.
+            Une plateforme intelligente qui fournit des recommandations de suppléments personnalisées basées sur vos objectifs de santé, vos préférences alimentaires et votre mode de vie.
           </p>
         </div>
       </section>
@@ -24,11 +24,11 @@ export default function About() {
           <div className="flex items-start gap-4 mb-6">
             <span className="text-2xl">✨</span>
             <h2 className="headline text-3xl lg:text-4xl font-light text-[#1A1A1A]">
-              Our Mission
+              Notre Mission
             </h2>
           </div>
           <p className="text-lg text-[#6B6B6B] leading-relaxed font-light ml-10">
-            We believe that everyone deserves access to personalized nutrition guidance. Our AI-powered assistant helps you make informed decisions about supplements and nutrition, backed by scientific research and tailored to your unique needs.
+            Nous croyons que chacun mérite d&apos;avoir accès à des conseils nutritionnels personnalisés. Notre assistant propulsé par l&apos;IA vous aide à prendre des décisions éclairées concernant les suppléments et la nutrition, soutenu par la recherche scientifique et adapté à vos besoins uniques.
           </p>
         </div>
       </section>
@@ -37,9 +37,9 @@ export default function About() {
       <section className="section-padding bg-[#FEFDFB]">
         <div className="max-w-7xl mx-auto px-6 lg:px-12">
           <div className="text-center mb-16 animate-fadeInUp">
-            <span className="subheading text-[#6B6B6B] block mb-4">Process</span>
+            <span className="subheading text-[#6B6B6B] block mb-4">Processus</span>
             <h2 className="headline text-4xl lg:text-5xl font-light text-[#1A1A1A]">
-              How It Works
+              Comment Ça Marche
             </h2>
           </div>
 
@@ -49,10 +49,10 @@ export default function About() {
                 1
               </div>
               <h3 className="headline text-xl font-light text-[#1A1A1A] mb-4">
-                Tell Us About Yourself
+                Parlez-Nous de Vous
               </h3>
               <p className="text-[#6B6B6B] leading-relaxed font-light">
-                Share your health goals, dietary restrictions, and lifestyle preferences.
+                Partagez vos objectifs de santé, vos restrictions alimentaires et vos préférences de mode de vie.
               </p>
             </div>
 
@@ -61,10 +61,10 @@ export default function About() {
                 2
               </div>
               <h3 className="headline text-xl font-light text-[#1A1A1A] mb-4">
-                AI Analysis
+                Analyse par l&apos;IA
               </h3>
               <p className="text-[#6B6B6B] leading-relaxed font-light">
-                Our AI analyzes your profile and current nutrition research.
+                Notre IA analyse votre profil et la recherche nutritionnelle actuelle.
               </p>
             </div>
 
@@ -73,10 +73,10 @@ export default function About() {
                 3
               </div>
               <h3 className="headline text-xl font-light text-[#1A1A1A] mb-4">
-                Get Recommendations
+                Obtenez des Recommandations
               </h3>
               <p className="text-[#6B6B6B] leading-relaxed font-light">
-                Receive personalized supplement and nutrition recommendations.
+                Recevez des recommandations personnalisées en suppléments et nutrition.
               </p>
             </div>
           </div>
@@ -88,10 +88,10 @@ export default function About() {
         <div className="max-w-4xl mx-auto px-6 lg:px-12">
           <div className="premium-card p-10 lg:p-16 bg-gradient-to-br from-[#F5D5D5]/20 to-transparent border border-[#F5D5D5]/30">
             <h2 className="headline text-2xl lg:text-3xl font-light text-[#1A1A1A] mb-6">
-              Important Disclaimer
+              Avertissement Important
             </h2>
             <p className="text-lg text-[#6B6B6B] leading-relaxed font-light">
-              AI Nutritionist provides informational content only and is not intended as medical advice. Always consult with a healthcare professional before starting any new supplement regimen.
+              Nutritionniste IA fournit uniquement du contenu informatif et n&apos;est pas destiné à servir de conseil médical. Consultez toujours un professionnel de la santé avant de commencer tout nouveau régime de suppléments.
             </p>
           </div>
         </div>

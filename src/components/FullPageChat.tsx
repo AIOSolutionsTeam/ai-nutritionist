@@ -86,36 +86,45 @@ interface ProductSearchResult {
   currency: string;
 }
 
-// Loading animation component
+// Loading animation component - Subtle, warm style
 const TypingIndicator = () => (
   <div className="flex items-center space-x-2">
     <div className="flex space-x-1">
-      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+      <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce"></div>
       <div
-        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+        className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce"
         style={{ animationDelay: "0.1s" }}
       ></div>
       <div
-        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+        className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce"
         style={{ animationDelay: "0.2s" }}
       ></div>
     </div>
-    <span className="text-xs text-gray-500">AI is thinking...</span>
+    <span className="text-xs text-muted-foreground">L&apos;IA réfléchit...</span>
   </div>
 );
 
-// Avatar component
-const Avatar = ({ isUser }: { isUser: boolean }) => (
-  <div
-    className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-medium ${
-      isUser
-        ? "bg-gradient-to-br from-gray-800 to-gray-900 text-white shadow-lg"
-        : "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg animate-float"
-    }`}
-  >
-    {isUser ? "👤" : "🥗"}
-  </div>
-);
+// Avatar component - Warm, natural style
+const Avatar = ({ isUser }: { isUser: boolean }) => {
+  if (isUser) {
+    return (
+      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-base sm:text-lg font-medium bg-primary/30 text-foreground shadow-sm flex-shrink-0">
+        👤
+      </div>
+    );
+  }
+  return (
+    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-secondary/30 shadow-sm overflow-hidden flex-shrink-0">
+      <Image
+        src="https://www.vigaia.com/cdn/shop/files/vigaia-high-resolution-logo-transparent_06884d1a-0548-44bc-932e-1cad07cb1f1d.png?crop=center&height=32&v=1758274822&width=32"
+        alt="Vigaia AI"
+        width={20}
+        height={20}
+        className="object-contain"
+      />
+    </div>
+  );
+};
 
 // Product Grid with Staggered Animation
 const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSearchResult[]; messageId: string }) => {
@@ -143,8 +152,8 @@ const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSe
   }, [products, messageId]);
 
   return (
-    <div className="mt-4">
-      <p className="text-xs font-medium text-gray-600 mb-3">
+      <div className="mt-4">
+      <p className="text-xs uppercase tracking-[0.1em] font-light text-muted-foreground mb-3">
         Produits recommandés :
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -211,15 +220,15 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
               transitionDelay: `${comboIdx * 100}ms`,
             }}
           >
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
+            <div className="bg-secondary/10 rounded-xl p-4 border border-secondary/20">
               <div className="mb-3">
-                <h4 className="font-semibold text-gray-900 mb-1">
+                <h4 className="font-serif uppercase tracking-widest text-sm font-light text-foreground mb-1">
                   {combo.name}
                 </h4>
-                <p className="text-xs text-gray-600 mb-2">
+                <p className="text-xs text-muted-foreground mb-2">
                   {combo.description}
                 </p>
-                <p className="text-xs text-gray-700 italic">
+                <p className="text-xs text-muted-foreground italic">
                   💡 {combo.benefits}
                 </p>
               </div>
@@ -251,7 +260,7 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col">
+    <div className="bg-card border-none rounded-lg shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col">
       <div className="aspect-square overflow-hidden relative">
         <Image
           src={product.image}
@@ -262,7 +271,7 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
       </div>
       <div className="p-4 flex flex-col flex-1">
         <h3
-          className="font-semibold text-sm text-gray-900 mb-3 overflow-hidden flex-1"
+          className="font-light text-sm text-foreground mb-3 overflow-hidden flex-1"
           style={{
             display: "-webkit-box",
             WebkitLineClamp: 2,
@@ -274,15 +283,15 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
         </h3>
         <div className="mt-auto space-y-3">
           <div className="flex items-baseline">
-            <span className="text-2xl font-bold" style={{ color: '#059669' }}>
+            <span className="text-2xl font-light text-foreground">
             ${product.price.toFixed(2)}
           </span>
           </div>
           <button
             onClick={handleAddToCart}
             disabled={!product.available}
-            className="w-full px-4 py-2.5 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md transform hover:scale-[1.02] active:scale-[0.98]"
-            style={{ backgroundColor: product.available ? '#059669' : undefined }}
+            className="w-full px-4 py-2.5 text-primary-foreground text-xs font-light uppercase tracking-[0.1em] rounded-full hover:brightness-90 hover:saturate-110 disabled:bg-muted disabled:cursor-not-allowed transition-all duration-300 shadow-sm hover:shadow-md"
+            style={{ backgroundColor: product.available ? 'hsl(var(--primary))' : undefined }}
           >
             {product.available ? "Ajouter au panier" : "Rupture de stock"}
           </button>
@@ -340,16 +349,16 @@ const FloatingBubbles = ({
     <div className="mt-4 space-y-3 animate-fadeInUp">
       {allSelections.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
-          <span className="text-xs font-medium text-gray-600 w-full">Sélectionné ({allSelections.length}):</span>
+            <span className="text-xs uppercase tracking-[0.1em] font-light text-muted-foreground w-full">Sélectionné ({allSelections.length}) :</span>
           {selected.map((item, idx) => (
             <span
               key={`selected-${idx}`}
-              className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-2 max-w-full"
+              className="px-2 sm:px-3 py-1 sm:py-1.5 bg-primary/20 text-foreground rounded-full text-xs font-light uppercase tracking-[0.1em] flex items-center gap-1 sm:gap-2 max-w-full"
             >
-              <span className="truncate max-w-[120px] sm:max-w-[150px]">{item}</span>
+              <span className="truncate max-w-[80px] xs:max-w-[100px] sm:max-w-[150px]">{item}</span>
               <button
                 onClick={() => onBubbleClick(item)}
-                className="hover:text-green-900 transition-colors flex-shrink-0"
+                className="hover:text-foreground transition-colors duration-300 flex-shrink-0 text-xs sm:text-sm"
                 title="Retirer"
               >
                 ✕
@@ -359,12 +368,12 @@ const FloatingBubbles = ({
           {customInputs.map((item, idx) => (
             <span
               key={`custom-${idx}`}
-              className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium flex items-center gap-2 max-w-full"
+              className="px-2 sm:px-3 py-1 sm:py-1.5 bg-secondary/20 text-foreground rounded-full text-xs font-light uppercase tracking-[0.1em] flex items-center gap-1 sm:gap-2 max-w-full"
             >
-              <span className="truncate max-w-[120px] sm:max-w-[150px]">{item}</span>
+              <span className="truncate max-w-[80px] xs:max-w-[100px] sm:max-w-[150px]">{item}</span>
               <button
                 onClick={() => onCustomInputRemove(item)}
-                className="hover:text-blue-900 transition-colors flex-shrink-0"
+                className="hover:text-foreground transition-colors duration-300 flex-shrink-0"
                 title="Retirer"
               >
                 ✕
@@ -381,14 +390,14 @@ const FloatingBubbles = ({
             <button
               key={index}
               onClick={() => onBubbleClick(suggestion)}
-              className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-200 transform hover:scale-105 flex items-center gap-2 max-w-full ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-light uppercase tracking-[0.1em] transition-all duration-300 hover:-translate-y-1 flex items-center gap-1 sm:gap-2 max-w-full ${
                 isSelected
-                  ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg scale-105"
-                  : "bg-white text-gray-700 border-2 border-green-200 hover:border-green-400 hover:bg-green-50 shadow-sm"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-card text-foreground border border-muted hover:border-primary/50 hover:bg-primary/5 shadow-sm"
               }`}
             >
-              <span className="truncate max-w-[150px] sm:max-w-[200px]">{suggestion}</span>
-              {isSelected && <span className="flex-shrink-0">✓</span>}
+              <span className="truncate max-w-[100px] xs:max-w-[120px] sm:max-w-[200px]">{suggestion}</span>
+              {isSelected && <span className="flex-shrink-0 text-xs sm:text-sm">✓</span>}
             </button>
           );
         })}
@@ -398,7 +407,7 @@ const FloatingBubbles = ({
         !showCustomInputField ? (
           <button
             onClick={onToggleCustomInput}
-            className="text-xs text-gray-500 hover:text-green-600 underline flex items-center gap-1 mt-2"
+            className="text-xs text-muted-foreground hover:text-foreground underline flex items-center gap-1 mt-2 transition-colors duration-300"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -406,7 +415,7 @@ const FloatingBubbles = ({
             Ajouter une réponse personnalisée au formulaire
           </button>
         ) : (
-          <div className="flex items-center gap-2 mt-2 min-w-0">
+          <div className="flex items-center gap-1 sm:gap-2 mt-2 min-w-0">
             <input
               type="text"
               value={customInputValue}
@@ -414,20 +423,20 @@ const FloatingBubbles = ({
               onKeyPress={(e) => e.key === "Enter" && handleCustomSubmit()}
               placeholder="Votre réponse (1 mots)"
               maxLength={30}
-              className="flex-1 min-w-0 px-3 py-2 text-sm border-2 border-green-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="flex-1 min-w-0 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-muted rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 bg-background text-foreground"
               autoFocus
             />
             <button
               onClick={handleCustomSubmit}
               disabled={!customInputValue.trim() || customInputValue.trim().split(/\s+/).length > 3}
-              className="px-4 py-2 bg-green-500 text-white rounded-full text-sm font-medium hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              className="px-2 sm:px-4 py-1.5 sm:py-2 bg-primary text-primary-foreground rounded-full text-xs sm:text-sm font-light uppercase tracking-[0.1em] hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex-shrink-0"
               title="Ajouter"
             >
               ✓
             </button>
             <button
               onClick={onToggleCustomInput}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-300 transition-colors flex-shrink-0"
+              className="px-2 sm:px-4 py-1.5 sm:py-2 bg-muted text-muted-foreground rounded-full text-xs sm:text-sm font-light uppercase tracking-[0.1em] hover:bg-muted/80 transition-all duration-300 flex-shrink-0"
               title="Annuler"
             >
               ✕
@@ -440,7 +449,7 @@ const FloatingBubbles = ({
         <button
           onClick={onValidate}
           disabled={!canValidate}
-          className="w-full mt-4 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-full text-sm font-medium hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+          className="w-full mt-4 px-3 sm:px-4 py-2 sm:py-3 bg-primary text-primary-foreground rounded-full text-xs sm:text-sm font-light uppercase tracking-[0.1em] hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-sm hover:shadow-md"
         >
           ✓ Valider ({allSelections.length} sélection{allSelections.length > 1 ? "s" : ""})
         </button>
@@ -894,7 +903,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
               console.log("Audio capture error:", event);
               break;
             case "not-allowed":
-              alert("Microphone access denied. Please enable microphone permissions in your browser settings.");
+              alert("Accès au microphone refusé. Veuillez activer les permissions du microphone dans les paramètres de votre navigateur.");
               break;
             case "network":
               console.warn("Network error occurred during speech recognition.");
@@ -1633,7 +1642,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       }
 
       const fullText = data.reply ||
-        "I'm sorry, I couldn't process your request. Please try again.";
+        "Désolé, je n'ai pas pu traiter votre demande. Veuillez réessayer.";
       
       const aiMessage: Message = {
         id: generateMessageId(),
@@ -1672,7 +1681,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       console.error("Error sending message:", error);
 
       // Determine error type and provide helpful message
-      let errorText = "Sorry, I encountered an error. Please try again.";
+      let errorText = "Désolé, une erreur s'est produite. Veuillez réessayer.";
       
       if (error instanceof TypeError && error.message === "Failed to fetch") {
         errorText = "⚠️ Impossible de se connecter au serveur. Veuillez vérifier que le serveur de développement est en cours d'exécution.\n\nPour démarrer le serveur, exécutez :\n`npm run dev` ou `yarn dev`";
@@ -1739,27 +1748,23 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   }
 
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 z-50 flex flex-col">
-      {/* Header */}
-      <div 
-        className="w-full text-white shadow-lg px-4 sm:px-6 py-4 flex items-center justify-between"
-        style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}
-      >
-        <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Avatar isUser={false} />
-            <div>
-              <h3 className="font-bold text-lg text-white">Nutritionniste virtuel</h3>
-              <p className="text-sm text-green-100">En ligne • Prêt à vous aider</p>
+    <div className="fixed inset-0 w-screen h-screen bg-background z-50 flex flex-col">
+      {/* Minimal Header */}
+      <div className="w-full bg-card border-b border-muted/20 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+        <div className="max-w-3xl mx-auto w-full flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-serif uppercase tracking-widest text-sm sm:text-base md:text-lg font-light text-foreground truncate">Nutritionniste virtuel</h3>
+              <p className="text-xs text-muted-foreground uppercase tracking-[0.15em] hidden sm:block">En ligne • Prêt à aider</p>
             </div>
           </div>
           {onBack && (
             <button
               onClick={onBack}
-              className="text-white hover:text-green-200 transition-colors duration-200 flex items-center space-x-2"
+              className="text-muted-foreground hover:text-foreground transition-colors duration-300 flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm uppercase tracking-[0.1em] flex-shrink-0"
             >
               <svg
-                className="w-5 h-5"
+                className="w-3 h-3 sm:w-4 sm:h-4"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -1771,35 +1776,34 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                   d="M15 19l-7-7 7-7"
                 />
               </svg>
-              <span>Retour</span>
+              <span className="hidden sm:inline">Retour</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto space-y-4">
+      {/* Messages - Centered Container */}
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
+        <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
           {messages.map((message, index) => (
             <div
               key={message.id}
-              className={`flex items-start space-x-3 ${
+              className={`flex items-start space-x-2 sm:space-x-3 ${
                 message.isUser ? "flex-row-reverse space-x-reverse" : ""
-              } animate-fadeInUp`}
+              } animate-fade-in`}
               style={{ 
-                animationDelay: `${index * 0.1}s`,
-                animation: 'fadeInUp 0.6s ease-out forwards'
+                animationDelay: `${index * 0.1}s`
               }}
             >
               {!message.isUser && <Avatar isUser={false} />}
               <div
-                className={`max-w-[75%] px-4 py-3 rounded-2xl ${
+                className={`max-w-[85%] sm:max-w-[75%] px-3 sm:px-4 py-2 sm:py-3 rounded-2xl ${
                   message.isUser
-                    ? "bg-gradient-to-br from-gray-800 to-gray-900 text-white rounded-br-lg shadow-lg"
-                    : "bg-white text-gray-800 border border-green-200 rounded-bl-lg shadow-sm"
+                    ? "bg-primary/20 text-foreground rounded-br-lg shadow-sm"
+                    : "bg-card text-foreground border border-secondary/30 rounded-bl-lg shadow-sm"
                 }`}
               >
-                <div className={`text-sm sm:text-base leading-relaxed prose prose-sm max-w-none ${
+                <div className={`text-xs sm:text-sm md:text-base leading-relaxed prose prose-sm max-w-none break-words ${
                   message.isUser 
                     ? "prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-em:text-gray-200" 
                     : "prose-headings:text-gray-900 prose-p:text-gray-800 prose-strong:text-gray-900 prose-em:text-gray-700"
@@ -1866,17 +1870,17 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                 )}
 
               {message.pendingComboResponse && message.suggestedCombo && !message.isTyping && (
-                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                  <p className="text-sm font-medium text-gray-800 mb-2">
-                    💡 J&apos;ai remarqué qu&apos;une combinaison de produits pourrait vous intéresser !
-                  </p>
-                  <p className="text-xs text-gray-600 mb-3">
-                    La combinaison <strong>&quot;{message.suggestedCombo.name}&quot;</strong> contient certains des produits que je vous ai recommandés et pourrait vous offrir des avantages supplémentaires.
-                  </p>
-                  <p className="text-xs font-medium text-gray-700 mb-2">
-                    Souhaitez-vous voir cette combinaison ? (Répondez &quot;oui&quot; ou &quot;non&quot;)
-                  </p>
-                </div>
+              <div className="mt-4 p-4 bg-accent/20 border border-accent/30 rounded-xl">
+                <p className="text-sm font-light text-foreground mb-2">
+                  💡 J&apos;ai remarqué une combinaison de produits qui pourrait vous intéresser !
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  La combinaison <strong>&quot;{message.suggestedCombo.name}&quot;</strong> contient certains des produits que j&apos;ai recommandés et pourrait vous offrir des avantages supplémentaires.
+                </p>
+                <p className="text-xs font-light text-foreground mb-2">
+                  Souhaitez-vous voir cette combinaison ? (Répondez &quot;oui&quot; ou &quot;non&quot;)
+                </p>
+              </div>
               )}
 
               {message.recommendedCombos &&
@@ -1890,7 +1894,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
               <p
                 className={`text-xs mt-3 ${
-                  message.isUser ? "text-gray-300" : "text-gray-400"
+                  message.isUser ? "text-muted-foreground/60" : "text-muted-foreground/60"
                 }`}
               >
                 {message.timestamp.toLocaleTimeString([], {
@@ -1905,10 +1909,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         </div>
 
         {isLoading && (
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-start space-x-3 animate-fadeInUp">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-start space-x-3 animate-fade-in">
               <Avatar isUser={false} />
-              <div className="bg-white text-gray-800 px-4 py-3 rounded-2xl rounded-bl-lg border border-green-200 shadow-sm">
+              <div className="bg-card text-foreground px-4 py-3 rounded-2xl rounded-bl-lg border border-secondary/30 shadow-sm">
                 <TypingIndicator />
               </div>
             </div>
@@ -1917,23 +1921,23 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="bg-white border-t border-gray-200 shadow-lg p-4">
-        <div className="max-w-4xl mx-auto flex items-end space-x-3">
+      {/* Floating Input Bar - Rounded-full styling */}
+      <div className="bg-card border-t border-muted/20 shadow-lg p-3 sm:p-4">
+        <div className="max-w-3xl mx-auto flex items-center space-x-2 sm:space-x-3">
           {isVoiceSupported && (
             <button
               onClick={toggleVoiceInput}
               disabled={isLoading}
-              className={`p-3 rounded-2xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`p-2 sm:p-3 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center ${
                 isListening
-                  ? "bg-red-500 text-white animate-pulse shadow-lg"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  ? "bg-accent text-foreground animate-pulse shadow-sm"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
               }`}
-              title={isListening ? "Stop recording" : "Start voice input"}
+              title={isListening ? "Arrêter l'enregistrement" : "Démarrer la saisie vocale"}
             >
               {isListening ? (
                 <svg
-                  className="w-5 h-5"
+                  className="w-4 h-4 sm:w-5 sm:h-5"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
@@ -1942,7 +1946,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                 </svg>
               ) : (
                 <svg
-                  className="w-5 h-5"
+                  className="w-4 h-4 sm:w-5 sm:h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1973,18 +1977,18 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                     isCheckingProfile
                       ? "Chargement..."
                       : isListening
-                      ? "Listening... Speak now..."
+                      ? "Écoute... Parlez maintenant..."
                       : !isOnboardingComplete
                       ? "Répondez à la question..."
-                      : "Ask about nutrition, supplements..."
+                      : "Posez des questions sur la nutrition, les suppléments..."
                   }
-                  className={`w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none transition-all duration-200 placeholder-gray-500 bg-white text-sm sm:text-base text-gray-900 ${
-                    isListening ? "ring-2 ring-red-500 border-red-500" : ""
+                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 border border-muted rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 resize-none transition-all duration-300 placeholder-muted-foreground bg-background text-xs sm:text-sm md:text-base text-foreground ${
+                    isListening ? "ring-2 ring-accent border-accent" : ""
                   }`}
                   rows={1}
                   disabled={isLoading || isListening || isCheckingProfile}
                   style={{
-                    minHeight: "44px",
+                    minHeight: "40px",
                     maxHeight: "120px",
                     height: "auto",
                   }}
@@ -1997,20 +2001,19 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
               );
             })()}
             {isListening && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-xs text-red-500 font-medium">Recording</span>
+              <div className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
+                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-accent rounded-full animate-pulse"></div>
+                <span className="text-xs text-accent font-medium hidden sm:inline">Enregistrement</span>
               </div>
             )}
           </div>
           <button
             onClick={sendMessage}
             disabled={!inputMessage.trim() || isLoading || isListening || isCheckingProfile}
-            className="p-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-2xl hover:from-green-600 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}
+            className="p-2 sm:p-3 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-sm hover:shadow-md flex-shrink-0 flex items-center justify-center"
           >
             <svg
-              className="w-5 h-5 sm:w-6 sm:h-6"
+              className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

@@ -245,6 +245,10 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
 
 
 
+
+
+
+
 /**
  * Product combinations that work well together
  */

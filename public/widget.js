@@ -469,7 +469,7 @@
         <div class="vigaia-chat-window" id="vigaia-chat-window">
           <div class="vigaia-chat-header">
             <div class="vigaia-chat-header-info">
-              <div class="vigaia-chat-avatar">🥗</div>
+              <div class="vigaia-chat-avatar"><img src="https://www.vigaia.com/cdn/shop/files/vigaia-high-resolution-logo-transparent_06884d1a-0548-44bc-932e-1cad07cb1f1d.png?crop=center&height=32&v=1758274822&width=32" alt="Vigaia AI" style="width: 80%; height: 80%; object-fit: contain;" /></div>
               <div>
                 <div class="vigaia-chat-title">AI Nutritionist</div>
                 <div class="vigaia-chat-subtitle">Online • Ready to help</div>

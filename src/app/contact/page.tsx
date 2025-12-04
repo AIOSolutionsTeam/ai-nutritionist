@@ -8,12 +8,12 @@ export default function Contact() {
       {/* Hero Section */}
       <section className="section-padding bg-gradient-to-br from-[#F5C842]/10 via-white to-[#FEFDFB]">
         <div className="max-w-4xl mx-auto px-6 lg:px-12 text-center animate-fadeInUp">
-          <span className="subheading text-[#6B6B6B] block mb-4">Get in Touch</span>
+          <span className="subheading text-[#6B6B6B] block mb-4">Contactez-Nous</span>
           <h1 className="headline text-5xl lg:text-6xl font-light text-[#1A1A1A] mb-8">
-            Contact Us
+            Contactez-Nous
           </h1>
           <p className="text-xl text-[#6B6B6B] font-light leading-relaxed max-w-2xl mx-auto">
-            Have questions about our AI nutritionist platform? We&apos;d love to hear from you.
+            Vous avez des questions sur notre plateforme de nutritionniste IA ? Nous serions ravis d&apos;avoir de vos nouvelles.
           </p>
         </div>
       </section>
@@ -25,7 +25,7 @@ export default function Contact() {
             {/* Contact Information */}
             <div className="animate-fadeInUp">
               <h2 className="headline text-3xl lg:text-4xl font-light text-[#1A1A1A] mb-8">
-                Contact Information
+                Informations de Contact
               </h2>
               
               <div className="space-y-8">
@@ -35,14 +35,14 @@ export default function Contact() {
                 </div>
                 
                 <div>
-                  <h3 className="subheading text-[#6B6B6B] mb-2">Phone</h3>
+                  <h3 className="subheading text-[#6B6B6B] mb-2">Téléphone</h3>
                   <p className="text-lg text-[#1A1A1A] font-light">+1 (555) 123-4567</p>
                 </div>
                 
                 <div>
-                  <h3 className="subheading text-[#6B6B6B] mb-2">Business Hours</h3>
+                  <h3 className="subheading text-[#6B6B6B] mb-2">Heures d&apos;Ouverture</h3>
                   <p className="text-lg text-[#1A1A1A] font-light">
-                    Monday - Friday: 9:00 AM - 6:00 PM EST
+                    Lundi - Vendredi : 9h00 - 18h00 EST
                   </p>
                 </div>
               </div>
@@ -51,7 +51,7 @@ export default function Contact() {
             {/* Contact Form */}
             <div className="premium-card p-10 lg:p-12 animate-fadeInUp" style={{ animationDelay: "0.1s" }}>
               <h2 className="headline text-3xl font-light text-[#1A1A1A] mb-8">
-                Send us a Message
+                Envoyez-nous un Message
               </h2>
               
               <form className="space-y-6">
@@ -60,7 +60,7 @@ export default function Contact() {
                     htmlFor="name"
                     className="block subheading text-[#6B6B6B] mb-2"
                   >
-                    Name
+                    Nom
                   </label>
                   <input
                     type="text"
@@ -92,7 +92,7 @@ export default function Contact() {
                     htmlFor="subject"
                     className="block subheading text-[#6B6B6B] mb-2"
                   >
-                    Subject
+                    Sujet
                   </label>
                   <input
                     type="text"
@@ -123,7 +123,7 @@ export default function Contact() {
                   type="submit"
                   className="btn-outline w-full hover:bg-[#1A1A1A] hover:text-white"
                 >
-                  Send Message
+                  Envoyer le Message
                 </button>
               </form>
             </div>
