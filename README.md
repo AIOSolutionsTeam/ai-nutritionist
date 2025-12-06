@@ -10,7 +10,15 @@ Create a `.env.local` file in the root directory with the following variables:
 # Shopify Storefront API Configuration
 # Get these from your Shopify admin panel under Apps > App and sales channel settings > Develop apps
 SHOPIFY_STORE_DOMAIN=your-store-name.myshopify.com
-SHOPIFY_STOREFRONT_ACCESS_TOKEN=your-storefront-access-token
+SHOPIFY_STOREFRONT_TOKEN=your-storefront-access-token
+
+# Shopify Admin API (for customer authentication)
+# Get this from your Shopify admin panel under Apps > Your App > API credentials
+SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_your_admin_access_token
+
+# Shopify App Proxy Secret (optional, for signature verification)
+# Set this in your Shopify app proxy settings and match it here
+SHOPIFY_APP_PROXY_SECRET=your-app-proxy-secret
 
 # OpenAI Configuration (if using OpenAI)
 OPENAI_API_KEY=your-openai-api-key

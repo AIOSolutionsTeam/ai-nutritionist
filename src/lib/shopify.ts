@@ -41,201 +41,218 @@ export interface ProductSearchResult {
      currency: string;
 }
 
-// Mock data for testing when Shopify credentials are not available
+function getShopifyConfig() {
+     const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
+     const shopifyToken = process.env.SHOPIFY_STOREFRONT_TOKEN;
+
+     if (!shopifyDomain || !shopifyToken) {
+          throw new Error('[Shopify] Missing SHOPIFY_STORE_DOMAIN or SHOPIFY_STOREFRONT_TOKEN environment variables');
+     }
+
+     return { shopifyDomain, shopifyToken };
+}
+
+// NOTE: Mock data has been removed - the application now uses live Shopify Storefront API data exclusively
+// All product searches use the searchProducts() function which queries the live Shopify API
+// 
+// Legacy mock data (kept for reference only - not used):
+/*
 const MOCK_PRODUCTS: ProductSearchResult[] = [
      {
-          title: "Organic Multivitamin Complex",
-          price: 29.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_14c00d70-9d2e-419e-9baa-78bd2af173c3.png?v=1763652220",
-          variantId: "gid://shopify/ProductVariant/62681126797681",
+          title: "Ashwagandha KSM 66® – Gélules Adaptogènes Premium",
+          price: 24,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/ashwagandha.png?v=1761681782",
+          variantId: "gid://shopify/ProductVariant/55737980060025",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Omega-3 Fish Oil Supplement",
-          price: 24.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_60b92062-c15a-4a1f-902a-946a8c7a45a5.png?v=1763652159",
-          variantId: "gid://shopify/ProductVariant/62681126928753",
+          title: "Vigaia Biotine 2500 mcg – Fortifiant Cheveux, Peau & Ongles",
+          price: 20,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/biotine.png?v=1761681781",
+          variantId: "gid://shopify/ProductVariant/55817313419641",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Vitamin D3 + K2 Capsules",
-          price: 19.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_15c99cb0-7ac1-4ad1-a6cb-eceaaba1d8b2.png?v=1763651483",
-          variantId: "gid://shopify/ProductVariant/62681126961521",
+          title: "Vigaia Chardon Marie – Détox Foie et Protection Hépatique Naturelle",
+          price: 20,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/CHARDON_MARIE.png?v=1761681783",
+          variantId: "gid://shopify/ProductVariant/55817789604217",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Probiotic Gut Health Formula",
-          price: 34.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_67744ed1-2658-46d8-9f8d-6428819068ad.png?v=1763651191",
-          variantId: "gid://shopify/ProductVariant/62681126994289",
+          title: "Collagène Complexe de Vigaia – Beauté, Articulations et Vitalité",
+          price: 20,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/COLLAGENE.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55820929991033",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Collagen Peptides Powder",
-          price: 39.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_faf2f84c-143b-4cc4-94c8-25aaffe35d7c.png?v=1763651141",
-          variantId: "gid://shopify/ProductVariant/62681127027057",
+          title: "Vigaia Collagène Peptides – Beauté et Articulations",
+          price: 23,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/COLLAGENE_peptides.png?v=1761681787",
+          variantId: "gid://shopify/ProductVariant/55821427016057",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Magnesium Glycinate Tablets",
-          price: 22.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_b5e2d2b7-a5f2-4ff7-88a8-61b748b6b5af.png?v=1763651044",
-          variantId: "gid://shopify/ProductVariant/62681127059825",
+          title: "Vigaia Glucosamine Complexe – Articulations, Cartilages et Mobilité Naturelle",
+          price: 24,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/GLUCOSAMINE.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55821551763833",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Turmeric Curcumin Extract",
-          price: 27.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/turmeric-curcumin-extract.png?v=1763650471",
-          variantId: "gid://shopify/ProductVariant/62681127092593",
+          title: "Vigaia L-Glutathion – Antioxydant Puissant et Détox Naturelle",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/L-glutathion.png?v=1761681779",
+          variantId: "gid://shopify/ProductVariant/55822301331833",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Ashwagandha Stress Support",
-          price: 31.99,
-          image: "https://picsum.photos/400/400?random=8",
-          variantId: "gid://shopify/ProductVariant/62681127125361",
+          title: "Vigaia Lion’s Mane – Soutien Cognitif & Bien-être Cérébral",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/LION_S_MANE.png?v=1761681783",
+          variantId: "gid://shopify/ProductVariant/55826225135993",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Whey Protein Isolate",
-          price: 44.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_2a67b129-0518-49fc-a6c5-851857bf646d.png?v=1763650371",
-          variantId: "gid://shopify/ProductVariant/62681127158129",
+          title: "Vigaia Maca Noire – Vitalité, Énergie et Équilibre Hormonal",
+          price: 23,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/MACA_NOIRE.png?v=1761681780",
+          variantId: "gid://shopify/ProductVariant/55826415911289",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "BCAA Recovery Formula",
-          price: 32.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_312711ed-3129-40ed-b9f5-479dfca5e17f.png?v=1763650333",
-          variantId: "gid://shopify/ProductVariant/62681127190897",
+          title: "Vigaia Magnésium Bisglycinate + B6 – Sérénité, Sommeil et Vitalité Musculaire",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/Magnesium.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55826524340601",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Creatine Monohydrate",
-          price: 18.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_551c98d1-4e55-49b1-ba69-60ae0c02e959.png?v=1763650271",
-          variantId: "gid://shopify/ProductVariant/62681127223665",
+          title: "Vigaia Extrait de Moringa – Superaliment Énergisant et Protecteur",
+          price: 26,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/MORINGA.png?v=1761681783",
+          variantId: "gid://shopify/ProductVariant/55827233112441",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Iron + Vitamin C Complex",
-          price: 16.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_92b73ca0-2679-4758-9d21-91b9707ca3be.png?v=1763650232",
-          variantId: "gid://shopify/ProductVariant/62681127256433",
+          title: "Vigaia Matcha : Énergie et Bien-être au Quotidien",
+          price: 23,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/matcha.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55827401212281",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Calcium + Vitamin D3",
-          price: 21.99,
-          image: "https://picsum.photos/400/400?random=13",
-          variantId: "gid://shopify/ProductVariant/62681127289201",
+          title: "Vigaia Multivitamine – Votre Allié Quotidien pour Énergie et Équilibre",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/MULTIVITAMINEs.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55827745800569",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Prebiotic Fiber Supplement",
-          price: 26.99,
-          image: "https://picsum.photos/400/400?random=14",
-          variantId: "gid://shopify/ProductVariant/62681127321969",
+          title: "Vigaia NMN – Soutien Avancé Anti-Âge et Vitalité Cellulaire",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/NMN.png?v=1761681783",
+          variantId: "gid://shopify/ProductVariant/55827986547065",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Vitamin B-Complex",
-          price: 17.99,
-          image: "https://picsum.photos/400/400?random=15",
-          variantId: "gid://shopify/ProductVariant/62681127354737",
+          title: "Vigaia Oméga 3 1000mg – Gélules d’huile de poisson certifiées",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/OMEGA_3.png?v=1761681783",
+          variantId: "gid://shopify/ProductVariant/55829489549689",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Zinc + Vitamin C",
-          price: 14.99,
-          image: "https://picsum.photos/400/400?random=16",
-          variantId: "gid://shopify/ProductVariant/62681127387505",
+          title: "Vigaia Probiotique – Équilibre Digestif et Bien-être Intestinal",
+          price: 24,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/PROBIOTIC.png?v=1761681783",
+          variantId: "gid://shopify/ProductVariant/55831420764537",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Melatonin Sleep Support",
-          price: 19.99,
-          image: "https://picsum.photos/400/400?random=17",
-          variantId: "gid://shopify/ProductVariant/62681127420273",
+          title: "Vigaia Shilajit – L'Élixir de Montagne pour Votre Vitalité",
+          price: 23,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/SHILAJIT.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55831690543481",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Coenzyme Q10 (CoQ10)",
-          price: 35.99,
-          image: "https://picsum.photos/400/400?random=18",
-          variantId: "gid://shopify/ProductVariant/62681127453041",
+          title: "Vigaia Tongkat Ali – Énergie, Force et Bien-être Quotidien",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/tongkat_ali.png?v=1761681782",
+          variantId: "gid://shopify/ProductVariant/55831874306425",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Vitamin B12 Methylcobalamin",
-          price: 15.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_056e76a9-8d5e-41f4-b53b-cd849e90da5a.png?v=1763643181",
-          variantId: "gid://shopify/ProductVariant/62681127485809",
+          title: "Vigaia Vitamine B Complexe – Votre Sourc de Vitalité et d'Équilibre Nerveux",
+          price: 24,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/vitamine_b.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55832972657017",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Glucosamine + Chondroitin",
-          price: 28.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_ca37c6c4-7c66-4f01-ac34-85dcf96b839f.png?v=1763643149",
-          variantId: "gid://shopify/ProductVariant/62681127518577",
+          title: "Vigaia Vitamine B12 – Soutien Essentiel Contre la Fatigue et pour les Fonctions Cérébrales",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/Vitamine_B12.png?v=1761681782",
+          variantId: "gid://shopify/ProductVariant/55833101173113",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Green Tea Extract",
-          price: 23.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/image_6a902145-2fb2-460e-94c5-39af92ab784f.png?v=1763643102",
-          variantId: "gid://shopify/ProductVariant/62681127551345",
+          title: "Vigaia Vitamine C Complexe – Bouclier Antioxydant et Énergie Naturelle",
+          price: 23,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/vitamine_c.png?v=1761681782",
+          variantId: "gid://shopify/ProductVariant/55833233228153",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Ginseng Energy Support",
-          price: 33.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/ginseng-energy-support.png?v=1763643034",
-          variantId: "gid://shopify/ProductVariant/62681127584113",
+          title: "Vigaia Vitamine D3+K2 – Le Duo Essentiel pour des Os Solides et un Cœur Sain",
+          price: 22,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/Vitamines_D3_K2.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55833509167481",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Selenium Supplement",
-          price: 13.99,
-          image: "https://cdn.shopify.com/s/files/1/0968/3114/4305/files/selenium-supplement.png?v=1763642978",
-          variantId: "gid://shopify/ProductVariant/62681127616881",
+          title: "Vigaia Zinc Complexe – Soutien Immunitaire et Beauté Cellulaire",
+          price: 25,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/ZINC_PLUS.png?v=1761681784",
+          variantId: "gid://shopify/ProductVariant/55833923420537",
           available: true,
-          currency: "TND"
+          currency: "EUR"
      },
      {
-          title: "Vegan Protein Powder",
-          price: 42.99,
-          image: "https://picsum.photos/400/400?random=24",
-          variantId: "gid://shopify/ProductVariant/62681127649649",
-          available: true,
-          currency: "TND"
+          title: "Pack Énergie Automne",
+          price: 65,
+          image: "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/WhatsApp_Image_2025-11-13_at_2.11.56_PM.jpg?v=1764787490",
+          variantId: "gid://shopify/ProductVariant/56312320688505",
+          available: false,
+          currency: "EUR"
      }
 ];
+*/
+
 
 
 
@@ -334,24 +351,17 @@ const PRODUCT_COMBOS: ProductCombo[] = [
 ];
 
 /**
- * Search for products using Shopify Storefront API
+ * Search for products using Shopify Storefront API (LIVE DATA)
+ * This function queries the live Shopify store in real-time
  * @param query - Search query string
- * @returns Promise<ProductSearchResult[]> - Array of top 3 matching products
+ * @returns Promise<ProductSearchResult[]> - Array of top 3 matching products from live Shopify store
  */
 export async function searchProducts(query: string): Promise<ProductSearchResult[]> {
-     // Check if Shopify credentials are available
-     const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
-     const shopifyToken = process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN;
-
-     // If no credentials, return mock data
-     if (!shopifyDomain || !shopifyToken) {
-          console.log(`[Shopify] Credentials not found (domain: ${shopifyDomain ? 'set' : 'missing'}, token: ${shopifyToken ? 'set' : 'missing'}), using mock data for query: "${query}"`);
-          const mockProducts = getMockProducts(query);
-          console.log(`[Shopify] Mock products returned: ${mockProducts.length} products`);
-          return mockProducts;
-     }
+     const { shopifyDomain, shopifyToken } = getShopifyConfig();
 
      try {
+          console.log(`[Shopify] searchProducts start | query="${query}"`);
+
           const searchQuery = `
       query searchProducts($query: String!) {
         products(first: 3, query: $query) {
@@ -401,6 +411,7 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
           });
 
           if (!response.ok) {
+               console.error(`[Shopify] searchProducts HTTP ${response.status} ${response.statusText} | query="${query}"`);
                throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
           }
 
@@ -426,15 +437,14 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
                };
           });
 
-          console.log(`[Shopify] Successfully fetched ${products.length} products for query: "${query}"`);
+          console.log(`[Shopify] searchProducts success | query="${query}" | count=${products.length}`);
+          if (products.length > 0) {
+               console.log('[Shopify] product titles:', products.map((p: ProductSearchResult) => p.title).join(', '));
+          }
           return products;
      } catch (error) {
-          console.error('[Shopify] Error searching products:', error);
-          // Fallback to mock data on error
-          console.log(`[Shopify] Falling back to mock data due to error for query: "${query}"`);
-          const mockProducts = getMockProducts(query);
-          console.log(`[Shopify] Mock products returned: ${mockProducts.length} products`);
-          return mockProducts;
+          console.error(`[Shopify] Error searching products for query "${query}":`, error);
+          throw error;
      }
 }
 
@@ -529,19 +539,33 @@ export function getRecommendedCombos(
  * @param combo - ProductCombo object
  * @returns ProductSearchResult[] - Array of products in the combo
  */
-export function getComboProducts(combo: ProductCombo): ProductSearchResult[] {
+export async function getComboProducts(combo: ProductCombo): Promise<ProductSearchResult[]> {
      const comboProducts: ProductSearchResult[] = [];
+     const seenVariants = new Set<string>();
 
-     for (const productTitle of combo.products) {
-          const product = MOCK_PRODUCTS.find(p =>
-               p.title.toLowerCase().includes(productTitle.toLowerCase()) ||
-               productTitle.toLowerCase().includes(p.title.toLowerCase())
-          );
-          if (product) {
-               comboProducts.push(product);
+     console.log(`[Shopify] getComboProducts start | combo="${combo.name}" | items=${combo.products.length}`);
+
+     for (const rawTitle of combo.products) {
+          const productTitle = rawTitle.trim();
+          if (!productTitle) continue;
+
+          try {
+               const products = await searchProducts(productTitle);
+               const match = products.find(product => !seenVariants.has(product.variantId));
+
+               if (match) {
+                    comboProducts.push(match);
+                    seenVariants.add(match.variantId);
+                    console.log(`[Shopify] getComboProducts matched "${productTitle}" -> "${match.title}"`);
+               } else {
+                    console.log(`[Shopify] getComboProducts no unique match for "${productTitle}"`);
+               }
+          } catch (error) {
+               console.error(`[Shopify] Failed to fetch combo product "${productTitle}" for combo "${combo.name}"`, error);
           }
      }
 
+     console.log(`[Shopify] getComboProducts done | combo="${combo.name}" | resolved=${comboProducts.length}`);
      return comboProducts;
 }
 
@@ -561,14 +585,14 @@ export function findMatchingCombo(recommendedProducts: ProductSearchResult[]): P
      let bestMatch: { combo: ProductCombo; matchCount: number } | null = null;
 
      for (const combo of PRODUCT_COMBOS) {
-          const comboProducts = getComboProducts(combo);
+          const comboTitles = combo.products.map(title => title.toLowerCase());
           let matchCount = 0;
 
           for (const recommendedTitle of recommendedTitles) {
-               const hasMatch = comboProducts.some(comboProduct =>
-                    comboProduct.title.toLowerCase() === recommendedTitle ||
-                    recommendedTitle.includes(comboProduct.title.toLowerCase()) ||
-                    comboProduct.title.toLowerCase().includes(recommendedTitle)
+               const hasMatch = comboTitles.some(comboTitle =>
+                    comboTitle === recommendedTitle ||
+                    recommendedTitle.includes(comboTitle) ||
+                    comboTitle.includes(recommendedTitle)
                );
                if (hasMatch) {
                     matchCount++;
@@ -587,121 +611,10 @@ export function findMatchingCombo(recommendedProducts: ProductSearchResult[]): P
 }
 
 /**
- * Get mock products based on search query
- * @param query - Search query string
- * @returns ProductSearchResult[] - Array of matching mock products
+ * NOTE: getMockProducts() function has been removed
+ * The application now uses live Shopify Storefront API data exclusively via searchProducts()
+ * All product searches query the live Shopify API in real-time
  */
-function getMockProducts(query: string): ProductSearchResult[] {
-     const lowercaseQuery = query.toLowerCase().trim();
-
-     // If query is empty or very short, return default products
-     if (!lowercaseQuery || lowercaseQuery.length < 2) {
-          console.log('Mock products: Empty or very short query, returning default products');
-          return MOCK_PRODUCTS.slice(0, 3);
-     }
-
-     // Expanded keyword matching
-     const keywordMap: { [key: string]: string[] } = {
-          'vitamin': ['vitamin', 'multivitamin', 'd3', 'b-complex', 'c', 'k2'],
-          'vitamine': ['vitamin', 'multivitamin', 'd3', 'b-complex', 'c', 'k2'],
-          'protein': ['protein', 'whey', 'isolate'],
-          'protéine': ['protein', 'whey', 'isolate'],
-          'omega': ['omega', 'fish oil'],
-          'oméga': ['omega', 'fish oil'],
-          'probiotic': ['probiotic', 'prebiotic', 'gut'],
-          'probiotique': ['probiotic', 'prebiotic', 'gut'],
-          'magnesium': ['magnesium'],
-          'magnésium': ['magnesium'],
-          'calcium': ['calcium'],
-          'iron': ['iron'],
-          'fer': ['iron'],
-          'zinc': ['zinc'],
-          'creatine': ['creatine'],
-          'créatine': ['creatine'],
-          'bcaa': ['bcaa', 'amino'],
-          'collagen': ['collagen'],
-          'collagène': ['collagen'],
-          'turmeric': ['turmeric', 'curcumin'],
-          'curcuma': ['turmeric', 'curcumin'],
-          'ashwagandha': ['ashwagandha', 'stress'],
-          'melatonin': ['melatonin', 'sleep'],
-          'mélatonine': ['melatonin', 'sleep'],
-          'coq10': ['coq10', 'coenzyme'],
-          'energy': ['b-complex', 'iron', 'coq10'],
-          'énergie': ['b-complex', 'iron', 'coq10'],
-          'recovery': ['protein', 'bcaa', 'creatine', 'magnesium'],
-          'récupération': ['protein', 'bcaa', 'creatine', 'magnesium'],
-          'immune': ['vitamin d', 'zinc', 'vitamin c', 'probiotic'],
-          'immunité': ['vitamin d', 'zinc', 'vitamin c', 'probiotic'],
-          'bone': ['calcium', 'vitamin d', 'magnesium'],
-          'os': ['calcium', 'vitamin d', 'magnesium'],
-          'heart': ['omega', 'coq10', 'magnesium'],
-          'cœur': ['omega', 'coq10', 'magnesium'],
-          'supplement': ['vitamin', 'multivitamin', 'mineral'],
-          'supplément': ['vitamin', 'multivitamin', 'mineral'],
-          'complément': ['vitamin', 'multivitamin', 'mineral'],
-          'nutrition': ['multivitamin', 'vitamin', 'mineral']
-     };
-
-     // Find matching keywords
-     const matchingKeywords: string[] = [];
-     for (const [key, values] of Object.entries(keywordMap)) {
-          if (lowercaseQuery.includes(key)) {
-               matchingKeywords.push(...values);
-          }
-     }
-
-     // Filter products based on query and keywords
-     const filteredProducts = MOCK_PRODUCTS.filter(product => {
-          const productTitleLower = product.title.toLowerCase();
-          
-          // Direct title match
-          if (productTitleLower.includes(lowercaseQuery)) {
-               return true;
-          }
-
-          // Keyword match
-          for (const keyword of matchingKeywords) {
-               if (productTitleLower.includes(keyword)) {
-                    return true;
-               }
-          }
-
-          return false;
-     });
-
-     // If we found matches, return them
-     if (filteredProducts.length > 0) {
-          console.log(`Mock products: Found ${filteredProducts.length} matches for query "${query}"`);
-          return filteredProducts.slice(0, 3);
-     }
-
-     // If no matches but we have matching keywords, return products related to those keywords
-     if (matchingKeywords.length > 0) {
-          const keywordBasedProducts = MOCK_PRODUCTS.filter(product => {
-               const productTitleLower = product.title.toLowerCase();
-               return matchingKeywords.some(keyword => productTitleLower.includes(keyword));
-          });
-          
-          if (keywordBasedProducts.length > 0) {
-               console.log(`Mock products: Found ${keywordBasedProducts.length} keyword-based matches for query "${query}"`);
-               return keywordBasedProducts.slice(0, 3);
-          }
-     }
-
-     // As a last resort, if query contains common supplement-related terms, return default products
-     const genericTerms = ['supplement', 'supplément', 'complément', 'vitamin', 'vitamine', 'nutrition', 'health', 'santé', 'produit', 'product'];
-     const hasGenericTerm = genericTerms.some(term => lowercaseQuery.includes(term));
-     
-     if (hasGenericTerm) {
-          console.log(`Mock products: Generic query "${query}", returning default products`);
-          return MOCK_PRODUCTS.slice(0, 3);
-     }
-
-     // If still no match, return empty array (but log it for debugging)
-     console.log(`Mock products: No matches found for query "${query}", returning empty array`);
-     return [];
-}
 
 /**
  * Get a single product by variant ID
@@ -709,13 +622,7 @@ function getMockProducts(query: string): ProductSearchResult[] {
  * @returns Promise<ProductSearchResult | null>
  */
 export async function getProductByVariantId(variantId: string): Promise<ProductSearchResult | null> {
-     const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
-     const shopifyToken = process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN;
-
-     // If no credentials, search mock data
-     if (!shopifyDomain || !shopifyToken) {
-          return MOCK_PRODUCTS.find(product => product.variantId === variantId) || null;
-     }
+     const { shopifyDomain, shopifyToken } = getShopifyConfig();
 
      try {
           const query = `

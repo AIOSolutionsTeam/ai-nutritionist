@@ -266,6 +266,7 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
           src={product.image}
           alt={product.title}
           fill
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           className="object-cover"
         />
       </div>
@@ -768,10 +769,35 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     if (!isConsultationStarted) return;
 
     const initializeUser = async () => {
+      // First, check for Shopify customer authentication
+      let shopifyCustomerId: string | null = null;
+      let shopifyCustomerName: string | null = null;
+
+      try {
+        const shopifyResponse = await fetch('/api/shopify/customer');
+        if (shopifyResponse.ok) {
+          const shopifyData = await shopifyResponse.json();
+          if (shopifyData.isLoggedIn && shopifyData.customer) {
+            shopifyCustomerId = shopifyData.customer.id;
+            shopifyCustomerName = shopifyData.customer.name;
+            console.log('Shopify customer detected:', shopifyCustomerName, shopifyCustomerId);
+          }
+        }
+      } catch (error) {
+        console.error("Error checking Shopify customer:", error);
+        // Continue with normal flow if Shopify check fails
+      }
+
+      // Determine userId: prioritize Shopify customer ID if available
       const storedUserId = localStorage.getItem("chat_user_id");
       let currentUserId: string;
       
-      if (storedUserId) {
+      if (shopifyCustomerId) {
+        // Use Shopify customer ID as userId
+        currentUserId = `shopify_${shopifyCustomerId}`;
+        setUserId(currentUserId);
+        localStorage.setItem("chat_user_id", currentUserId);
+      } else if (storedUserId) {
         currentUserId = storedUserId;
         setUserId(storedUserId);
       } else {
@@ -789,10 +815,13 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           if (profile && profile.age && profile.gender) {
             setIsOnboardingComplete(true);
             setOnboardingStep('complete');
+            const greeting = shopifyCustomerName 
+              ? `Bonjour ${shopifyCustomerName}! 👋 J'ai votre profil. Comment puis-je vous aider aujourd'hui avec votre parcours nutritionnel?`
+              : `Bonjour! 👋 J'ai votre profil. Comment puis-je vous aider aujourd'hui avec votre parcours nutritionnel?`;
             setMessages([
               {
                 id: "1",
-                text: `Bonjour! 👋 J'ai votre profil. Comment puis-je vous aider aujourd'hui avec votre parcours nutritionnel?`,
+                text: greeting,
                 isUser: false,
                 timestamp: new Date(),
               },
@@ -808,10 +837,14 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       setIsCheckingProfile(false);
       
       const questionInfo = getQuestionInfo('age');
+      const welcomeMessage = shopifyCustomerName
+        ? `Bonjour ${shopifyCustomerName}! 👋 Je suis votre Nutritionniste IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.`
+        : "Bonjour! 👋 Je suis votre Nutritionniste IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.";
+      
       setMessages([
         {
           id: "1",
-          text: "Bonjour! 👋 Je suis votre Nutritionniste IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.",
+          text: welcomeMessage,
           isUser: false,
           timestamp: new Date(),
         },
@@ -1448,6 +1481,14 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     if (lastAIMessage?.pendingComboResponse && lastAIMessage.suggestedCombo) {
       const lowerInput = currentInput.toLowerCase().trim();
       const isYes = lowerInput === 'oui' || lowerInput === 'yes' || lowerInput === 'y' || lowerInput === 'ok' || lowerInput === 'd\'accord' || lowerInput === 'okay';
+      const isNo = lowerInput === 'non' || lowerInput === 'no' || lowerInput === 'n' || lowerInput === 'nope' || lowerInput === 'nop' || lowerInput === 'pas';
+
+      // Clear pending combo state so future messages don't get trapped here
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === lastAIMessage.id ? { ...msg, pendingComboResponse: false } : msg
+        )
+      );
       
       if (isYes) {
         // Show the combo
@@ -1461,8 +1502,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         setMessages((prev) => [...prev, userMessage, comboMessage]);
         setIsLoading(false);
         return;
-      } else {
-        // User declined, continue normally
+      }
+      
+      if (isNo) {
+        // User explicitly declined
         const declinedMessage: Message = {
           id: generateMessageId(),
           text: "D'accord, pas de problème ! Comment puis-je vous aider autrement ?",
@@ -1473,6 +1516,9 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         setIsLoading(false);
         return;
       }
+
+      // Implicit decline: if the user moved on (e.g., asked another question),
+      // don't block the flow — continue to normal chat handling without re-asking.
     }
 
     // Add user message if we haven't already (for normal flow)

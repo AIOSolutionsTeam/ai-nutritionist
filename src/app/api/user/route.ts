@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbService, IUserProfile } from '../../../lib/db';
+import { extractShopifyCustomerInfo } from '../../../lib/shopify-auth';
 
 // Initialize database connection
 let isDbConnected = false;
@@ -52,6 +53,8 @@ export async function GET(request: NextRequest) {
                goals: userProfile.goals,
                allergies: userProfile.allergies,
                budget: userProfile.budget,
+               shopifyCustomerId: userProfile.shopifyCustomerId,
+               shopifyCustomerName: userProfile.shopifyCustomerName,
                lastInteraction: userProfile.lastInteraction,
                createdAt: userProfile.createdAt,
                updatedAt: userProfile.updatedAt
@@ -120,24 +123,59 @@ export async function POST(request: NextRequest) {
                );
           }
 
+          // Check for Shopify customer info from request
+          let shopifyCustomerInfo = null;
+          try {
+               shopifyCustomerInfo = extractShopifyCustomerInfo({
+                    headers: request.headers,
+                    url: request.url
+               });
+          } catch (error) {
+               console.error('Error extracting Shopify customer info:', error);
+               // Continue without Shopify customer info
+          }
+
           // Check if user profile already exists
           const existingProfile = await dbService.getUserProfile(userId);
 
           let userProfile: IUserProfile;
 
+          // Prepare profile data with Shopify customer info if available
+          const profileData: {
+               userId: string;
+               age: number;
+               gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+               goals: string[];
+               allergies: string[];
+               budget: { min: number; max: number; currency: string };
+               shopifyCustomerId?: string;
+               shopifyCustomerName?: string;
+          } = {
+               userId,
+               age,
+               gender,
+               goals: goals || [],
+               allergies: allergies || [],
+               budget: {
+                    min: budget.min,
+                    max: budget.max,
+                    currency: budget.currency || 'USD'
+               }
+          };
+
+          // Add Shopify customer info if available
+          if (shopifyCustomerInfo) {
+               profileData.shopifyCustomerId = shopifyCustomerInfo.customerId;
+               profileData.shopifyCustomerName = shopifyCustomerInfo.customerName;
+          } else if (existingProfile) {
+               // Preserve existing Shopify customer info if not in request
+               profileData.shopifyCustomerId = existingProfile.shopifyCustomerId;
+               profileData.shopifyCustomerName = existingProfile.shopifyCustomerName;
+          }
+
           if (existingProfile) {
                // Update existing profile
-               const updatedProfile = await dbService.updateUserProfile(userId, {
-                    age,
-                    gender,
-                    goals: goals || [],
-                    allergies: allergies || [],
-                    budget: {
-                         min: budget.min,
-                         max: budget.max,
-                         currency: budget.currency || 'USD'
-                    }
-               });
+               const updatedProfile = await dbService.updateUserProfile(userId, profileData);
 
                if (!updatedProfile) {
                     return NextResponse.json(
@@ -149,34 +187,25 @@ export async function POST(request: NextRequest) {
                userProfile = updatedProfile;
           } else {
                // Create new profile
-               userProfile = await dbService.createUserProfile({
-                    userId,
-                    age,
-                    gender,
-                    goals: goals || [],
-                    allergies: allergies || [],
-                    budget: {
-                         min: budget.min,
-                         max: budget.max,
-                         currency: budget.currency || 'USD'
-                    }
-               });
+               userProfile = await dbService.createUserProfile(profileData);
           }
 
           // Convert MongoDB document to plain object
-          const profileData = {
+          const responseData = {
                userId: userProfile.userId,
                age: userProfile.age,
                gender: userProfile.gender,
                goals: userProfile.goals,
                allergies: userProfile.allergies,
                budget: userProfile.budget,
+               shopifyCustomerId: userProfile.shopifyCustomerId,
+               shopifyCustomerName: userProfile.shopifyCustomerName,
                lastInteraction: userProfile.lastInteraction,
                createdAt: userProfile.createdAt,
                updatedAt: userProfile.updatedAt
           };
 
-          return NextResponse.json(profileData, {
+          return NextResponse.json(responseData, {
                status: existingProfile ? 200 : 201
           });
      } catch (error) {
@@ -314,6 +343,8 @@ export async function PUT(request: NextRequest) {
                goals: updatedProfile.goals,
                allergies: updatedProfile.allergies,
                budget: updatedProfile.budget,
+               shopifyCustomerId: updatedProfile.shopifyCustomerId,
+               shopifyCustomerName: updatedProfile.shopifyCustomerName,
                lastInteraction: updatedProfile.lastInteraction,
                createdAt: updatedProfile.createdAt,
                updatedAt: updatedProfile.updatedAt

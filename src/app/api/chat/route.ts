@@ -305,13 +305,53 @@ export async function POST(request: NextRequest) {
                'donner moi', 'donnez moi', 'donne moi', 'donnez-moi', 'donne-moi',
                'montre moi', 'montrez moi', 'montre-moi', 'montrez-moi',
                'produit', 'produits', 
-               'complément', 'compléments', 'supplément', 'suppléments',
                'recommande', 'recommander', 'recommandation', 'recommandations',
                'quel produit', 'quels produits',
                'aide moi', 'aidez moi', 'aide-moi', 'aidez-moi'
           ]
           const userHasProductIntent = productListPhrases.some(t => userLower.includes(t))
           const userHasSpecificSupplement = userLower.match(/\b(vitamine [a-z]|vitamine d|vitamine c|magnésium|oméga|probiotique|collagène|protéine|créatine|fer|zinc|calcium|mélatonine|melatonin)\b/i)
+
+          // Detect safety/interaction/informational questions where we should avoid suggesting products
+          // These are questions asking for information, not product recommendations
+          const informationalQuestionPatterns = [
+               // Safety and interaction questions
+               /\b(éviter|eviter|interactions?|ne\s+pas\s+prendre|combiner|prendre\s+ensemble|avoid|together|contraindications?)\b/i,
+               // Questions about what to avoid
+               /\b(quels?\s+compléments?\s+éviter|quels?\s+suppléments?\s+éviter|which\s+supplements?\s+to\s+avoid)\b/i,
+               // Questions about compatibility
+               /\b(compatible|incompatible|peut\s+on\s+prendre|peut-on\s+prendre|peuvent\s+ils|peuvent-ils)\b/i,
+               // Questions about effects/interactions
+               /\b(effets?\s+secondaires?|side\s+effects?|interactions?|réactions?)\b/i,
+               // Questions asking "what" or "which" in informational context (not product requests)
+               /\b(quels?\s+compléments?\s+(?:éviter|ne\s+pas|à\s+éviter|incompatibles?)|quels?\s+suppléments?\s+(?:éviter|ne\s+pas|à\s+éviter|incompatibles?))\b/i,
+               // Questions about timing/scheduling
+               /\b(quand\s+prendre|when\s+to\s+take|à\s+quelle\s+heure|timing)\b/i,
+               // General information questions
+               /\b(qu\'?est\s+ce\s+que|qu\'?est-ce\s+que|what\s+is|explique|explain|parle\s+moi|tell\s+me\s+about)\b/i,
+               // Questions about benefits/effects (informational, not product request)
+               /\b(quels?\s+sont\s+les\s+bienfaits?|what\s+are\s+the\s+benefits?|à\s+quoi\s+sert)\b/i,
+          ]
+          
+          const isInformationalQuestion = informationalQuestionPatterns.some(pattern => pattern.test(userLower))
+          
+          // Also check the AI reply for informational content indicators
+          const replyInformationalPatterns = [
+               /\b(éviter|eviter|ne\s+pas\s+combiner|incompatible|interactions?|contre-indications?)\b/i,
+               /\b(il\s+est\s+important\s+de\s+éviter|it\s+is\s+important\s+to\s+avoid)\b/i,
+               /\b(ne\s+prenez\s+pas|do\s+not\s+take)\b/i,
+          ]
+          const replyIsInformational = replyInformationalPatterns.some(pattern => pattern.test(replyLower))
+          
+          // Combined check: if user asks informational question OR AI gives informational answer
+          const interactionIntent = isInformationalQuestion || replyIsInformational
+          const deficiencyIntent = /\b(carence|manque de|deficiency|insuffisance)\b/i.test(userLower)
+          
+          if (interactionIntent) {
+               console.log('[API] Detected informational/safety question - will not show products')
+               console.log('[API] User question type:', isInformationalQuestion ? 'informational' : 'other')
+               console.log('[API] AI reply type:', replyIsInformational ? 'informational' : 'other')
+          }
 
           // Also consider supplement-related keywords in the AI reply
           const hasSupplementKeywords = extractSupplementKeywords(nutritionResponse.reply).length > 0
@@ -329,18 +369,50 @@ export async function POST(request: NextRequest) {
                                         hasSpecificSupplement
           
           // Decide whether we should search for products.
-          // In addition to explicit triggers, also search when the AI reply mentions a specific supplement
-          // (e.g., "magnésium", "mélatonine"), which is a strong signal of product intent in this context.
-          const shouldSearchProducts = !!(
+          // CRITICAL: If this is an informational/safety question, NEVER show products
+          // unless the user explicitly asks for products in a non-informational context
+          // For example: "Quels compléments éviter" = informational, no products
+          // But: "Donne-moi une liste de produits pour éviter les carences" = product request, show products
+          
+          // Check if user explicitly asks for products in a way that's NOT informational
+          // This means they want a product list, not information about what to avoid
+          const explicitProductRequest = userHasProductIntent && 
+               !isInformationalQuestion && 
+               (userLower.includes('liste') || userLower.includes('lister') || 
+                userLower.includes('donner') || userLower.includes('montrer') ||
+                userLower.includes('recommand'))
+
+          // Only allow product search if:
+          // 1. It's NOT an informational question, OR
+          // 2. User explicitly requests products (not just asking about supplements), OR
+          // 3. User expresses deficiency intent (carences/manque)
+          const allowProductSearch = !interactionIntent || explicitProductRequest || deficiencyIntent
+
+          const shouldSearchProducts = allowProductSearch && !!(
                hasExplicitProducts ||
-               (hasExplicitTrigger && hasSupplementMentions) ||
-               (hasExplicitTrigger && replyLower.includes('sélection')) ||
-               userHasProductIntent ||
-               userHasSpecificSupplement ||
-               hasSpecificSupplement ||                  // NEW: reply mentions a specific supplement
-               hasSupplementKeywords ||                 // NEW: reply contains supplement-related keywords
-               (hasSupplementMentions && (replyLower.includes('voici') || replyLower.includes('sélection')))
+               (hasExplicitTrigger && hasSupplementMentions && !interactionIntent) ||
+               (hasExplicitTrigger && replyLower.includes('sélection') && !interactionIntent) ||
+               explicitProductRequest ||
+               (userHasSpecificSupplement && !interactionIntent && userHasProductIntent) ||
+               (hasSpecificSupplement && !interactionIntent && hasExplicitTrigger) ||
+               (hasSupplementKeywords && !interactionIntent && hasExplicitTrigger) ||
+               (hasSupplementMentions && !interactionIntent && (replyLower.includes('voici') || replyLower.includes('sélection'))) ||
+               deficiencyIntent
           )
+
+          console.log('[API] Product search gating', {
+               interactionIntent,
+               explicitProductRequest,
+               deficiencyIntent,
+               hasSupplementMentions,
+               hasSupplementKeywords,
+               hasSpecificSupplement,
+               hasExplicitTrigger,
+               hasExplicitProducts,
+               userHasSpecificSupplement,
+               userHasProductIntent,
+               shouldSearchProducts
+          })
 
           if (shouldSearchProducts) {
                try {
@@ -384,6 +456,19 @@ export async function POST(request: NextRequest) {
                     }
                     console.log('Searching for products with queries:', searchQueries)
 
+                    // If queries are too generic (complément/supplément) and this is a deficiency intent,
+                    // replace them with concrete deficiency-safe defaults to surface real products.
+                    if (deficiencyIntent) {
+                         const genericPattern = /\b(compl[eé]ment|suppl[eé]ment)s?\b/i
+                         const filtered = searchQueries.filter(q => !genericPattern.test(q))
+                         if (filtered.length > 0) {
+                              searchQueries = filtered
+                         } else {
+                              searchQueries = ['multivitamin', 'vitamin d', 'magnesium', 'iron', 'zinc']
+                         }
+                         console.log('Applying deficiency fallback queries:', searchQueries)
+                    }
+
                     // Only search if we have valid search queries; as a last resort, extract from AI products
                     if (searchQueries.length === 0 && hasExplicitProducts) {
                          // Extract keywords from AI's product recommendations
@@ -405,12 +490,19 @@ export async function POST(request: NextRequest) {
                     })
 
                     // Search for products using the first query (most relevant)
+                    // Using live Shopify Storefront API data
                     if (searchQueries.length > 0) {
                          console.log(`[API] Searching for products with query: "${searchQueries[0]}"`)
-                         recommendedProducts = await searchProducts(searchQueries[0])
-                         console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
-                         if (recommendedProducts.length > 0) {
-                              console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
+                         try {
+                              recommendedProducts = await searchProducts(searchQueries[0])
+                              console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
+                              if (recommendedProducts.length > 0) {
+                                   console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
+                              }
+                         } catch (searchError) {
+                              console.error(`[API] Error searching products for query "${searchQueries[0]}":`, searchError)
+                              // Continue without products rather than failing the entire request
+                              recommendedProducts = []
                          }
 
                          // If we found products, also search for complementary products
@@ -469,6 +561,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Get recommended product combinations based on user profile
+          // Skip combos if this is an informational question (no products should be shown)
           let recommendedCombos: Array<{
                name: string;
                description: string;
@@ -484,7 +577,8 @@ export async function POST(request: NextRequest) {
                benefits: string;
           } | null = null
 
-          if (userProfile && recommendedProducts.length > 0) {
+          // Only generate combos if we have products AND user explicitly requested products (not informational)
+          if (userProfile && recommendedProducts.length > 0 && allowProductSearch) {
                try {
                     const combos = getRecommendedCombos(
                          userProfile.goals,
@@ -493,19 +587,30 @@ export async function POST(request: NextRequest) {
                     )
 
                     // Convert combos to include actual product data
-                    recommendedCombos = combos.map(combo => ({
-                         name: combo.name,
-                         description: combo.description,
-                         products: getComboProducts(combo),
-                         benefits: combo.benefits
-                    })).filter(combo => combo.products.length > 0) // Only include combos with available products
+                    const combosWithProducts = await Promise.all(
+                         combos.map(async (combo) => {
+                              const products = await getComboProducts(combo)
+                              console.log(`[API] Combo "${combo.name}" resolved products: ${products.map(p => p.title).join(', ') || 'none'}`)
+                              return {
+                                   name: combo.name,
+                                   description: combo.description,
+                                   products,
+                                   benefits: combo.benefits
+                              }
+                         })
+                    )
+
+                    recommendedCombos = combosWithProducts.filter(combo => combo.products.length > 0) // Only include combos with available products
 
                     console.log('Recommended combos:', recommendedCombos.length)
+                    if (recommendedCombos.length > 0) {
+                         console.log('[API] Combo names:', recommendedCombos.map(c => c.name).join(', '))
+                    }
 
                     // Find a combo that matches the recommended products (for interactive prompt)
                     const matchingCombo = findMatchingCombo(recommendedProducts)
                     if (matchingCombo) {
-                         const comboProducts = getComboProducts(matchingCombo)
+                         const comboProducts = await getComboProducts(matchingCombo)
                          if (comboProducts.length > 0) {
                               suggestedCombo = {
                                    name: matchingCombo.name,
@@ -514,6 +619,7 @@ export async function POST(request: NextRequest) {
                                    benefits: matchingCombo.benefits
                               }
                               console.log('Found matching combo for interactive suggestion:', suggestedCombo.name)
+                              console.log(`[API] Suggested combo products: ${comboProducts.map(p => p.title).join(', ')}`)
                          }
                     }
                } catch (comboError) {
@@ -522,24 +628,51 @@ export async function POST(request: NextRequest) {
                }
           }
 
+          // If user intent is about interactions/safety/information and they didn't explicitly request products,
+          // strip any model-provided products/combos to avoid irrelevant suggestions.
+          // This ensures questions like "Quels compléments éviter" don't show products
+          const sanitizedResponse = interactionIntent && !explicitProductRequest
+               ? {
+                    ...nutritionResponse,
+                    products: [],
+                    recommendedProducts: [],
+                    recommendedCombos: undefined,
+                    suggestedCombo: undefined,
+               }
+               : nutritionResponse
+
+          // Also clear recommendedProducts if this is an informational question
+          const finalRecommendedProducts = (interactionIntent && !explicitProductRequest) 
+               ? [] 
+               : recommendedProducts
+          
+          const finalRecommendedCombos = (interactionIntent && !explicitProductRequest)
+               ? []
+               : (recommendedCombos.length > 0 ? recommendedCombos : undefined)
+          
+          const finalSuggestedCombo = (interactionIntent && !explicitProductRequest)
+               ? undefined
+               : (suggestedCombo || undefined)
+
           const response = {
-               ...nutritionResponse,
-               recommendedProducts,
-               recommendedCombos: recommendedCombos.length > 0 ? recommendedCombos : undefined,
-               suggestedCombo: suggestedCombo || undefined, // Combo to suggest interactively
+               ...sanitizedResponse,
+               recommendedProducts: finalRecommendedProducts,
+               recommendedCombos: finalRecommendedCombos,
+               suggestedCombo: finalSuggestedCombo,
                userId: userId || null,
                provider: selectedProvider,
                timestamp: new Date().toISOString()
           }
 
           // Log response summary for debugging
-          console.log(`[API] Response summary - Products: ${recommendedProducts.length}, Combos: ${recommendedCombos.length}, HasSuggestedCombo: ${!!suggestedCombo}`)
+          console.log(`[API] Response summary - Products: ${finalRecommendedProducts.length}, Combos: ${finalRecommendedCombos?.length || 0}, HasSuggestedCombo: ${!!finalSuggestedCombo}, IsInformational: ${interactionIntent}`)
 
           // Track successful API response
           analytics.trackEvent('chat_api_response', {
                category: 'api',
-               hasProducts: recommendedProducts.length > 0,
-               productCount: recommendedProducts.length,
+               hasProducts: finalRecommendedProducts.length > 0,
+               productCount: finalRecommendedProducts.length,
+               isInformationalQuestion: interactionIntent,
                responseLength: nutritionResponse.reply?.length || 0,
                userId: userId || 'anonymous',
                provider: selectedProvider

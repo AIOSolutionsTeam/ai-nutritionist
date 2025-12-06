@@ -1,5 +1,10 @@
 import mongoose, { Document, Schema, Model } from 'mongoose';
 
+// Persist listener registration across hot reloads to avoid MaxListeners warnings
+const globalWithMongoose = global as typeof globalThis & {
+     _dbListenersRegistered?: boolean;
+};
+
 // MongoDB connection configuration
 // Set MONGODB_URI environment variable or use default local connection
 // Example: MONGODB_URI=mongodb://localhost:27017/ai-nutritionist
@@ -18,6 +23,8 @@ export interface IUserProfile extends Document {
           max: number;
           currency: string;
      };
+     shopifyCustomerId?: string; // Shopify customer ID if logged in
+     shopifyCustomerName?: string; // Shopify customer name if logged in
      lastInteraction: Date;
      createdAt: Date;
      updatedAt: Date;
@@ -83,6 +90,15 @@ const UserProfileSchema = new Schema<IUserProfile>({
      lastInteraction: {
           type: Date,
           default: Date.now
+     },
+     shopifyCustomerId: {
+          type: String,
+          required: false,
+          index: true
+     },
+     shopifyCustomerName: {
+          type: String,
+          required: false
      }
 }, {
      timestamps: true // Automatically adds createdAt and updatedAt
@@ -175,6 +191,8 @@ class DatabaseService {
                max: number;
                currency: string;
           };
+          shopifyCustomerId?: string;
+          shopifyCustomerName?: string;
      }): Promise<IUserProfile> {
           try {
                // Ensure connection is ready before creating
@@ -202,6 +220,19 @@ class DatabaseService {
           }
      }
 
+     public async getUserProfileByShopifyCustomerId(shopifyCustomerId: string): Promise<IUserProfile | null> {
+          try {
+               // Ensure connection is ready before querying
+               if (mongoose.connection.readyState !== 1) {
+                    await this.connect();
+               }
+               return await UserProfile.findOne({ shopifyCustomerId });
+          } catch (error) {
+               console.error('Error getting user profile by Shopify customer ID:', error);
+               throw error;
+          }
+     }
+
      public async updateUserProfile(userId: string, updates: Partial<{
           age: number;
           gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
@@ -212,6 +243,8 @@ class DatabaseService {
                max: number;
                currency: string;
           };
+          shopifyCustomerId?: string;
+          shopifyCustomerName?: string;
      }>): Promise<IUserProfile | null> {
           try {
                // Ensure connection is ready before updating
@@ -285,32 +318,39 @@ class DatabaseService {
 // Export singleton instance
 export const dbService = DatabaseService.getInstance();
 
-// Connection event handlers
-mongoose.connection.on('connected', () => {
-     console.log('Mongoose connected to MongoDB');
-     dbService['isConnected'] = true;
-});
+// Register connection and process event handlers only once (prevents MaxListeners warnings during dev hot reloads)
+if (!globalWithMongoose._dbListenersRegistered) {
+     // Allow unlimited listeners on the shared connection object
+     mongoose.connection.setMaxListeners(0);
 
-mongoose.connection.on('error', (error) => {
-     console.error('Mongoose connection error:', error);
-     dbService['isConnected'] = false;
-});
+     mongoose.connection.on('connected', () => {
+          console.log('Mongoose connected to MongoDB');
+          dbService['isConnected'] = true;
+     });
 
-mongoose.connection.on('disconnected', () => {
-     console.log('Mongoose disconnected from MongoDB');
-     dbService['isConnected'] = false;
-});
+     mongoose.connection.on('error', (error) => {
+          console.error('Mongoose connection error:', error);
+          dbService['isConnected'] = false;
+     });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-     await dbService.disconnect();
-     process.exit(0);
-});
+     mongoose.connection.on('disconnected', () => {
+          console.log('Mongoose disconnected from MongoDB');
+          dbService['isConnected'] = false;
+     });
 
-process.on('SIGTERM', async () => {
-     await dbService.disconnect();
-     process.exit(0);
-});
+     // Graceful shutdown
+     process.on('SIGINT', async () => {
+          await dbService.disconnect();
+          process.exit(0);
+     });
+
+     process.on('SIGTERM', async () => {
+          await dbService.disconnect();
+          process.exit(0);
+     });
+
+     globalWithMongoose._dbListenersRegistered = true;
+}
 
 /*
 Usage Examples:
