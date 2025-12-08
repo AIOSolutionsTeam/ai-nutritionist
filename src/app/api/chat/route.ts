@@ -914,12 +914,24 @@ export async function POST(request: NextRequest) {
                          // Search for products using the first query (most relevant)
                          // Using live Shopify Storefront API data
                          if (searchQueries.length > 0) {
-                              console.log(`[API] Searching for products with query: "${searchQueries[0]}"`)
+                              console.log(`[API] Searching for products with query: "${searchQueries[0]}" (with tag & collection matching)`)
                               try {
-                                   recommendedProducts = await searchProducts(searchQueries[0])
+                                   // Use tag-enhanced search (tags and collections are considered)
+                                   // NOTE: All collections from the site are considered in the search
+                                   // Product tags are used for better matching and ranking
+                                   recommendedProducts = await searchProducts(searchQueries[0], true)
                                    console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
                                    if (recommendedProducts.length > 0) {
                                         console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
+                                        // Log tags and collections if available (for debugging)
+                                        recommendedProducts.forEach((p, idx) => {
+                                             if (p.tags && p.tags.length > 0) {
+                                                  console.log(`[API] Product ${idx + 1} tags: ${p.tags.join(', ')}`)
+                                             }
+                                             if (p.collections && p.collections.length > 0) {
+                                                  console.log(`[API] Product ${idx + 1} collections: ${p.collections.join(', ')}`)
+                                             }
+                                        })
                                    }
                               } catch (searchError) {
                                    console.error(`[API] Error searching products for query "${searchQueries[0]}":`, searchError)
@@ -933,7 +945,8 @@ export async function POST(request: NextRequest) {
                                    const complementaryQueries = generateComplementaryQueries(searchQueries[0], recommendedProducts[0])
                                    if (complementaryQueries.length > 0) {
                                         try {
-                                             const complementaryProducts = await searchProducts(complementaryQueries[0])
+                                             // Use tag-enhanced search for complementary products
+                                             const complementaryProducts = await searchProducts(complementaryQueries[0], true)
                                              // Add complementary products (limit to 2-3 additional)
                                              recommendedProducts = [
                                                   ...recommendedProducts,

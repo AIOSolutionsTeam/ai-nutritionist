@@ -9,6 +9,16 @@ export interface ShopifyProduct {
      title: string;
      handle: string;
      description: string;
+     tags: string[];
+     collections?: {
+          edges: Array<{
+               node: {
+                    id: string;
+                    title: string;
+                    handle: string;
+               };
+          }>;
+     };
      images: {
           edges: Array<{
                node: {
@@ -39,6 +49,8 @@ export interface ProductSearchResult {
      variantId: string;
      available: boolean;
      currency: string;
+     tags?: string[];
+     collections?: string[];
 }
 
 function getShopifyConfig() {
@@ -353,24 +365,37 @@ const PRODUCT_COMBOS: ProductCombo[] = [
 /**
  * Search for products using Shopify Storefront API (LIVE DATA)
  * This function queries the live Shopify store in real-time
+ * It searches across product titles, descriptions, tags, and collections
+ * Products with matching tags are ranked higher for better relevance
  * @param query - Search query string
+ * @param useTagRanking - If true, ranks products with matching tags higher (default: true)
  * @returns Promise<ProductSearchResult[]> - Array of top 3 matching products from live Shopify store
  */
-export async function searchProducts(query: string): Promise<ProductSearchResult[]> {
+export async function searchProducts(query: string, useTagRanking: boolean = true): Promise<ProductSearchResult[]> {
      const { shopifyDomain, shopifyToken } = getShopifyConfig();
 
      try {
-          console.log(`[Shopify] searchProducts start | query="${query}"`);
+          console.log(`[Shopify] searchProducts start | query="${query}" | tag-ranking=${useTagRanking}`);
 
           const searchQuery = `
       query searchProducts($query: String!) {
-        products(first: 3, query: $query) {
+        products(first: 10, query: $query) {
           edges {
             node {
               id
               title
               handle
               description
+              tags
+              collections(first: 5) {
+                edges {
+                  node {
+                    id
+                    title
+                    handle
+                  }
+                }
+              }
               images(first: 1) {
                 edges {
                   node {
@@ -426,6 +451,7 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
                const product = edge.node;
                const variant = product.variants.edges[0]?.node;
                const image = product.images.edges[0]?.node;
+               const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
 
                return {
                     title: product.title,
@@ -434,16 +460,207 @@ export async function searchProducts(query: string): Promise<ProductSearchResult
                     variantId: variant?.id || '',
                     available: variant?.availableForSale || false,
                     currency: variant?.price.currencyCode || 'USD',
+                    tags: product.tags || [],
+                    collections: collections.length > 0 ? collections : undefined,
                };
           });
 
-          console.log(`[Shopify] searchProducts success | query="${query}" | count=${products.length}`);
-          if (products.length > 0) {
-               console.log('[Shopify] product titles:', products.map((p: ProductSearchResult) => p.title).join(', '));
+          // Enhance search results by ranking products with matching tags higher
+          if (useTagRanking && products.length > 0) {
+               const queryLower = query.toLowerCase();
+               const queryWords = queryLower.split(/\s+/).filter((w: string) => w.length > 2);
+               
+               // Score products based on tag matches
+               type ScoredProduct = { product: ProductSearchResult; score: number };
+               const scoredProducts = products.map((product: ProductSearchResult) => {
+                    let score = 0;
+                    const productTags = (product.tags || []).map((t: string) => t.toLowerCase());
+                    const productTitle = product.title.toLowerCase();
+                    const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
+                    
+                    // Higher score for exact tag matches
+                    queryWords.forEach((word: string) => {
+                         if (productTags.some((tag: string) => tag === word || tag.includes(word) || word.includes(tag))) {
+                              score += 10; // Strong tag match
+                         }
+                         if (productTitle.includes(word)) {
+                              score += 5; // Title match
+                         }
+                         if (productCollections.some((col: string) => col.includes(word))) {
+                              score += 3; // Collection match
+                         }
+                    });
+                    
+                    return { product, score };
+               });
+               
+               // Sort by score (highest first) and return top 3 products
+               scoredProducts.sort((a: ScoredProduct, b: ScoredProduct) => b.score - a.score);
+               const topProducts = scoredProducts.slice(0, 3).map((sp: ScoredProduct) => sp.product);
+               
+               console.log(`[Shopify] searchProducts success | query="${query}" | count=${topProducts.length} | tag-enhanced`);
+               if (topProducts.length > 0) {
+                    console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
+                    if (topProducts[0].tags && topProducts[0].tags.length > 0) {
+                         console.log('[Shopify] top product tags:', topProducts[0].tags.join(', '));
+                    }
+               }
+               return topProducts;
           }
-          return products;
+
+          // Return top 3 products without tag ranking
+          const topProducts = products.slice(0, 3);
+          console.log(`[Shopify] searchProducts success | query="${query}" | count=${topProducts.length}`);
+          if (topProducts.length > 0) {
+               console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
+          }
+          return topProducts;
      } catch (error) {
           console.error(`[Shopify] Error searching products for query "${query}":`, error);
+          throw error;
+     }
+}
+
+/**
+ * Search for products by specific tags
+ * This function searches products that have matching tags
+ * All collections from the site are considered in the search
+ * @param tags - Array of tag strings to search for
+ * @param limit - Maximum number of products to return (default: 3)
+ * @returns Promise<ProductSearchResult[]> - Array of products with matching tags
+ */
+export async function searchProductsByTags(tags: string[], limit: number = 3): Promise<ProductSearchResult[]> {
+     const { shopifyDomain, shopifyToken } = getShopifyConfig();
+
+     try {
+          console.log(`[Shopify] searchProductsByTags start | tags=[${tags.join(', ')}] | limit=${limit}`);
+
+          // Build query string for tag search
+          // Shopify query syntax: tag:tag1 OR tag:tag2
+          const tagQuery = tags.map(tag => `tag:${tag}`).join(' OR ');
+
+          const searchQuery = `
+      query searchProductsByTags($query: String!) {
+        products(first: ${limit * 2}, query: $query) {
+          edges {
+            node {
+              id
+              title
+              handle
+              description
+              tags
+              collections(first: 5) {
+                edges {
+                  node {
+                    id
+                    title
+                    handle
+                  }
+                }
+              }
+              images(first: 1) {
+                edges {
+                  node {
+                    url
+                    altText
+                  }
+                }
+              }
+              variants(first: 1) {
+                edges {
+                  node {
+                    id
+                    title
+                    price {
+                      amount
+                      currencyCode
+                    }
+                    availableForSale
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+          const response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
+               method: 'POST',
+               headers: {
+                    'Content-Type': 'application/json',
+                    'X-Shopify-Storefront-Access-Token': shopifyToken,
+               },
+               body: JSON.stringify({
+                    query: searchQuery,
+                    variables: { query: tagQuery },
+               }),
+          });
+
+          if (!response.ok) {
+               console.error(`[Shopify] searchProductsByTags HTTP ${response.status} ${response.statusText}`);
+               throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.errors) {
+               console.error('GraphQL errors:', data.errors);
+               throw new Error('GraphQL query failed');
+          }
+
+          const products = data.data.products.edges.map((edge: { node: ShopifyProduct }) => {
+               const product = edge.node;
+               const variant = product.variants.edges[0]?.node;
+               const image = product.images.edges[0]?.node;
+               const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
+
+               return {
+                    title: product.title,
+                    price: parseFloat(variant?.price.amount || '0'),
+                    image: image?.url || '',
+                    variantId: variant?.id || '',
+                    available: variant?.availableForSale || false,
+                    currency: variant?.price.currencyCode || 'USD',
+                    tags: product.tags || [],
+                    collections: collections.length > 0 ? collections : undefined,
+               };
+          });
+
+          // Rank products by tag match count (products with more matching tags rank higher)
+          type TagScoredProduct = { product: ProductSearchResult; matchCount: number };
+          const tagScoredProducts = products.map((product: ProductSearchResult) => {
+               const productTags = (product.tags || []).map((t: string) => t.toLowerCase());
+               const searchTags = tags.map((t: string) => t.toLowerCase());
+               const matchCount = searchTags.filter((searchTag: string) => 
+                    productTags.some((productTag: string) => 
+                         productTag === searchTag || 
+                         productTag.includes(searchTag) || 
+                         searchTag.includes(productTag)
+                    )
+               ).length;
+               return { product, matchCount };
+          });
+
+          // Sort by match count (highest first) and return top products
+          tagScoredProducts.sort((a: TagScoredProduct, b: TagScoredProduct) => b.matchCount - a.matchCount);
+          const topProducts = tagScoredProducts.slice(0, limit).map((sp: TagScoredProduct) => sp.product);
+
+          console.log(`[Shopify] searchProductsByTags success | tags=[${tags.join(', ')}] | count=${topProducts.length}`);
+          if (topProducts.length > 0) {
+               console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
+               topProducts.forEach((p: ProductSearchResult, idx: number) => {
+                    if (p.tags && p.tags.length > 0) {
+                         console.log(`[Shopify] Product ${idx + 1} tags: ${p.tags.join(', ')}`);
+                    }
+                    if (p.collections && p.collections.length > 0) {
+                         console.log(`[Shopify] Product ${idx + 1} collections: ${p.collections.join(', ')}`);
+                    }
+               });
+          }
+          return topProducts;
+     } catch (error) {
+          console.error(`[Shopify] Error searching products by tags "${tags.join(', ')}":`, error);
           throw error;
      }
 }
@@ -639,6 +856,16 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
             id
             title
             handle
+            tags
+            collections(first: 5) {
+              edges {
+                node {
+                  id
+                  title
+                  handle
+                }
+              }
+            }
             images(first: 1) {
               edges {
                 node {
@@ -677,6 +904,7 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
           const variant = data.data.productVariant;
           const product = variant.product;
           const image = product.images.edges[0]?.node;
+          const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
 
           return {
                title: product.title,
@@ -685,6 +913,8 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
                variantId: variant.id,
                available: variant.availableForSale,
                currency: variant.price.currencyCode,
+               tags: product.tags || [],
+               collections: collections.length > 0 ? collections : undefined,
           };
      } catch (error) {
           console.error('Error fetching product by variant ID:', error);
