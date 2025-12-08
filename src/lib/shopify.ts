@@ -51,6 +51,10 @@ export interface ProductSearchResult {
      currency: string;
      tags?: string[];
      collections?: string[];
+     originalPrice?: number; // Original price before discount
+     discountPercentage?: number; // Discount percentage (e.g., 40 for 40% off)
+     isOnSale?: boolean; // Whether the product is currently on sale
+     collection?: string; // Primary collection handle (e.g., "energie-et-endurance")
 }
 
 function getShopifyConfig() {
@@ -363,23 +367,59 @@ const PRODUCT_COMBOS: ProductCombo[] = [
 ];
 
 /**
+ * Collection mapping for Vigaia site
+ * Maps collection names/handles to search terms
+ */
+export const COLLECTION_MAP: { [key: string]: string[] } = {
+     'energie-et-endurance': ['energie', 'endurance', 'energy', 'vitality', 'fatigue', 'vitalité'],
+     'energie': ['energie', 'endurance', 'energy', 'vitality', 'fatigue', 'vitalité'],
+     'beaute-anti-age': ['beauté', 'anti-âge', 'beauty', 'anti-age', 'peau', 'skin', 'collagène', 'collagen'],
+     'sante-bien-etre': ['santé', 'bien-être', 'health', 'wellness', 'immunité', 'immunity'],
+     'sport-performance': ['sport', 'performance', 'fitness', 'muscle', 'athlete', 'athlète', 'récupération', 'recovery'],
+     'super-aliments': ['super', 'aliments', 'superfood', 'moringa', 'spiruline', 'spirulina'],
+     'memoire': ['mémoire', 'memory', 'concentration', 'cognitif', 'cognitive'],
+};
+
+/**
  * Search for products using Shopify Storefront API (LIVE DATA)
  * This function queries the live Shopify store in real-time
  * It searches across product titles, descriptions, tags, and collections
  * Products with matching tags are ranked higher for better relevance
  * @param query - Search query string
- * @param useTagRanking - If true, ranks products with matching tags higher (default: true)
+ * @param useTagRankingOrOptions - If boolean: ranks products with matching tags higher (default: true)
+ *                                 If object: search options { useTagRanking?: boolean, onlyOnSale?: boolean, collection?: string }
  * @returns Promise<ProductSearchResult[]> - Array of top 3 matching products from live Shopify store
  */
-export async function searchProducts(query: string, useTagRanking: boolean = true): Promise<ProductSearchResult[]> {
+export async function searchProducts(
+     query: string, 
+     useTagRankingOrOptions: boolean | { useTagRanking?: boolean; onlyOnSale?: boolean; collection?: string } = true
+): Promise<ProductSearchResult[]> {
+     // Handle backward compatibility: if second param is boolean, treat as useTagRanking
+     const options = typeof useTagRankingOrOptions === 'boolean' 
+          ? { useTagRanking: useTagRankingOrOptions }
+          : { useTagRanking: true, ...useTagRankingOrOptions };
+     
+     const useTagRanking = options.useTagRanking !== false; // Default to true
+     const onlyOnSale = options.onlyOnSale === true;
+     const collectionFilter = options.collection;
      const { shopifyDomain, shopifyToken } = getShopifyConfig();
 
      try {
-          console.log(`[Shopify] searchProducts start | query="${query}" | tag-ranking=${useTagRanking}`);
+          // Build query with optional collection filter
+          let searchQueryString = query;
+          if (collectionFilter) {
+               // Search within collection by adding collection handle to query
+               searchQueryString = `collection:${collectionFilter} ${query}`.trim();
+          }
+          
+          // Increase limit if filtering by sale to get more results
+          const productLimit = onlyOnSale ? 20 : 10;
+          
+          console.log(`[Shopify] searchProducts start | query="${searchQueryString}" | tag-ranking=${useTagRanking} | onlyOnSale=${onlyOnSale} | collection=${collectionFilter || 'none'}`);
 
           const searchQuery = `
       query searchProducts($query: String!) {
-        products(first: 10, query: $query) {
+        products(first: ${productLimit}, query: $query) {
           edges {
             node {
               id
@@ -431,7 +471,7 @@ export async function searchProducts(query: string, useTagRanking: boolean = tru
                },
                body: JSON.stringify({
                     query: searchQuery,
-                    variables: { query },
+                    variables: { query: searchQueryString },
                }),
           });
 
@@ -504,15 +544,21 @@ export async function searchProducts(query: string, useTagRanking: boolean = tru
                     if (topProducts[0].tags && topProducts[0].tags.length > 0) {
                          console.log('[Shopify] top product tags:', topProducts[0].tags.join(', '));
                     }
+                    if (onlyOnSale) {
+                         console.log(`[Shopify] Products on sale: ${topProducts.filter((p: ProductSearchResult) => p.isOnSale).length}`);
+                    }
                }
                return topProducts;
           }
 
-          // Return top 3 products without tag ranking
+          // Return top 3 products without tag ranking (after filtering)
           const topProducts = products.slice(0, 3);
           console.log(`[Shopify] searchProducts success | query="${query}" | count=${topProducts.length}`);
           if (topProducts.length > 0) {
                console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
+               if (onlyOnSale) {
+                    console.log(`[Shopify] Products on sale: ${topProducts.filter((p: ProductSearchResult) => p.isOnSale).length}`);
+               }
           }
           return topProducts;
      } catch (error) {
@@ -905,16 +951,35 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
           const product = variant.product;
           const image = product.images.edges[0]?.node;
           const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
+          const collectionHandles = product.collections?.edges.map((edge: { node: { handle: string } }) => edge.node.handle) || [];
+          
+          const price = parseFloat(variant.price.amount);
+          const compareAtPrice = variant.compareAtPrice?.amount 
+               ? parseFloat(variant.compareAtPrice.amount) 
+               : null;
+          
+          const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+          const discountPercentage = isOnSale && compareAtPrice 
+               ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+               : undefined;
+          
+          const primaryCollection = collectionHandles.length > 0 
+               ? collectionHandles[0] 
+               : undefined;
 
           return {
                title: product.title,
-               price: parseFloat(variant.price.amount),
+               price: price,
+               originalPrice: compareAtPrice || undefined,
+               discountPercentage: discountPercentage,
+               isOnSale: isOnSale,
                image: image?.url || '',
                variantId: variant.id,
                available: variant.availableForSale,
                currency: variant.price.currencyCode,
                tags: product.tags || [],
                collections: collections.length > 0 ? collections : undefined,
+               collection: primaryCollection,
           };
      } catch (error) {
           console.error('Error fetching product by variant ID:', error);

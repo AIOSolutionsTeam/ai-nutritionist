@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError } from '../../../lib/openai'
-import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo } from '../../../lib/shopify'
+import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 
@@ -692,6 +692,50 @@ export async function POST(request: NextRequest) {
           // Also consider supplement-related keywords in the AI reply
           const hasSupplementKeywords = extractSupplementKeywords(nutritionResponse.reply).length > 0
 
+          // Detect sale/promotion requests
+          const saleRequestPatterns = [
+               /\b(promo|promotion|promos|promotions)\b/i,
+               /\b(solde|soldes|en solde|en promotion)\b/i,
+               /\b(réduction|reduction|réductions|reductions)\b/i,
+               /\b(rabais|discount|discounts|remise|remises)\b/i,
+               /\b(offre|offres|spécial|special|bon plan)\b/i,
+               /\b(produits?\s+(?:en\s+)?solde|produits?\s+(?:en\s+)?promotion)\b/i,
+          ]
+          const isSaleRequest = saleRequestPatterns.some(pattern => 
+               pattern.test(userLower) || pattern.test(replyLower)
+          )
+          
+          if (isSaleRequest) {
+               console.log('[API] Detected sale/promotion request from user')
+          }
+
+          // Detect collection requests
+          let requestedCollection: string | undefined = undefined
+          const collectionKeywords = Object.keys(COLLECTION_MAP)
+          for (const collectionHandle of collectionKeywords) {
+               const collectionTerms = COLLECTION_MAP[collectionHandle]
+               const hasCollectionTerm = collectionTerms.some(term => {
+                    const regex = new RegExp(`\\b${term}\\b`, 'i')
+                    return regex.test(userLower) || regex.test(replyLower)
+               })
+               
+               // Also check for explicit collection mentions
+               const collectionMentionPatterns = [
+                    new RegExp(`\\bcollection\\s+${collectionHandle.replace(/-/g, '[-\\s]')}\\b`, 'i'),
+                    new RegExp(`\\bcatégorie\\s+${collectionHandle.replace(/-/g, '[-\\s]')}\\b`, 'i'),
+                    new RegExp(`\\b(univers|gamme)\\s+${collectionHandle.replace(/-/g, '[-\\s]')}\\b`, 'i'),
+               ]
+               const hasExplicitCollectionMention = collectionMentionPatterns.some(pattern =>
+                    pattern.test(userLower) || pattern.test(replyLower)
+               )
+               
+               if (hasCollectionTerm || hasExplicitCollectionMention) {
+                    requestedCollection = collectionHandle
+                    console.log(`[API] Detected collection request: ${collectionHandle}`)
+                    break
+               }
+          }
+
           // Search if:
           // - AI explicitly returned products, OR
           // - AI reply explicitly recommends products (even without specific supplement mention), OR
@@ -724,11 +768,15 @@ export async function POST(request: NextRequest) {
           // 3. User expresses deficiency intent (carences/manque)
           const allowProductSearch = !interactionIntent || explicitProductRequest || deficiencyIntent
 
+          // Sale requests and collection requests should always trigger product search
+          const isProductRequest = isSaleRequest || requestedCollection !== undefined
+          
           const shouldSearchProducts = allowProductSearch && !!(
                hasExplicitProducts ||
                (hasExplicitTrigger && hasSupplementMentions && !interactionIntent) ||
                (hasExplicitTrigger && replyLower.includes('sélection') && !interactionIntent) ||
                explicitProductRequest ||
+               isProductRequest || // NEW: Sale or collection requests trigger search
                (userHasSpecificSupplement && !interactionIntent && userHasProductIntent) ||
                (hasSpecificSupplement && !interactionIntent && hasExplicitTrigger) ||
                (hasSupplementKeywords && !interactionIntent && hasExplicitTrigger) ||
@@ -886,6 +934,34 @@ export async function POST(request: NextRequest) {
                               console.log('Applying deficiency fallback queries:', searchQueries)
                          }
 
+                         // If user asks for sales or collection but no specific query, use better search terms
+                         if (searchQueries.length === 0 && (isSaleRequest || requestedCollection)) {
+                              if (requestedCollection) {
+                                   // Use collection-specific terms
+                                   const collectionTerms = COLLECTION_MAP[requestedCollection]
+                                   if (collectionTerms && collectionTerms.length > 0) {
+                                        searchQueries = [collectionTerms[0]]
+                                   } else {
+                                        // Try to extract from collection handle
+                                        const handleWords = requestedCollection.split('-')
+                                        searchQueries = handleWords.length > 0 ? [handleWords[0]] : ['vitamin']
+                                   }
+                              } else if (isSaleRequest) {
+                                   // For sale requests, use broader terms that will match products on sale
+                                   // Try to extract intent from user message or AI reply
+                                   if (userLower.includes('énergie') || userLower.includes('energie') || replyLower.includes('énergie') || replyLower.includes('energie')) {
+                                        searchQueries = ['energie']
+                                   } else if (userLower.includes('beauté') || userLower.includes('beaute') || replyLower.includes('beauté') || replyLower.includes('beaute')) {
+                                        searchQueries = ['collagen']
+                                   } else if (userLower.includes('sport') || replyLower.includes('sport')) {
+                                        searchQueries = ['protein']
+                                   } else {
+                                        // Default to terms that will match products we know are on sale
+                                        searchQueries = ['multivitamin', 'vitamin', 'ashwagandha']
+                                   }
+                              }
+                         }
+
                          // Only search if we have valid search queries; as a last resort, extract from AI products
                          if (searchQueries.length === 0 && hasExplicitProducts) {
                               // Extract keywords from AI's product recommendations
@@ -914,15 +990,42 @@ export async function POST(request: NextRequest) {
                          // Search for products using the first query (most relevant)
                          // Using live Shopify Storefront API data
                          if (searchQueries.length > 0) {
-                              console.log(`[API] Searching for products with query: "${searchQueries[0]}" (with tag & collection matching)`)
+                              const searchOptions = {
+                                   useTagRanking: true,
+                                   onlyOnSale: isSaleRequest,
+                                   collection: requestedCollection,
+                              }
+                              
+                              console.log(`[API] Searching for products with query: "${searchQueries[0]}"`, searchOptions)
                               try {
-                                   // Use tag-enhanced search (tags and collections are considered)
-                                   // NOTE: All collections from the site are considered in the search
-                                   // Product tags are used for better matching and ranking
-                                   recommendedProducts = await searchProducts(searchQueries[0], true)
+                                   // Use tag-enhanced search with sale/collection options
+                                   recommendedProducts = await searchProducts(searchQueries[0], searchOptions)
                                    console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
+                                   
+                                   // If sale request and we don't have enough products, try other queries
+                                   if (isSaleRequest && recommendedProducts.length < 3 && searchQueries.length > 1) {
+                                        for (let i = 1; i < searchQueries.length && recommendedProducts.length < 3; i++) {
+                                             try {
+                                                  const additionalProducts = await searchProducts(searchQueries[i], searchOptions)
+                                                  // Add products that aren't already in the list
+                                                  for (const product of additionalProducts) {
+                                                       if (!recommendedProducts.some(p => p.variantId === product.variantId)) {
+                                                            recommendedProducts.push(product)
+                                                            if (recommendedProducts.length >= 3) break
+                                                       }
+                                                  }
+                                                  console.log(`[API] Added products from query "${searchQueries[i]}", total: ${recommendedProducts.length}`)
+                                             } catch (err) {
+                                                  console.error(`[API] Error searching with query "${searchQueries[i]}":`, err)
+                                             }
+                                        }
+                                   }
+                                   
                                    if (recommendedProducts.length > 0) {
                                         console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
+                                        if (isSaleRequest) {
+                                             console.log(`[API] Products on sale: ${recommendedProducts.filter(p => p.isOnSale).length}`)
+                                        }
                                         // Log tags and collections if available (for debugging)
                                         recommendedProducts.forEach((p, idx) => {
                                              if (p.tags && p.tags.length > 0) {
@@ -945,8 +1048,8 @@ export async function POST(request: NextRequest) {
                                    const complementaryQueries = generateComplementaryQueries(searchQueries[0], recommendedProducts[0])
                                    if (complementaryQueries.length > 0) {
                                         try {
-                                             // Use tag-enhanced search for complementary products
-                                             const complementaryProducts = await searchProducts(complementaryQueries[0], true)
+                                             // Use tag-enhanced search for complementary products (skip sale/collection filters)
+                                             const complementaryProducts = await searchProducts(complementaryQueries[0], { useTagRanking: true })
                                              // Add complementary products (limit to 2-3 additional)
                                              recommendedProducts = [
                                                   ...recommendedProducts,
