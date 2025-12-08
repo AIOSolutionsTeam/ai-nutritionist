@@ -776,12 +776,16 @@ export async function POST(request: NextRequest) {
                (hasExplicitTrigger && hasSupplementMentions && !interactionIntent) ||
                (hasExplicitTrigger && replyLower.includes('sélection') && !interactionIntent) ||
                explicitProductRequest ||
-               isProductRequest || // NEW: Sale or collection requests trigger search
+               isProductRequest || // Sale or collection requests trigger search
                (userHasSpecificSupplement && !interactionIntent && userHasProductIntent) ||
                (hasSpecificSupplement && !interactionIntent && hasExplicitTrigger) ||
                (hasSupplementKeywords && !interactionIntent && hasExplicitTrigger) ||
                (hasSupplementMentions && !interactionIntent && (replyLower.includes('voici') || replyLower.includes('sélection'))) ||
-               deficiencyIntent
+               deficiencyIntent ||
+               // If we detect a health goal (sleep, energy, stress, etc.) AND the AI mentions supplements,
+               // automatically trigger product search - this handles cases where user mentions a health problem
+               // and AI recommends supplements without using explicit trigger words
+               (goalKeys.length > 0 && (hasSpecificSupplement || hasSupplementKeywords || hasSupplementMentions) && !interactionIntent)
           )
 
           console.log('[API] Product search gating', {
