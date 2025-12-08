@@ -104,6 +104,54 @@ const TypingIndicator = () => (
   </div>
 );
 
+// Initial Loading Screen Component
+const InitialLoadingScreen = () => (
+  <div className="fixed inset-0 w-screen h-screen bg-background z-50 flex flex-col items-center justify-center">
+    <div className="flex flex-col items-center justify-center space-y-6 animate-fade-in">
+      {/* Animated Logo/Icon */}
+      <div className="relative">
+        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-primary/10 flex items-center justify-center">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 relative flex items-center justify-center">
+            <Image
+              src="https://www.vigaia.com/cdn/shop/files/vigaia-high-resolution-logo-transparent_06884d1a-0548-44bc-932e-1cad07cb1f1d.png?crop=center&height=32&v=1758274822&width=32"
+              alt="Vigaia AI"
+              width={56}
+              height={56}
+              className="object-contain animate-spin-slow"
+            />
+          </div>
+        </div>
+        {/* Pulsing rings */}
+        <div className="absolute inset-0 rounded-full border-2 border-primary/20 animate-ping"></div>
+        <div className="absolute inset-0 rounded-full border-2 border-primary/10 animate-ping" style={{ animationDelay: "0.5s" }}></div>
+      </div>
+      
+      {/* Loading Text */}
+      <div className="text-center space-y-2">
+        <h2 className="font-serif uppercase tracking-widest text-lg sm:text-xl font-light text-foreground">
+          Nutritionniste virtuel
+        </h2>
+        <p className="text-sm text-muted-foreground uppercase tracking-[0.15em]">
+          Initialisation en cours...
+        </p>
+      </div>
+      
+      {/* Loading Dots */}
+      <div className="flex items-center space-x-2">
+        <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+        <div
+          className="w-2 h-2 bg-primary rounded-full animate-bounce"
+          style={{ animationDelay: "0.2s" }}
+        ></div>
+        <div
+          className="w-2 h-2 bg-primary rounded-full animate-bounce"
+          style={{ animationDelay: "0.4s" }}
+        ></div>
+      </div>
+    </div>
+  </div>
+);
+
 // Avatar component - Warm, natural style
 const Avatar = ({ isUser }: { isUser: boolean }) => {
   if (isUser) {
@@ -542,6 +590,20 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     const timeoutsMap = typewriterTimeoutsRef.current;
     const activeTyping = activeTypingMessagesRef.current;
     
+    // Allow tuning speed between environments (faster in production by default)
+    const parsedSpeed =
+      Number(
+        process.env.NEXT_PUBLIC_TYPEWRITER_SPEED ||
+          (process.env.NODE_ENV === "production" ? 1.75 : 1)
+      ) || 1;
+    const speedMultiplier = Math.min(Math.max(parsedSpeed, 0.5), 3); // Clamp for safety
+    const baseDelayMs = 24 / speedMultiplier; // Lower = faster typing
+    const punctuationDelayMultiplier = 3.5 / speedMultiplier; // Shorter pause after punctuation
+    const chunkRange =
+      speedMultiplier >= 1.5
+        ? { min: 2, max: 4 }
+        : { min: 1, max: 3 }; // Larger chunks when sped up
+    
     // Only process messages that need typing initialization
     messages.forEach((message) => {
       // Only apply typewriter to non-user messages that haven't been fully displayed
@@ -630,8 +692,11 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
               const wordMatch = remaining.match(/^\S+/);
               if (wordMatch) {
                 const word = wordMatch[0];
-                // Type 1-3 characters at a time for words (reduced from 2-5)
-                chunkSize = Math.min(word.length, Math.floor(Math.random() * 2) + 1);
+                const range = chunkRange.max - chunkRange.min + 1;
+                chunkSize = Math.min(
+                  word.length,
+                  Math.floor(Math.random() * range) + chunkRange.min
+                );
               } else {
                 // For spaces and other characters, type 1 at a time
                 chunkSize = 1;
@@ -642,12 +707,11 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             chunkSize = Math.min(chunkSize, remaining.length);
             const nextChars = fullText.slice(0, current.length + chunkSize);
             
-            // Schedule next chunk - slower and more controlled
-            const baseDelay = 30; // Base typing speed (increased from 15ms for slower feel)
-            const randomVariation = Math.random() * 8 - 4; // ±4ms variation for natural feel
-            const delay = pauseAfter 
-              ? baseDelay * 6 + randomVariation // Longer pause after punctuation (180ms + variation)
-              : baseDelay + randomVariation; // Normal typing speed (30ms + variation)
+            // Schedule next chunk - speed-adjusted delays
+            const randomVariation = (Math.random() * 6 - 3) / speedMultiplier; // ±3ms scaled
+            const delay = pauseAfter
+              ? baseDelayMs * punctuationDelayMultiplier + randomVariation
+              : baseDelayMs + randomVariation;
             
             const timeout = setTimeout(() => {
               typeNextChunk();
@@ -1347,7 +1411,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     } else {
       const errorMessage: Message = {
         id: generateMessageId(),
-        text: "Je n'ai pas pu traiter votre sélection. Veuillez réessayer.",
+        text: "😔 Oups ! Je n'ai pas pu traiter votre sélection. Pouvez-vous réessayer ? 💚",
         isUser: false,
         timestamp: new Date(),
       };
@@ -1395,34 +1459,34 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         setMessages((prev) => [...prev, completionMessage]);
       } else {
         // Try to parse error response from API
-        let errorText = "Désolé, une erreur s'est produite lors de l'enregistrement.";
+        let errorText = "😔 Oups ! Une petite erreur s'est produite lors de l'enregistrement. Pouvez-vous réessayer ? 💚";
         try {
           const errorData = await response.json();
           const apiError = errorData.error || errorData.message;
           
           // Map API error messages to user-friendly French messages
           if (response.status === 503 || apiError?.includes('Database connection')) {
-            errorText = "⚠️ Impossible de se connecter à la base de données. Veuillez réessayer dans quelques instants. Si le problème persiste, vérifiez votre connexion Internet.";
+            errorText = "🔌 Impossible de se connecter à la base de données pour le moment. Pouvez-vous réessayer dans quelques instants ? Si le problème persiste, vérifiez votre connexion Internet. 🌐";
           } else if (response.status === 400 || apiError?.includes('Validation')) {
-            errorText = "⚠️ Les informations fournies ne sont pas valides. Veuillez vérifier vos réponses et réessayer.";
+            errorText = "📝 Les informations fournies ne sont pas valides. Pouvez-vous vérifier vos réponses et réessayer ? 😊";
           } else if (response.status === 409 || apiError?.includes('already exists')) {
-            errorText = "ℹ️ Votre profil existe déjà. Je vais utiliser les informations existantes. Comment puis-je vous aider aujourd'hui?";
+            errorText = "✅ Parfait ! Votre profil existe déjà. Je vais utiliser les informations existantes. Comment puis-je vous aider aujourd'hui ? 😊";
             // If profile already exists, treat it as success
             setIsOnboardingComplete(true);
             setOnboardingStep('complete');
           } else if (response.status === 500) {
-            errorText = "⚠️ Une erreur serveur s'est produite. Veuillez réessayer dans quelques instants.";
+            errorText = "😔 Le serveur rencontre un petit problème. Pouvez-vous réessayer dans quelques instants ? 💚";
           } else if (apiError) {
-            errorText = `⚠️ ${apiError}`;
+            errorText = `😔 ${apiError}`;
           }
         } catch {
           // If we can't parse the error, use status-based messages
           if (response.status === 503) {
-            errorText = "⚠️ Service temporairement indisponible. Veuillez réessayer dans quelques instants.";
+            errorText = "⏳ Service temporairement indisponible. Pouvez-vous réessayer dans quelques instants ? 💚";
           } else if (response.status >= 500) {
-            errorText = "⚠️ Erreur serveur. Veuillez réessayer dans quelques instants.";
+            errorText = "😔 Le serveur rencontre un petit problème. Pouvez-vous réessayer dans quelques instants ? 💚";
           } else if (response.status >= 400) {
-            errorText = "⚠️ Erreur lors de l'enregistrement. Veuillez vérifier vos informations et réessayer.";
+            errorText = "😔 Oups ! Une erreur s'est produite lors de l'enregistrement. Pouvez-vous vérifier vos informations et réessayer ? 💚";
           }
         }
         
@@ -1438,17 +1502,17 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       console.error("Error saving user profile:", error);
       
       // Handle network errors and other exceptions
-      let errorText = "Désolé, une erreur s'est produite lors de l'enregistrement.";
+      let errorText = "😔 Oups ! Une petite erreur s'est produite lors de l'enregistrement. Pouvez-vous réessayer ? 💚";
       
       if (error instanceof TypeError && error.message === "Failed to fetch") {
-        errorText = "⚠️ Impossible de se connecter au serveur. Veuillez vérifier votre connexion Internet et réessayer.";
+        errorText = "🔌 Impossible de se connecter au serveur. Pouvez-vous vérifier votre connexion Internet et réessayer ? 🌐";
       } else if (error instanceof Error) {
         if (error.message.includes("NetworkError") || error.message.includes("network")) {
-          errorText = "⚠️ Erreur de connexion réseau. Veuillez vérifier votre connexion Internet et réessayer.";
+          errorText = "🌐 Oups ! Il y a un problème de connexion réseau. Pouvez-vous vérifier votre connexion Internet et réessayer ? 🔄";
         } else if (error.message.includes("timeout")) {
-          errorText = "⚠️ La requête a pris trop de temps. Veuillez réessayer.";
+          errorText = "⏱️ La requête a pris un peu trop de temps. Pouvez-vous réessayer ? 💚";
         } else {
-          errorText = `⚠️ Erreur: ${error.message}`;
+          errorText = `😔 Oups ! Une erreur s'est produite : ${error.message}. Pouvez-vous réessayer ? 💚`;
         }
       }
       
@@ -1476,6 +1540,9 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     setInputMessage("");
     setIsLoading(true);
 
+    // Add user message immediately for instant feedback
+    setMessages((prev) => [...prev, userMessage]);
+
     // Check if we're waiting for a combo response (check the last AI message before adding user message)
     const lastAIMessage = messages.filter(m => !m.isUser).pop();
     if (lastAIMessage?.pendingComboResponse && lastAIMessage.suggestedCombo) {
@@ -1491,7 +1558,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       );
       
       if (isYes) {
-        // Show the combo
+        // Show the combo (user message already added above)
         const comboMessage: Message = {
           id: generateMessageId(),
           text: `Parfait ! Voici la combinaison "${lastAIMessage.suggestedCombo.name}" qui contient certains des produits recommandés :`,
@@ -1499,20 +1566,20 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           timestamp: new Date(),
           recommendedCombos: [lastAIMessage.suggestedCombo],
         };
-        setMessages((prev) => [...prev, userMessage, comboMessage]);
+        setMessages((prev) => [...prev, comboMessage]);
         setIsLoading(false);
         return;
       }
       
       if (isNo) {
-        // User explicitly declined
+        // User explicitly declined (user message already added above)
         const declinedMessage: Message = {
           id: generateMessageId(),
           text: "D'accord, pas de problème ! Comment puis-je vous aider autrement ?",
           isUser: false,
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, userMessage, declinedMessage]);
+        setMessages((prev) => [...prev, declinedMessage]);
         setIsLoading(false);
         return;
       }
@@ -1521,8 +1588,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       // don't block the flow — continue to normal chat handling without re-asking.
     }
 
-    // Add user message if we haven't already (for normal flow)
-    setMessages((prev) => [...prev, userMessage]);
+    // User message already added above for instant feedback
 
     if (!isOnboardingComplete && onboardingStep !== 'complete') {
       const lowerInput = currentInput.toLowerCase().trim();
@@ -1630,7 +1696,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         const questionInfo = getQuestionInfo(onboardingStep);
         const retryMessage: Message = {
           id: generateMessageId(),
-          text: `Je n'ai pas compris votre réponse. ${questionInfo.examples ? `\n\n💡 ${questionInfo.examples}` : ''}\n\n${questionInfo.progress} ${questionInfo.question}\n\n💡 Vous pouvez aussi taper 'retour' pour revenir en arrière ou 'passer' pour ignorer cette question (si applicable).`,
+          text: `😊 Je n'ai pas bien compris votre réponse. ${questionInfo.examples ? `\n\n💡 ${questionInfo.examples}` : ''}\n\n${questionInfo.progress} ${questionInfo.question}\n\n💡 Vous pouvez aussi taper 'retour' pour revenir en arrière ou 'passer' pour ignorer cette question (si applicable).`,
           isUser: false,
           timestamp: new Date(),
         };
@@ -1688,7 +1754,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       }
 
       const fullText = data.reply ||
-        "Désolé, je n'ai pas pu traiter votre demande. Veuillez réessayer.";
+        "😔 Désolé, je n'ai pas pu traiter votre demande pour le moment. Pouvez-vous réessayer ? 💚";
       
       const aiMessage: Message = {
         id: generateMessageId(),
@@ -1727,17 +1793,17 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       console.error("Error sending message:", error);
 
       // Determine error type and provide helpful message
-      let errorText = "Désolé, une erreur s'est produite. Veuillez réessayer.";
+      let errorText = "😔 Oups ! Une petite erreur s'est produite. Pouvez-vous réessayer ? 💚";
       
       if (error instanceof TypeError && error.message === "Failed to fetch") {
-        errorText = "⚠️ Impossible de se connecter au serveur. Veuillez vérifier que le serveur de développement est en cours d'exécution.\n\nPour démarrer le serveur, exécutez :\n`npm run dev` ou `yarn dev`";
+        errorText = "🔌 Impossible de se connecter au serveur. Veuillez vérifier que le serveur de développement est en cours d'exécution.\n\n💡 Pour démarrer le serveur, exécutez :\n`npm run dev` ou `yarn dev`";
       } else if (error instanceof Error) {
         if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-          errorText = "⚠️ Erreur de connexion réseau. Veuillez vérifier votre connexion Internet et que le serveur est en cours d'exécution.";
+          errorText = "🌐 Oups ! Il y a un problème de connexion réseau. Pouvez-vous vérifier votre connexion Internet ? 🔄";
         } else if (error.message.includes("HTTP error")) {
-          errorText = `⚠️ Erreur serveur (${error.message}). Veuillez réessayer dans quelques instants.`;
+          errorText = `😔 Le serveur rencontre un petit problème (${error.message}). Pouvez-vous réessayer dans quelques instants ? 💚`;
         } else {
-          errorText = `⚠️ Erreur : ${error.message}`;
+          errorText = `😔 Oups ! Une erreur s'est produite : ${error.message}. Pouvez-vous réessayer ? 💚`;
         }
       }
 
@@ -1791,6 +1857,11 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
   if (!isConsultationStarted) {
     return null;
+  }
+
+  // Show loading screen while checking profile
+  if (isCheckingProfile) {
+    return <InitialLoadingScreen />;
   }
 
   return (
