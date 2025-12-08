@@ -40,7 +40,7 @@ function generateProductSearchQueries(response: string): string[] {
      const keywords = extractSupplementKeywords(response)
 
      // Filter out very generic supplement terms that don't map to specific products.
-     // These are useful for intent detection but NOT for Shopify search queries.
+     // These are useful for intent detection but not for Shopify search queries.
      const genericTerms = new Set([
           'supplement',
           'supplements',
@@ -49,10 +49,10 @@ function generateProductSearchQueries(response: string): string[] {
           'complement',
           'complements',
           'complément',
-          'compléments'
+          'compléments',
      ])
 
-     const specificKeywords = keywords.filter((k) => !genericTerms.has(k.toLowerCase()))
+     const specificKeywords = keywords.filter(k => !genericTerms.has(k.toLowerCase()))
 
      // Only return keywords if we found specific supplement keywords
      // DO NOT fallback to generic terms - this prevents unwanted product searches
@@ -645,6 +645,9 @@ export async function POST(request: NextRequest) {
           const userHasProductIntent = productListPhrases.some(t => userLower.includes(t))
           const userHasSpecificSupplement = userLower.match(/\b(vitamine [a-z]|vitamine d|vitamine c|magnésium|oméga|probiotique|collagène|protéine|créatine|fer|zinc|calcium|mélatonine|melatonin)\b/i)
 
+          // Derive high-level health goals (energy, sleep, stress, etc.) from profile + conversation
+          const goalKeys = deriveGoalKeysFromContext(userProfile, userLower, replyLower)
+
           // Detect safety/interaction/informational questions where we should avoid suggesting products
           // These are questions asking for information, not product recommendations
           const informationalQuestionPatterns = [
@@ -744,13 +747,94 @@ export async function POST(request: NextRequest) {
                hasExplicitProducts,
                userHasSpecificSupplement,
                userHasProductIntent,
-               shouldSearchProducts
+               shouldSearchProducts,
+               goalKeys
           })
 
           if (shouldSearchProducts) {
                try {
-                    // Start with queries derived from the AI reply
-                    let searchQueries = generateProductSearchQueries(nutritionResponse.reply)
+                    // 1) Goal-based, tag-driven search (preferred when a clear goal is identified)
+                    if (goalKeys.length > 0) {
+                         console.log('[API] Attempting goal-based product search using tags for goals:', goalKeys)
+                         try {
+                              // Track goal-based search attempt
+                              try {
+                                   await analytics.trackEvent('product_search_initiated', {
+                                        category: 'ecommerce',
+                                        searchMode: 'tags',
+                                        goalKeys: goalKeys.join(', '),
+                                        userId: userId || 'anonymous'
+                                   })
+                              } catch (analyticsError) {
+                                   console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                              }
+
+                              for (const goal of goalKeys) {
+                                   const tagsForGoal = GOAL_TAGS[goal]
+                                   if (!tagsForGoal || tagsForGoal.length === 0) continue
+
+                                   console.log(`[API] Searching products by tags for goal "${goal}" -> [${tagsForGoal.join(', ')}]`)
+                                   try {
+                                        const goalProducts = await searchProductsByTags(tagsForGoal, 4)
+                                        if (goalProducts && goalProducts.length > 0) {
+                                             goalProducts.forEach((p) => {
+                                                  if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
+                                                       recommendedProducts.push(p)
+                                                  }
+                                             })
+                                        }
+                                   } catch (tagSearchError) {
+                                        console.error(`[API] Error searching products by tags for goal "${goal}":`, tagSearchError)
+                                   }
+
+                                   // If we already have a few strong matches, stop early
+                                   if (recommendedProducts.length >= 3) {
+                                        break
+                                   }
+                              }
+
+                              if (recommendedProducts.length > 0) {
+                                   console.log('[API] Goal-based tag search produced products:', {
+                                        goals: goalKeys,
+                                        productTitles: recommendedProducts.map(p => p.title)
+                                   })
+
+                                   // Track successful goal-based search
+                                   try {
+                                        await analytics.trackEvent('product_search_completed', {
+                                             category: 'ecommerce',
+                                             searchMode: 'tags',
+                                             goals: goalKeys.join(', '),
+                                             productCount: recommendedProducts.length,
+                                             userId: userId || 'anonymous'
+                                        })
+                                   } catch (analyticsError) {
+                                        console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                                   }
+
+                                   // Track individual product recommendations
+                                   recommendedProducts.forEach((product) => {
+                                        try {
+                                             analytics.trackProductRecommended(
+                                                  product.title,
+                                                  product.variantId,
+                                                  userId || 'anonymous',
+                                                  'ai_generated'
+                                             )
+                                        } catch (analyticsError) {
+                                             console.error('[API] Analytics tracking error for product (non-fatal):', analyticsError)
+                                        }
+                                   })
+                              }
+                         } catch (goalSearchError) {
+                              console.error('[API] Goal-based product search error:', goalSearchError)
+                         }
+                    }
+
+                    // 2) If goal-based tag search didn't find anything, fall back to keyword-based search
+                    if (recommendedProducts.length === 0) {
+                         // Start with queries derived from the AI reply
+                         let searchQueries = generateProductSearchQueries(nutritionResponse.reply)
 
                     // If none, try deriving from the user's original message
                     if (searchQueries.length === 0) {
@@ -789,105 +873,108 @@ export async function POST(request: NextRequest) {
                     }
                     console.log('Searching for products with queries:', searchQueries)
 
-                    // If queries are too generic (complément/supplément) and this is a deficiency intent,
-                    // replace them with concrete deficiency-safe defaults to surface real products.
-                    if (deficiencyIntent) {
-                         const genericPattern = /\b(compl[eé]ment|suppl[eé]ment)s?\b/i
-                         const filtered = searchQueries.filter(q => !genericPattern.test(q))
-                         if (filtered.length > 0) {
-                              searchQueries = filtered
-                         } else {
-                              searchQueries = ['multivitamin', 'vitamin d', 'magnesium', 'iron', 'zinc']
-                         }
-                         console.log('Applying deficiency fallback queries:', searchQueries)
-                    }
-
-                    // Only search if we have valid search queries; as a last resort, extract from AI products
-                    if (searchQueries.length === 0 && hasExplicitProducts) {
-                         // Extract keywords from AI's product recommendations
-                         const productKeywords = nutritionResponse.products
-                              .map(p => (p.name || '').toLowerCase())
-                              .filter(name => name.length > 0)
-                         if (productKeywords.length > 0) {
-                              searchQueries = [...new Set(productKeywords)].slice(0, 3)
-                              console.log('Extracted search queries from products:', searchQueries)
-                         }
-                    }
-
-                    // Track product search attempt (with error handling)
-                    try {
-                         await analytics.trackEvent('product_search_initiated', {
-                              category: 'ecommerce',
-                              searchQueries: searchQueries.join(', '),
-                              queryCount: searchQueries.length,
-                              userId: userId || 'anonymous'
-                         })
-                    } catch (analyticsError) {
-                         console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
-                    }
-
-                    // Search for products using the first query (most relevant)
-                    // Using live Shopify Storefront API data
-                    if (searchQueries.length > 0) {
-                         console.log(`[API] Searching for products with query: "${searchQueries[0]}"`)
-                         try {
-                              recommendedProducts = await searchProducts(searchQueries[0])
-                              console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
-                              if (recommendedProducts.length > 0) {
-                                   console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
+                         // If queries are too generic (complément/supplément) and this is a deficiency intent,
+                         // replace them with concrete deficiency-safe defaults to surface real products.
+                         if (deficiencyIntent) {
+                              const genericPattern = /\b(compl[eé]ment|suppl[eé]ment)s?\b/i
+                              const filtered = searchQueries.filter(q => !genericPattern.test(q))
+                              if (filtered.length > 0) {
+                                   searchQueries = filtered
+                              } else {
+                                   searchQueries = ['multivitamin', 'vitamin d', 'magnesium', 'iron', 'zinc']
                               }
-                         } catch (searchError) {
-                              console.error(`[API] Error searching products for query "${searchQueries[0]}":`, searchError)
-                              // Continue without products rather than failing the entire request
-                              recommendedProducts = []
+                              console.log('Applying deficiency fallback queries:', searchQueries)
                          }
 
-                         // If we found products, also search for complementary products
-                         if (recommendedProducts.length > 0) {
-                              // Search for complementary products (e.g., if main product is vitamin D, search for magnesium or K2)
-                              const complementaryQueries = generateComplementaryQueries(searchQueries[0], recommendedProducts[0])
-                              if (complementaryQueries.length > 0) {
-                                   try {
-                                        const complementaryProducts = await searchProducts(complementaryQueries[0])
-                                        // Add complementary products (limit to 2-3 additional)
-                                        recommendedProducts = [
-                                             ...recommendedProducts,
-                                             ...complementaryProducts.slice(0, 2).filter(
-                                                  (p) => !recommendedProducts.some((rp) => rp.variantId === p.variantId)
-                                             )
-                                        ]
-                                   } catch {
-                                        // Non-fatal, continue with main products
-                                        console.log('Complementary product search skipped')
-                                   }
+                         // Only search if we have valid search queries; as a last resort, extract from AI products
+                         if (searchQueries.length === 0 && hasExplicitProducts) {
+                              // Extract keywords from AI's product recommendations
+                              const productKeywords = nutritionResponse.products
+                                   .map(p => (p.name || '').toLowerCase())
+                                   .filter(name => name.length > 0)
+                              if (productKeywords.length > 0) {
+                                   searchQueries = [...new Set(productKeywords)].slice(0, 3)
+                                   console.log('Extracted search queries from products:', searchQueries)
                               }
                          }
 
-                         // Track successful product search (with error handling)
+                         // Track product search attempt (with error handling)
                          try {
-                              await analytics.trackEvent('product_search_completed', {
+                              await analytics.trackEvent('product_search_initiated', {
                                    category: 'ecommerce',
-                                   searchQuery: searchQueries[0],
-                                   productCount: recommendedProducts.length,
+                                   searchMode: 'keywords',
+                                   searchQueries: searchQueries.join(', '),
+                                   queryCount: searchQueries.length,
                                    userId: userId || 'anonymous'
                               })
                          } catch (analyticsError) {
                               console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
                          }
 
-                         // Track individual product recommendations (with error handling)
-                         recommendedProducts.forEach((product) => {
+                         // Search for products using the first query (most relevant)
+                         // Using live Shopify Storefront API data
+                         if (searchQueries.length > 0) {
+                              console.log(`[API] Searching for products with query: "${searchQueries[0]}"`)
                               try {
-                                   analytics.trackProductRecommended(
-                                        product.title,
-                                        product.variantId,
-                                        userId || 'anonymous',
-                                        'ai_generated'
-                                   )
-                              } catch (analyticsError) {
-                                   console.error('[API] Analytics tracking error for product (non-fatal):', analyticsError)
+                                   recommendedProducts = await searchProducts(searchQueries[0])
+                                   console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
+                                   if (recommendedProducts.length > 0) {
+                                        console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
+                                   }
+                              } catch (searchError) {
+                                   console.error(`[API] Error searching products for query "${searchQueries[0]}":`, searchError)
+                                   // Continue without products rather than failing the entire request
+                                   recommendedProducts = []
                               }
-                         })
+
+                              // If we found products, also search for complementary products
+                              if (recommendedProducts.length > 0) {
+                                   // Search for complementary products (e.g., if main product is vitamin D, search for magnesium or K2)
+                                   const complementaryQueries = generateComplementaryQueries(searchQueries[0], recommendedProducts[0])
+                                   if (complementaryQueries.length > 0) {
+                                        try {
+                                             const complementaryProducts = await searchProducts(complementaryQueries[0])
+                                             // Add complementary products (limit to 2-3 additional)
+                                             recommendedProducts = [
+                                                  ...recommendedProducts,
+                                                  ...complementaryProducts.slice(0, 2).filter(
+                                                       (p) => !recommendedProducts.some((rp) => rp.variantId === p.variantId)
+                                                  )
+                                             ]
+                                        } catch {
+                                             // Non-fatal, continue with main products
+                                             console.log('Complementary product search skipped')
+                                        }
+                                   }
+                              }
+
+                              // Track successful product search (with error handling)
+                              try {
+                                   await analytics.trackEvent('product_search_completed', {
+                                        category: 'ecommerce',
+                                        searchMode: 'keywords',
+                                        searchQuery: searchQueries[0],
+                                        productCount: recommendedProducts.length,
+                                        userId: userId || 'anonymous'
+                                   })
+                              } catch (analyticsError) {
+                                   console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                              }
+
+                              // Track individual product recommendations (with error handling)
+                              recommendedProducts.forEach((product) => {
+                                   try {
+                                        analytics.trackProductRecommended(
+                                             product.title,
+                                             product.variantId,
+                                             userId || 'anonymous',
+                                             'ai_generated'
+                                        )
+                                   } catch (analyticsError) {
+                                        console.error('[API] Analytics tracking error for product (non-fatal):', analyticsError)
+                                   }
+                              })
+                         }
                     }
                } catch (productSearchError) {
                     console.error('Product search error:', productSearchError)
