@@ -36,6 +36,10 @@ export interface ShopifyProduct {
                          amount: string;
                          currencyCode: string;
                     };
+                    compareAtPrice?: {
+                         amount: string;
+                         currencyCode: string;
+                    };
                     availableForSale: boolean;
                };
           }>;
@@ -453,6 +457,10 @@ export async function searchProducts(
                       amount
                       currencyCode
                     }
+                    compareAtPrice {
+                      amount
+                      currencyCode
+                    }
                     availableForSale
                   }
                 }
@@ -505,14 +513,21 @@ export async function searchProducts(
                };
           });
 
+          // Filter by sale status if requested
+          let filteredProducts = products;
+          if (onlyOnSale) {
+               filteredProducts = products.filter((p: ProductSearchResult) => p.isOnSale === true);
+               console.log(`[Shopify] Filtered to ${filteredProducts.length} products on sale (from ${products.length} total)`);
+          }
+
           // Enhance search results by ranking products with matching tags higher
-          if (useTagRanking && products.length > 0) {
+          if (useTagRanking && filteredProducts.length > 0) {
                const queryLower = query.toLowerCase();
                const queryWords = queryLower.split(/\s+/).filter((w: string) => w.length > 2);
                
                // Score products based on tag matches
                type ScoredProduct = { product: ProductSearchResult; score: number };
-               const scoredProducts = products.map((product: ProductSearchResult) => {
+               const scoredProducts = filteredProducts.map((product: ProductSearchResult) => {
                     let score = 0;
                     const productTags = (product.tags || []).map((t: string) => t.toLowerCase());
                     const productTitle = product.title.toLowerCase();
@@ -552,7 +567,7 @@ export async function searchProducts(
           }
 
           // Return top 3 products without tag ranking (after filtering)
-          const topProducts = products.slice(0, 3);
+          const topProducts = filteredProducts.slice(0, 3);
           console.log(`[Shopify] searchProducts success | query="${query}" | count=${topProducts.length}`);
           if (topProducts.length > 0) {
                console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
@@ -621,6 +636,10 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                       amount
                       currencyCode
                     }
+                    compareAtPrice {
+                      amount
+                      currencyCode
+                    }
                     availableForSale
                   }
                 }
@@ -655,23 +674,86 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                throw new Error('GraphQL query failed');
           }
 
-          const products = data.data.products.edges.map((edge: { node: ShopifyProduct }) => {
+          let products = data.data.products.edges.map((edge: { node: ShopifyProduct }) => {
                const product = edge.node;
                const variant = product.variants.edges[0]?.node;
                const image = product.images.edges[0]?.node;
                const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
+               const collectionHandles = product.collections?.edges.map((edge) => edge.node.handle) || [];
+               
+               const price = parseFloat(variant?.price.amount || '0');
+               const compareAtPrice = variant?.compareAtPrice?.amount 
+                    ? parseFloat(variant.compareAtPrice.amount) 
+                    : null;
+               
+               const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+               const discountPercentage = isOnSale && compareAtPrice 
+                    ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+                    : undefined;
+               
+               const primaryCollection = collectionHandles.length > 0 
+                    ? collectionHandles[0] 
+                    : undefined;
 
                return {
                     title: product.title,
-                    price: parseFloat(variant?.price.amount || '0'),
+                    price: price,
+                    originalPrice: compareAtPrice || undefined,
+                    discountPercentage: discountPercentage,
+                    isOnSale: isOnSale,
                     image: image?.url || '',
                     variantId: variant?.id || '',
                     available: variant?.availableForSale || false,
                     currency: variant?.price.currencyCode || 'USD',
                     tags: product.tags || [],
                     collections: collections.length > 0 ? collections : undefined,
+                    collection: primaryCollection,
                };
           });
+
+          // If tag search returned no results, fall back to keyword search
+          if (products.length === 0) {
+               console.log(`[Shopify] Tag search returned 0 results, falling back to keyword search for tags: [${tags.join(', ')}]`);
+               
+               // Use the tag names as keywords for a general product search
+               const keywordQuery = tags.join(' OR ');
+               
+               // Use the existing searchProducts function with keyword search
+               products = await searchProducts(keywordQuery, { useTagRanking: false });
+               
+               // Score and rank products based on how well they match the tag keywords
+               if (products.length > 0) {
+                    const tagsLower = tags.map(t => t.toLowerCase());
+                    type TagScoredProduct = { product: ProductSearchResult; score: number };
+                    const scoredProducts = products.map((product: ProductSearchResult) => {
+                         let score = 0;
+                         const productTitle = product.title.toLowerCase();
+                         const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
+                         
+                         tagsLower.forEach((tag: string) => {
+                              // Higher score for title matches
+                              if (productTitle.includes(tag)) {
+                                   score += 10;
+                              }
+                              // Lower score for collection matches
+                              if (productCollections.some((col: string) => col.includes(tag))) {
+                                   score += 3;
+                              }
+                         });
+                         
+                         return { product, score };
+                    });
+                    
+                    // Sort by score (highest first) and limit results
+                    scoredProducts.sort((a: TagScoredProduct, b: TagScoredProduct) => b.score - a.score);
+                    products = scoredProducts
+                         .filter((sp: TagScoredProduct) => sp.score > 0) // Only include products with some match
+                         .slice(0, limit)
+                         .map((sp: TagScoredProduct) => sp.product);
+                    
+                    console.log(`[Shopify] Keyword fallback search found ${products.length} products matching tags: [${tags.join(', ')}]`);
+               }
+          }
 
           // Rank products by tag match count (products with more matching tags rank higher)
           type TagScoredProduct = { product: ProductSearchResult; matchCount: number };
@@ -894,6 +976,10 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
           id
           title
           price {
+            amount
+            currencyCode
+          }
+          compareAtPrice {
             amount
             currencyCode
           }
