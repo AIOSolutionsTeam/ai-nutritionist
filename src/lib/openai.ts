@@ -1,6 +1,8 @@
 import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
+const DEFAULT_AI_COOLDOWN_MS = 30_000 // 30 seconds local cooldown when quota errors occur
+
 // OpenAI integration for AI nutritionist functionality
 export interface OpenAIConfig {
      apiKey: string
@@ -51,9 +53,24 @@ export interface ProductSearchResult {
      currency: string
 }
 
+export class AIQuotaError extends Error {
+     provider: 'openai' | 'gemini'
+     retryAfterMs?: number
+
+     constructor(provider: 'openai' | 'gemini', message?: string, retryAfterMs?: number) {
+          super(message || `${provider} quota exceeded`)
+          this.name = 'AIQuotaError'
+          this.provider = provider
+          this.retryAfterMs = retryAfterMs
+     }
+}
+
 export class OpenAIService {
      private openai: OpenAI
      private config: OpenAIConfig
+
+     // Local in-process cooldown when we hit quota / 429 errors
+     private quotaResetAt?: number
 
      constructor(config: OpenAIConfig) {
           this.config = config
@@ -62,12 +79,93 @@ export class OpenAIService {
           })
      }
 
+     /**
+      * Check if the service is currently in cooldown (without throwing an error)
+      * @returns true if in cooldown, false otherwise
+      */
+     isInCooldown(): boolean {
+          return this.quotaResetAt !== undefined && this.quotaResetAt > Date.now()
+     }
+
+     /**
+      * Get remaining cooldown time in milliseconds
+      * @returns remaining milliseconds, or 0 if not in cooldown
+      */
+     getCooldownRemainingMs(): number {
+          if (!this.quotaResetAt || this.quotaResetAt <= Date.now()) {
+               return 0
+          }
+          return this.quotaResetAt - Date.now()
+     }
+
+     /**
+      * Reset the cooldown timer (call when API is confirmed working again)
+      */
+     resetCooldown(): void {
+          this.quotaResetAt = undefined
+          console.log('[OpenAIService] Cooldown timer reset - API is back online')
+     }
+
+     /**
+      * Perform a lightweight health check to see if the API is back online
+      * @returns true if API is working, false if still in quota error
+      */
+     async checkHealth(): Promise<boolean> {
+          try {
+               // Make a minimal API call to test if quota is restored
+               const testCompletion = await this.openai.chat.completions.create({
+                    model: this.config.model,
+                    messages: [{ role: 'user', content: 'test' }],
+                    max_tokens: 5,
+                    temperature: 0
+               })
+               
+               // If we get here without error, the API is working
+               if (testCompletion.choices[0]?.message?.content) {
+                    this.resetCooldown()
+                    return true
+               }
+               return false
+          } catch (error) {
+               // Check if it's still a quota error
+               const anyError = error as any
+               const status = anyError?.status
+               const code = anyError?.code
+               const message: string = typeof anyError?.message === 'string' ? anyError.message : ''
+
+               const isQuotaError =
+                    status === 429 ||
+                    code === 'insufficient_quota' ||
+                    message.toLowerCase().includes('insufficient_quota') ||
+                    message.toLowerCase().includes('rate limit') ||
+                    message.toLowerCase().includes('too many requests') ||
+                    message.toLowerCase().includes('quota')
+
+               if (isQuotaError) {
+                    // Still in quota error, keep cooldown
+                    console.log('[OpenAIService] Health check: Still in quota error, keeping cooldown')
+                    return false
+               }
+               
+               // Other error (network, etc.) - don't reset cooldown, but not a quota issue
+               console.log('[OpenAIService] Health check: Non-quota error, keeping cooldown')
+               return false
+          }
+     }
+
      async generateNutritionAdvice(
           userQuery: string, 
           _userId?: string, 
           userProfileContext?: string,
           conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
      ): Promise<StructuredNutritionResponse> {
+          // Short‑circuit if we're currently in a local cooldown window
+          if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
+               const remainingMs = this.quotaResetAt - Date.now()
+               console.warn(`[OpenAIService] In local cooldown, skipping API call. Remaining ms: ${remainingMs}`)
+               throw new AIQuotaError('openai', 'OpenAI in local cooldown', remainingMs)
+          }
+
           // Build system prompt with user context if available
           let userContextSection = ''
           if (userProfileContext && userProfileContext.trim()) {
@@ -224,6 +322,40 @@ IMPORTANT:
                }
           } catch (error) {
                console.error('OpenAI API error:', error)
+
+               // Detect quota / rate limit errors (429 or insufficient_quota)
+               const anyError = error as any
+               const status = anyError?.status
+               const code = anyError?.code
+               const message: string = typeof anyError?.message === 'string' ? anyError.message : ''
+
+               const isQuotaError =
+                    status === 429 ||
+                    code === 'insufficient_quota' ||
+                    message.toLowerCase().includes('insufficient_quota') ||
+                    message.toLowerCase().includes('rate limit') ||
+                    message.toLowerCase().includes('too many requests') ||
+                    message.toLowerCase().includes('quota')
+
+               if (isQuotaError) {
+                    let retryAfterMs: number | undefined
+
+                    // Try to extract a Retry-After header if present
+                    const headers = anyError?.headers as Record<string, string> | undefined
+                    const retryAfterHeader = headers?.['retry-after'] || headers?.['Retry-After']
+                    if (retryAfterHeader) {
+                         const parsed = parseInt(retryAfterHeader, 10)
+                         if (!Number.isNaN(parsed) && parsed > 0) {
+                              retryAfterMs = parsed * 1000
+                         }
+                    }
+
+                    const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
+                    this.quotaResetAt = Date.now() + cooldownMs
+
+                    throw new AIQuotaError('openai', 'OpenAI quota exceeded', retryAfterMs)
+               }
+
                throw new Error('Failed to generate nutrition advice')
           }
      }
@@ -248,10 +380,92 @@ export class GeminiService {
      private genAI: GoogleGenerativeAI
      private config: GeminiConfig
      private fallbackModels = ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-flash-latest']
+     private quotaResetAt?: number
 
      constructor(config: GeminiConfig) {
           this.config = config
           this.genAI = new GoogleGenerativeAI(config.apiKey)
+     }
+
+     /**
+      * Check if the service is currently in cooldown (without throwing an error)
+      * @returns true if in cooldown, false otherwise
+      */
+     isInCooldown(): boolean {
+          return this.quotaResetAt !== undefined && this.quotaResetAt > Date.now()
+     }
+
+     /**
+      * Get remaining cooldown time in milliseconds
+      * @returns remaining milliseconds, or 0 if not in cooldown
+      */
+     getCooldownRemainingMs(): number {
+          if (!this.quotaResetAt || this.quotaResetAt <= Date.now()) {
+               return 0
+          }
+          return this.quotaResetAt - Date.now()
+     }
+
+     /**
+      * Reset the cooldown timer (call when API is confirmed working again)
+      */
+     resetCooldown(): void {
+          this.quotaResetAt = undefined
+          console.log('[GeminiService] Cooldown timer reset - API is back online')
+     }
+
+     /**
+      * Perform a lightweight health check to see if the API is back online
+      * @returns true if API is working, false if still in quota error
+      */
+     async checkHealth(): Promise<boolean> {
+          try {
+               // Make a minimal API call to test if quota is restored
+               const model = this.genAI.getGenerativeModel({
+                    model: this.config.model,
+                    generationConfig: {
+                         maxOutputTokens: 5,
+                         temperature: 0,
+                    }
+               })
+
+               const result = await model.generateContent('test')
+               const response = await result.response
+               const text = response.text()
+
+               // If we get here without error, the API is working
+               if (text) {
+                    this.resetCooldown()
+                    return true
+               }
+               return false
+          } catch (error) {
+               // Check if it's still a quota error
+               if (this.isQuotaError(error)) {
+                    // Still in quota error, keep cooldown
+                    console.log('[GeminiService] Health check: Still in quota error, keeping cooldown')
+                    return false
+               }
+               
+               // Other error (network, etc.) - don't reset cooldown, but not a quota issue
+               console.log('[GeminiService] Health check: Non-quota error, keeping cooldown')
+               return false
+          }
+     }
+
+     private isQuotaError(error: unknown): boolean {
+          const anyErr = error as any
+          if (!anyErr) return false
+
+          if (anyErr.status === 429) {
+               return true
+          }
+
+          const message: string = typeof anyErr.message === 'string' ? anyErr.message : ''
+          const lower = message.toLowerCase()
+          return lower.includes('too many requests') ||
+               lower.includes('quota') ||
+               lower.includes('rate limit')
      }
 
      private cleanJsonResponse(response: string): string {
@@ -356,6 +570,13 @@ export class GeminiService {
           userProfileContext?: string,
           conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
      ): Promise<StructuredNutritionResponse> {
+          // Local in-process cooldown when we hit quota / 429 errors
+          if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
+               const remainingMs = this.quotaResetAt - Date.now()
+               console.warn(`[GeminiService] In local cooldown, skipping API call. Remaining ms: ${remainingMs}`)
+               throw new AIQuotaError('gemini', 'Gemini in local cooldown', remainingMs)
+          }
+
           // Build system prompt with user context if available
           let userContextSection = ''
           if (userProfileContext && userProfileContext.trim()) {
@@ -536,7 +757,28 @@ IMPORTANT:
                     }
                } catch (modelError) {
                     console.error(`Gemini model ${modelName} failed:`, modelError)
-                    // Continue to next model
+
+                    // If this is a quota / rate limit error, stop trying other models
+                    if (this.isQuotaError(modelError)) {
+                         let retryAfterMs: number | undefined
+                         const message: string = typeof (modelError as any)?.message === 'string'
+                              ? (modelError as any).message
+                              : ''
+                         const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
+                         if (match) {
+                              const seconds = parseFloat(match[1])
+                              if (!Number.isNaN(seconds) && seconds > 0) {
+                                   retryAfterMs = seconds * 1000
+                              }
+                         }
+
+                         const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
+                         this.quotaResetAt = Date.now() + cooldownMs
+
+                         throw new AIQuotaError('gemini', 'Gemini quota exceeded', retryAfterMs)
+                    }
+
+                    // Continue to next model for non‑quota errors
                     continue
                }
           }
