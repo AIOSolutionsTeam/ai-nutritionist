@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { openaiService, geminiService } from '../../../lib/openai'
-import { searchProducts, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo } from '../../../lib/shopify'
+import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError } from '../../../lib/openai'
+import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 
@@ -39,10 +39,25 @@ function extractSupplementKeywords(response: string): string[] {
 function generateProductSearchQueries(response: string): string[] {
      const keywords = extractSupplementKeywords(response)
 
+     // Filter out very generic supplement terms that don't map to specific products.
+     // These are useful for intent detection but NOT for Shopify search queries.
+     const genericTerms = new Set([
+          'supplement',
+          'supplements',
+          'supplément',
+          'suppléments',
+          'complement',
+          'complements',
+          'complément',
+          'compléments'
+     ])
+
+     const specificKeywords = keywords.filter((k) => !genericTerms.has(k.toLowerCase()))
+
      // Only return keywords if we found specific supplement keywords
      // DO NOT fallback to generic terms - this prevents unwanted product searches
-     if (keywords.length > 0) {
-          return keywords.slice(0, 3) // Limit to top 3 keywords
+     if (specificKeywords.length > 0) {
+          return specificKeywords.slice(0, 3) // Limit to top 3 keywords
      }
 
      // Return empty array if no specific keywords found
@@ -75,6 +90,167 @@ function generateComplementaryQueries(mainQuery: string, mainProduct: ProductSea
 
      // Default complementary searches
      return ['multivitamin', 'mineral']
+}
+
+/**
+ * Map high-level health goals to Shopify product tags.
+ * IMPORTANT: Make sure your Shopify products are tagged with these values
+ * (e.g. "energy", "sleep", "stress", "immunity", etc.) so that goal-based
+ * searches return relevant products.
+ */
+const GOAL_TAGS: { [goal: string]: string[] } = {
+     energy: ['energy', 'fatigue'],
+     sleep: ['sleep'],
+     stress: ['stress', 'anxiety'],
+     immunity: ['immunity', 'immune'],
+     digestion: ['digestion', 'gut-health'],
+     weight_loss: ['weight-loss', 'slimming'],
+     muscle_gain: ['muscle-gain', 'muscle'],
+     fitness: ['fitness', 'sport'],
+     wellness: ['wellness'],
+     heart: ['heart-health', 'cardio']
+}
+
+/**
+ * Derive high-level health goals from the user profile and current conversation.
+ * These goals are then mapped to Shopify tags via GOAL_TAGS for curated searches.
+ */
+function deriveGoalKeysFromContext(
+     userProfile: IUserProfile | null,
+     userLower: string,
+     replyLower: string
+): string[] {
+     const goals: string[] = []
+     const addGoal = (goal: string) => {
+          if (!goals.includes(goal)) goals.push(goal)
+     }
+
+     const combined = `${userLower} ${replyLower}`
+
+     // From stored profile goals (weight_loss, muscle_gain, energy, wellness, fitness, better_sleep, immunity)
+     if (userProfile?.goals && Array.isArray(userProfile.goals)) {
+          userProfile.goals.forEach((g) => {
+               if (g === 'energy') addGoal('energy')
+               if (g === 'better_sleep') addGoal('sleep')
+               if (g === 'immunity') addGoal('immunity')
+               if (g === 'weight_loss') addGoal('weight_loss')
+               if (g === 'muscle_gain') addGoal('muscle_gain')
+               if (g === 'fitness') addGoal('fitness')
+               if (g === 'wellness') addGoal('wellness')
+          })
+     }
+
+     // From current message / AI reply text
+     if (/\b(énergie|energie|fatigue|coup de barre|manque d'énergie|manque d’energie|energy)\b/i.test(combined)) {
+          addGoal('energy')
+     }
+     if (/\b(sommeil|dormir|insomnie|réveils nocturnes|reveils nocturnes|sleep)\b/i.test(combined)) {
+          addGoal('sleep')
+     }
+     if (/\b(stress|anxiété|anxiete|angoisse|anxiety)\b/i.test(combined)) {
+          addGoal('stress')
+     }
+     if (/\b(immunité|immunite|défenses|defenses|immune|immunity)\b/i.test(combined)) {
+          addGoal('immunity')
+     }
+     if (/\b(digestion|digestif|ballonnements?|reflux|intestin|gut)\b/i.test(combined)) {
+          addGoal('digestion')
+     }
+     if (/\b(coeur|cœur|cardio|heart)\b/i.test(combined)) {
+          addGoal('heart')
+     }
+
+     return goals
+}
+
+/**
+ * Perform background health check on AI providers (non-blocking)
+ * This checks if providers are back online and resets cooldowns if they are
+ */
+function performBackgroundHealthCheck(userId?: string): void {
+     // Use setImmediate to run after the response is sent
+     setImmediate(async () => {
+          try {
+               console.log('[API] Starting background health check for both providers...')
+               const [openaiHealthy, geminiHealthy] = await Promise.allSettled([
+                    openaiService.checkHealth(),
+                    geminiService.checkHealth()
+               ])
+
+               if (openaiHealthy.status === 'fulfilled' && openaiHealthy.value) {
+                    console.log('[API] ✅ OpenAI is back online - cooldown reset')
+                    try {
+                         await analytics.trackEvent('ai_provider_recovered', {
+                              category: 'ai',
+                              provider: 'openai',
+                              userId: userId || 'anonymous'
+                         })
+                    } catch {
+                         // Ignore analytics errors
+                    }
+               }
+
+               if (geminiHealthy.status === 'fulfilled' && geminiHealthy.value) {
+                    console.log('[API] ✅ Gemini is back online - cooldown reset')
+                    try {
+                         await analytics.trackEvent('ai_provider_recovered', {
+                              category: 'ai',
+                              provider: 'gemini',
+                              userId: userId || 'anonymous'
+                         })
+                    } catch {
+                         // Ignore analytics errors
+                    }
+               }
+
+               if ((openaiHealthy.status === 'fulfilled' && !openaiHealthy.value) ||
+                    (geminiHealthy.status === 'fulfilled' && !geminiHealthy.value)) {
+                    console.log('[API] ⚠️ Some providers still in quota error - cooldown maintained')
+               }
+          } catch (healthCheckError) {
+               console.error('[API] Background health check error (non-fatal):', healthCheckError)
+               // Don't throw - this is background work
+          }
+     })
+}
+
+/**
+ * Create a fallback response when both AI providers fail
+ */
+function createFallbackResponse(userMessage: string): StructuredNutritionResponse {
+     const messageLower = userMessage.toLowerCase()
+     
+     // Detect common question types and provide appropriate fallback responses
+     let reply = "😔 Oups ! Je rencontre actuellement un petit problème technique de mon côté. "
+     
+     if (messageLower.includes('éviter') || messageLower.includes('interaction') || messageLower.includes('compatible')) {
+          reply += "Mais je peux quand même vous donner quelques conseils généraux sur les compléments à éviter ensemble :\n\n"
+          reply += "• **Fer et Calcium** : Ne pas prendre ensemble, car le calcium peut réduire l'absorption du fer.\n"
+          reply += "• **Fer et Zinc** : Prendre à des moments différents, car ils peuvent se concurrencer pour l'absorption.\n"
+          reply += "• **Calcium et Magnésium** : Peuvent être pris ensemble, mais en quantités équilibrées.\n"
+          reply += "• **Vitamine C et Fer** : La vitamine C améliore l'absorption du fer, donc c'est une bonne combinaison. ✨\n"
+          reply += "• **Vitamine D et Calcium** : Excellente combinaison pour la santé osseuse. 💪\n\n"
+          reply += "⚠️ **Important** : Consultez toujours un professionnel de la santé avant de combiner des suppléments, surtout si vous prenez des médicaments."
+     } else if (messageLower.includes('carence') || messageLower.includes('manque') || messageLower.includes('vitamine') || messageLower.includes('minéral')) {
+          reply += "En attendant que je retrouve mes capacités, voici quelques signes à surveiller pour détecter une carence :\n\n"
+          reply += "• **Fatigue persistante** 😴 : Peut indiquer un manque de fer, vitamine D, ou vitamines B\n"
+          reply += "• **Crampes musculaires** 💪 : Souvent liées à un manque de magnésium ou potassium\n"
+          reply += "• **Mauvaise récupération** ⏱️ : Peut indiquer un déficit en magnésium ou vitamines B\n"
+          reply += "• **Baisse de performance** 📉 : Peut être liée à diverses carences\n\n"
+          reply += "💡 La meilleure façon de confirmer une carence est de faire une prise de sang prescrite par votre médecin."
+     } else if (messageLower.includes('produit') || messageLower.includes('complément') || messageLower.includes('supplément')) {
+          reply += "Je ne peux pas vous recommander de produits spécifiques pour le moment, mais ne vous inquiétez pas ! 😊 "
+          reply += "Je vous recommande de consulter notre catalogue de produits Vigaïa 🛍️ ou de contacter notre service client pour des recommandations personnalisées. Ils seront ravis de vous aider ! 💚"
+     } else {
+          reply += "Je ne peux pas traiter votre demande pour le moment, mais je travaille à résoudre ce problème ! 🔧 "
+          reply += "Veuillez réessayer dans quelques instants. Si le problème persiste, n'hésitez pas à contacter notre service client - ils sont là pour vous aider ! 💚"
+     }
+     
+     return {
+          reply,
+          products: [],
+          disclaimer: "💡 Cette réponse a été générée automatiquement en raison de difficultés techniques. Pour des conseils personnalisés, veuillez consulter un professionnel de la santé."
+     }
 }
 
 /**
@@ -169,13 +345,18 @@ export async function POST(request: NextRequest) {
                     .slice(-20) // Limit to last 20 messages to avoid token limits
           }
 
-          // Track chat API request
-          analytics.trackEvent('chat_api_request', {
-               category: 'api',
-               messageLength: message.length,
-               userId: userId || 'anonymous',
-               provider: provider || 'gemini'
-          })
+          // Track chat API request (with error handling)
+          try {
+               await analytics.trackEvent('chat_api_request', {
+                    category: 'api',
+                    messageLength: message.length,
+                    userId: userId || 'anonymous',
+                    provider: provider || 'gemini'
+               })
+          } catch (analyticsError) {
+               console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+               // Continue execution even if analytics fails
+          }
 
           // Fetch user profile if userId is provided
           let userProfile: IUserProfile | null = null
@@ -197,66 +378,218 @@ export async function POST(request: NextRequest) {
 
           // Select AI provider based on request or environment variable
           const selectedProvider = provider || process.env.AI_PROVIDER || 'openai'
+          const fallbackProvider = selectedProvider === 'gemini' ? 'openai' : 'gemini'
+
+          // Check if both providers are in cooldown - if so, skip directly to fallback response
+          const openaiInCooldown = openaiService.isInCooldown()
+          const geminiInCooldown = geminiService.isInCooldown()
+
+          if (openaiInCooldown && geminiInCooldown) {
+               const openaiRemaining = openaiService.getCooldownRemainingMs()
+               const geminiRemaining = geminiService.getCooldownRemainingMs()
+               console.warn(`[API] Both providers in cooldown - OpenAI: ${Math.ceil(openaiRemaining / 1000)}s, Gemini: ${Math.ceil(geminiRemaining / 1000)}s. Skipping to fallback response.`)
+               
+               // Track this scenario
+               try {
+                    await analytics.trackEvent('ai_both_providers_cooldown', {
+                         category: 'error',
+                         openaiCooldownMs: openaiRemaining,
+                         geminiCooldownMs: geminiRemaining,
+                         userId: userId || 'anonymous'
+                    })
+               } catch (analyticsError) {
+                    console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+               }
+
+               // Skip directly to fallback response
+               const nutritionResponse = createFallbackResponse(message)
+               
+               const response = {
+                    ...nutritionResponse,
+                    recommendedProducts: [],
+                    recommendedCombos: undefined,
+                    suggestedCombo: undefined,
+                    userId: userId || null,
+                    provider: 'fallback',
+                    timestamp: new Date().toISOString()
+               }
+
+               // Track fallback response
+               try {
+                    await analytics.trackEvent('chat_api_response', {
+                         category: 'api',
+                         hasProducts: false,
+                         productCount: 0,
+                         isInformationalQuestion: true,
+                         responseLength: nutritionResponse.reply?.length || 0,
+                         userId: userId || 'anonymous',
+                         provider: 'fallback'
+                    })
+               } catch (analyticsError) {
+                    console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+               }
+
+               // Background health check: verify if APIs are back online (non-blocking)
+               performBackgroundHealthCheck(userId)
+
+               return NextResponse.json(response)
+          }
 
           let nutritionResponse
 
           try {
+               console.log(`[API] Attempting to generate advice with provider: ${selectedProvider}`)
                if (selectedProvider === 'gemini') {
                     nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
                } else {
                     nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
                }
 
-               // Track successful AI response
-               analytics.trackEvent('ai_response_generated', {
-                    category: 'ai',
-                    provider: selectedProvider,
-                    responseLength: nutritionResponse.reply?.length || 0,
-                    userId: userId || 'anonymous'
-               })
+               // Track successful AI response (with error handling)
+               try {
+                    await analytics.trackEvent('ai_response_generated', {
+                         category: 'ai',
+                         provider: selectedProvider,
+                         responseLength: nutritionResponse.reply?.length || 0,
+                         userId: userId || 'anonymous'
+                    })
+               } catch (analyticsError) {
+                    console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+               }
           } catch (providerError) {
                console.error(`${selectedProvider} API error:`, providerError)
 
+               // Track quota-specific errors separately for better observability
+               if (providerError instanceof AIQuotaError) {
+                    const quotaError = providerError as AIQuotaError
+                    console.warn(`[API] ${quotaError.provider} quota/cooldown hit. retryAfterMs=${quotaError.retryAfterMs ?? 'unknown'}`)
+                    try {
+                         await analytics.trackEvent('ai_quota_exceeded', {
+                              category: 'error',
+                              provider: quotaError.provider,
+                              retryAfterMs: quotaError.retryAfterMs ?? -1,
+                              userId: userId || 'anonymous'
+                         })
+                    } catch (analyticsError) {
+                         console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                    }
+               }
+
                // Track AI provider error
-               analytics.trackEvent('ai_provider_error', {
-                    category: 'error',
-                    provider: selectedProvider,
-                    errorType: 'provider_failure',
-                    userId: userId || 'anonymous'
-               })
+               try {
+                    await analytics.trackEvent('ai_provider_error', {
+                         category: 'error',
+                         provider: selectedProvider,
+                         errorType: 'provider_failure',
+                         userId: userId || 'anonymous'
+                    })
+               } catch (analyticsError) {
+                    console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+               }
 
                // Fallback to the other provider if one fails
-               const fallbackProvider = selectedProvider === 'gemini' ? 'openai' : 'gemini'
                console.log(`Falling back to ${fallbackProvider}`)
+               
+               // Check if fallback provider is also in cooldown before attempting
+               const fallbackInCooldown = fallbackProvider === 'gemini' 
+                    ? geminiService.isInCooldown()
+                    : openaiService.isInCooldown()
+               
+               if (fallbackInCooldown) {
+                    const remaining = fallbackProvider === 'gemini'
+                         ? geminiService.getCooldownRemainingMs()
+                         : openaiService.getCooldownRemainingMs()
+                    console.warn(`[API] Fallback provider ${fallbackProvider} also in cooldown (${Math.ceil(remaining / 1000)}s remaining). Skipping to fallback response.`)
+                    
+                    // Skip directly to fallback response without attempting API call
+                    nutritionResponse = createFallbackResponse(message)
+                    
+                    // Background health check: verify if APIs are back online (non-blocking)
+                    performBackgroundHealthCheck(userId)
+               } else {
+                    try {
+                         if (fallbackProvider === 'gemini') {
+                              nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                         } else {
+                              nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                         }
 
-               try {
-                    if (fallbackProvider === 'gemini') {
-                         nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
-                    } else {
-                         nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                         // Track successful fallback
+                         try {
+                              await analytics.trackEvent('ai_fallback_success', {
+                                   category: 'ai',
+                                   originalProvider: selectedProvider,
+                                   fallbackProvider,
+                                   userId: userId || 'anonymous'
+                              })
+                         } catch (analyticsError) {
+                              console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                         }
+                    } catch (fallbackError) {
+                         console.error(`${fallbackProvider} fallback also failed:`, fallbackError)
+                         console.error('Fallback error details:', {
+                              message: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+                              stack: fallbackError instanceof Error ? fallbackError.stack : undefined
+                         })
+
+                         // Track quota-specific errors on fallback provider as well
+                         if (fallbackError instanceof AIQuotaError) {
+                              const quotaError = fallbackError as AIQuotaError
+                              console.warn(`[API] Fallback provider ${quotaError.provider} quota/cooldown hit. retryAfterMs=${quotaError.retryAfterMs ?? 'unknown'}`)
+                              try {
+                                   await analytics.trackEvent('ai_quota_exceeded', {
+                                        category: 'error',
+                                        provider: quotaError.provider,
+                                        retryAfterMs: quotaError.retryAfterMs ?? -1,
+                                        userId: userId || 'anonymous'
+                                   })
+                              } catch (analyticsError) {
+                                   console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                              }
+                         }
+
+                         // Track complete failure
+                         try {
+                              await analytics.trackEvent('ai_complete_failure', {
+                                   category: 'error',
+                                   originalProvider: selectedProvider,
+                                   fallbackProvider,
+                                   errorType: 'all_providers_failed',
+                                   userId: userId || 'anonymous'
+                              })
+                         } catch (analyticsError) {
+                              console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                         }
+
+                         // Instead of throwing an error, provide a fallback response
+                         console.warn('[API] Both AI providers failed, using fallback response')
+                         nutritionResponse = createFallbackResponse(message)
+                         
+                         // Background health check: verify if APIs are back online (non-blocking)
+                         performBackgroundHealthCheck(userId)
                     }
-
-                    // Track successful fallback
-                    analytics.trackEvent('ai_fallback_success', {
-                         category: 'ai',
-                         originalProvider: selectedProvider,
-                         fallbackProvider,
-                         userId: userId || 'anonymous'
-                    })
-               } catch (fallbackError) {
-                    console.error(`${fallbackProvider} fallback also failed:`, fallbackError)
-
-                    // Track complete failure
-                    analytics.trackEvent('ai_complete_failure', {
-                         category: 'error',
-                         originalProvider: selectedProvider,
-                         fallbackProvider,
-                         errorType: 'all_providers_failed',
-                         userId: userId || 'anonymous'
-                    })
-
-                    throw new Error('Both AI providers failed')
                }
+          }
+
+          // Validate that we have a valid nutrition response
+          if (!nutritionResponse) {
+               console.error('[API] nutritionResponse is null or undefined, using fallback')
+               nutritionResponse = createFallbackResponse(message)
+          }
+          
+          if (!nutritionResponse.reply) {
+               console.error('[API] nutritionResponse.reply is missing:', {
+                    hasResponse: !!nutritionResponse,
+                    responseKeys: nutritionResponse ? Object.keys(nutritionResponse) : [],
+                    responseType: typeof nutritionResponse
+               })
+               nutritionResponse = createFallbackResponse(message)
+          }
+
+          // Ensure products array exists
+          if (!Array.isArray(nutritionResponse.products)) {
+               console.warn('[API] nutritionResponse.products is not an array, setting to empty array')
+               nutritionResponse.products = []
           }
 
           // Search for relevant products based on AI response and/or user intent
@@ -481,13 +814,17 @@ export async function POST(request: NextRequest) {
                          }
                     }
 
-                    // Track product search attempt
-                    analytics.trackEvent('product_search_initiated', {
-                         category: 'ecommerce',
-                         searchQueries: searchQueries.join(', '),
-                         queryCount: searchQueries.length,
-                         userId: userId || 'anonymous'
-                    })
+                    // Track product search attempt (with error handling)
+                    try {
+                         await analytics.trackEvent('product_search_initiated', {
+                              category: 'ecommerce',
+                              searchQueries: searchQueries.join(', '),
+                              queryCount: searchQueries.length,
+                              userId: userId || 'anonymous'
+                         })
+                    } catch (analyticsError) {
+                         console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                    }
 
                     // Search for products using the first query (most relevant)
                     // Using live Shopify Storefront API data
@@ -526,33 +863,45 @@ export async function POST(request: NextRequest) {
                               }
                          }
 
-                         // Track successful product search
-                         analytics.trackEvent('product_search_completed', {
-                              category: 'ecommerce',
-                              searchQuery: searchQueries[0],
-                              productCount: recommendedProducts.length,
-                              userId: userId || 'anonymous'
-                         })
+                         // Track successful product search (with error handling)
+                         try {
+                              await analytics.trackEvent('product_search_completed', {
+                                   category: 'ecommerce',
+                                   searchQuery: searchQueries[0],
+                                   productCount: recommendedProducts.length,
+                                   userId: userId || 'anonymous'
+                              })
+                         } catch (analyticsError) {
+                              console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                         }
 
-                         // Track individual product recommendations
+                         // Track individual product recommendations (with error handling)
                          recommendedProducts.forEach((product) => {
-                              analytics.trackProductRecommended(
-                                   product.title,
-                                   product.variantId,
-                                   userId || 'anonymous',
-                                   'ai_generated'
-                              )
+                              try {
+                                   analytics.trackProductRecommended(
+                                        product.title,
+                                        product.variantId,
+                                        userId || 'anonymous',
+                                        'ai_generated'
+                                   )
+                              } catch (analyticsError) {
+                                   console.error('[API] Analytics tracking error for product (non-fatal):', analyticsError)
+                              }
                          })
                     }
                } catch (productSearchError) {
                     console.error('Product search error:', productSearchError)
 
-                    // Track product search error
-                    analytics.trackEvent('product_search_error', {
-                         category: 'error',
-                         errorType: 'search_failure',
-                         userId: userId || 'anonymous'
-                    })
+                    // Track product search error (with error handling)
+                    try {
+                         await analytics.trackEvent('product_search_error', {
+                              category: 'error',
+                              errorType: 'search_failure',
+                              userId: userId || 'anonymous'
+                         })
+                    } catch (analyticsError) {
+                         console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                    }
 
                     // Continue without products if search fails
                }
@@ -667,28 +1016,36 @@ export async function POST(request: NextRequest) {
           // Log response summary for debugging
           console.log(`[API] Response summary - Products: ${finalRecommendedProducts.length}, Combos: ${finalRecommendedCombos?.length || 0}, HasSuggestedCombo: ${!!finalSuggestedCombo}, IsInformational: ${interactionIntent}`)
 
-          // Track successful API response
-          analytics.trackEvent('chat_api_response', {
-               category: 'api',
-               hasProducts: finalRecommendedProducts.length > 0,
-               productCount: finalRecommendedProducts.length,
-               isInformationalQuestion: interactionIntent,
-               responseLength: nutritionResponse.reply?.length || 0,
-               userId: userId || 'anonymous',
-               provider: selectedProvider
-          })
+          // Track successful API response (with error handling)
+          try {
+               await analytics.trackEvent('chat_api_response', {
+                    category: 'api',
+                    hasProducts: finalRecommendedProducts.length > 0,
+                    productCount: finalRecommendedProducts.length,
+                    isInformationalQuestion: interactionIntent,
+                    responseLength: nutritionResponse.reply?.length || 0,
+                    userId: userId || 'anonymous',
+                    provider: selectedProvider
+               })
+          } catch (analyticsError) {
+               console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+          }
 
           return NextResponse.json(response)
      } catch (error) {
           console.error('Chat API error:', error)
 
-          // Track API error
-          analytics.trackEvent('chat_api_error', {
-               category: 'error',
-               errorType: 'internal_server_error',
-               errorMessage: error instanceof Error ? error.message : 'Unknown error',
-               userId: 'unknown'
-          })
+          // Track API error (with error handling to prevent double errors)
+          try {
+               await analytics.trackEvent('chat_api_error', {
+                    category: 'error',
+                    errorType: 'internal_server_error',
+                    errorMessage: error instanceof Error ? error.message : 'Unknown error',
+                    userId: 'unknown'
+               })
+          } catch (analyticsError) {
+               console.error('[API] Analytics tracking error during error handling (non-fatal):', analyticsError)
+          }
 
           return NextResponse.json(
                { error: 'Internal server error' },
