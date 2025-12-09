@@ -310,8 +310,7 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
         return;
       }
 
-      const targetUrl =
-        result.checkoutUrl || result.cartUrl || "https://vigaia.com/cart";
+      const targetUrl = result.cartUrl || "https://vigaia.com/cart";
 
       window.open(targetUrl, "_blank", "noopener");
     } catch (error) {

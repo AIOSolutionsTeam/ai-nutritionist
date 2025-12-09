@@ -14,16 +14,11 @@ export interface AddToCartResult {
   };
 }
 
-const CART_ID_STORAGE_KEY = "vigaia_shopify_cart_id";
 const SHOP_WEB_URL =
-  (process.env.NEXT_PUBLIC_SHOPIFY_SHOP_URL ||process.env.SHOPIFY_STORE_DOMAIN || "https://vigaia.com").replace(
-    /\/$/,
-    ""
-  );
+  (process.env.NEXT_PUBLIC_SHOPIFY_SHOP_URL || process.env.SHOPIFY_STORE_DOMAIN ||
+    "https://www.vigaia.com").replace(/\/$/, "");
 
 export interface CartAndCheckoutResult extends AddToCartResult {
-  cartId?: string;
-  checkoutUrl?: string;
   cartUrl?: string;
 }
 
@@ -34,7 +29,7 @@ export function isInIframe(): boolean {
   if (typeof window === "undefined") return false;
   try {
     return window.self !== window.top;
-  } catch (e) {
+  } catch {
     return true; // Cross-origin iframe
   }
 }
@@ -217,7 +212,7 @@ export async function addToShopifyCart(
   // Scenario 3: External domain - try direct API first (might work with CORS if configured)
   try {
     return await addToCartDirect(numericVariantId, quantity);
-  } catch (error) {
+  } catch {
     // If direct API fails, return helpful error message
     return {
       success: false,
@@ -228,72 +223,31 @@ export async function addToShopifyCart(
 }
 
 /**
- * Ensures a Shopify cart exists, adds the item, and returns checkout/cart URLs.
- * Persists cartId in localStorage for re-use between clicks.
+ * Builds a Shopify cart URL that will add the item to the shopper's existing
+ * cart on vigaia.com (or create a new cart if they don't have one yet).
+ * This uses Shopify's cart permalink mechanism so there is only ONE cart:
+ * the main store cart that the user can edit on vigaia.com.
  */
 export async function ensureCartAndAddProduct(
   variantId: string,
   quantity: number = 1
 ): Promise<CartAndCheckoutResult> {
-  if (typeof window === "undefined") {
-    return {
-      success: false,
-      message: "Cette action nécessite le navigateur (côté client).",
-    };
-  }
+  // Convert GraphQL variant ID to numeric ID expected by Shopify cart URLs
+  const numericVariantId = variantId.includes("/")
+    ? variantId.split("/").pop() || variantId
+    : variantId;
 
-  const merchandiseId = variantId.includes("/")
-    ? variantId
-    : `gid://shopify/ProductVariant/${variantId}`;
+  // Use Shopify cart permalink that APPENDS to the existing cart:
+  // /cart/add?id=VARIANT_ID&quantity=QTY
+  const url = `${SHOP_WEB_URL}/cart/add?id=${encodeURIComponent(
+    numericVariantId
+  )}&quantity=${encodeURIComponent(String(quantity))}`;
 
-  const payload: Record<string, unknown> = {
-    merchandiseId,
-    quantity,
+  return {
+    success: true,
+    message: "Produit ajouté au panier! 🛒",
+    cartUrl: url,
   };
-
-  const existingCartId = window.localStorage?.getItem(CART_ID_STORAGE_KEY);
-  if (existingCartId) {
-    payload.cartId = existingCartId;
-  }
-
-  try {
-    const response = await fetch("/api/shopify/cart", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data?.success) {
-      return {
-        success: false,
-        message:
-          data?.message ||
-          "Impossible d'ajouter le produit au panier pour le moment.",
-      };
-    }
-
-    if (data.cartId) {
-      window.localStorage?.setItem(CART_ID_STORAGE_KEY, data.cartId);
-    }
-
-    return {
-      success: true,
-      message: data.message || "Produit ajouté au panier! 🛒",
-      cartId: data.cartId,
-      checkoutUrl: data.checkoutUrl,
-      cartUrl: data.cartUrl || `${SHOP_WEB_URL}/cart`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Impossible d'ajouter le produit au panier.",
-    };
-  }
 }
 
 
