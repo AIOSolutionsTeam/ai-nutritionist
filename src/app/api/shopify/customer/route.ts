@@ -89,9 +89,9 @@ export async function GET(request: NextRequest) {
                                    shopifyCustomerId: customerInfo.customerId,
                                    shopifyCustomerName: customerInfo.customerName
                               });
-                         } catch (error: any) {
+                         } catch (error: unknown) {
                               // If profile creation fails (e.g., duplicate), try to update
-                              if (error.code === 11000) {
+                              if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
                                    const profile = await dbService.getUserProfile(`shopify_${customerInfo.customerId}`);
                                    if (profile) {
                                         await dbService.updateUserProfile(profile.userId, {

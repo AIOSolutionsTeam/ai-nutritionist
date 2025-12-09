@@ -84,6 +84,9 @@ interface ProductSearchResult {
   variantId: string;
   available: boolean;
   currency: string;
+  originalPrice?: number; // Original price before discount
+  discountPercentage?: number; // Discount percentage (e.g., 40 for 40% off)
+  isOnSale?: boolean; // Whether the product is currently on sale
 }
 
 // Loading animation component - Subtle, warm style

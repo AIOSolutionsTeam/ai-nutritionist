@@ -2,21 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dbService, IUserProfile } from '../../../lib/db';
 import { extractShopifyCustomerInfo } from '../../../lib/shopify-auth';
 
-// Initialize database connection
-let isDbConnected = false;
-
 async function ensureDbConnection() {
      try {
           // Check actual connection state using dbService method
           if (!dbService.isConnectedToDatabase()) {
                await dbService.connect();
-               isDbConnected = true;
-          } else {
-               isDbConnected = true;
           }
      } catch (error) {
           console.error('Failed to connect to database:', error);
-          isDbConnected = false;
           throw new Error('Database connection failed');
      }
 }

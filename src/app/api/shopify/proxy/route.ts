@@ -75,7 +75,12 @@ export async function POST(request: NextRequest) {
           const loggedInCustomerId = url.searchParams.get('logged_in_customer_id') || undefined
 
           // Prefer an explicit userId in the body, otherwise derive one from Shopify context
-          let body: any = {}
+          let body: {
+               message?: string;
+               conversationHistory?: unknown;
+               provider?: string;
+               userId?: string;
+          } = {}
           try {
                body = await request.json()
           } catch {

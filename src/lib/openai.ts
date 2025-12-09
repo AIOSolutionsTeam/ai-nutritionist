@@ -128,10 +128,10 @@ export class OpenAIService {
                return false
           } catch (error) {
                // Check if it's still a quota error
-               const anyError = error as any
-               const status = anyError?.status
-               const code = anyError?.code
-               const message: string = typeof anyError?.message === 'string' ? anyError.message : ''
+               const errorObj = error as { status?: number; code?: string; message?: unknown }
+               const status = errorObj?.status
+               const code = errorObj?.code
+               const message: string = typeof errorObj?.message === 'string' ? errorObj.message : ''
 
                const isQuotaError =
                     status === 429 ||
@@ -334,10 +334,10 @@ IMPORTANT:
                console.error('OpenAI API error:', error)
 
                // Detect quota / rate limit errors (429 or insufficient_quota)
-               const anyError = error as any
-               const status = anyError?.status
-               const code = anyError?.code
-               const message: string = typeof anyError?.message === 'string' ? anyError.message : ''
+               const errorObj = error as { status?: number; code?: string; message?: unknown; headers?: Record<string, string> }
+               const status = errorObj?.status
+               const code = errorObj?.code
+               const message: string = typeof errorObj?.message === 'string' ? errorObj.message : ''
 
                const isQuotaError =
                     status === 429 ||
@@ -351,7 +351,7 @@ IMPORTANT:
                     let retryAfterMs: number | undefined
 
                     // Try to extract a Retry-After header if present
-                    const headers = anyError?.headers as Record<string, string> | undefined
+                    const headers = errorObj?.headers
                     const retryAfterHeader = headers?.['retry-after'] || headers?.['Retry-After']
                     if (retryAfterHeader) {
                          const parsed = parseInt(retryAfterHeader, 10)
@@ -464,14 +464,14 @@ export class GeminiService {
      }
 
      private isQuotaError(error: unknown): boolean {
-          const anyErr = error as any
-          if (!anyErr) return false
+          if (!error || typeof error !== 'object') return false
 
-          if (anyErr.status === 429) {
+          const errorObj = error as { status?: number; message?: unknown }
+          if (errorObj.status === 429) {
                return true
           }
 
-          const message: string = typeof anyErr.message === 'string' ? anyErr.message : ''
+          const message: string = typeof errorObj.message === 'string' ? errorObj.message : ''
           const lower = message.toLowerCase()
           return lower.includes('too many requests') ||
                lower.includes('quota') ||
@@ -781,8 +781,9 @@ IMPORTANT:
                     // If this is a quota / rate limit error, stop trying other models
                     if (this.isQuotaError(modelError)) {
                          let retryAfterMs: number | undefined
-                         const message: string = typeof (modelError as any)?.message === 'string'
-                              ? (modelError as any).message
+                         const errorObj = modelError as { message?: unknown }
+                         const message: string = typeof errorObj?.message === 'string'
+                              ? errorObj.message
                               : ''
                          const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
                          if (match) {

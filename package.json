@@ -19,7 +19,7 @@
     "@types/nodemailer": "^7.0.2",
     "@types/pdfkit": "^0.17.3",
     "mongoose": "^8.19.1",
-    "next": "15.5.4",
+    "next": "^15.5.7",
     "nodemailer": "^7.0.9",
     "openai": "^6.3.0",
     "pdfkit": "^0.17.2",
@@ -34,7 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.5.4",
+    "eslint-config-next": "^15.5.7",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
