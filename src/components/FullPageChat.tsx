@@ -1907,8 +1907,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
               key={message.id}
               className={`flex items-start space-x-2 sm:space-x-3 ${
                 message.isUser ? "flex-row-reverse space-x-reverse" : ""
-              } animate-fade-in`}
-              style={{ 
+              } ${message.isUser ? "" : "animate-fade-in"}`}
+              style={message.isUser ? {} : { 
                 animationDelay: `${index * 0.1}s`
               }}
             >
