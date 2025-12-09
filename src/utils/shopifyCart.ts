@@ -14,6 +14,19 @@ export interface AddToCartResult {
   };
 }
 
+const CART_ID_STORAGE_KEY = "vigaia_shopify_cart_id";
+const SHOP_WEB_URL =
+  (process.env.NEXT_PUBLIC_SHOPIFY_SHOP_URL || "https://vigaia.com").replace(
+    /\/$/,
+    ""
+  );
+
+export interface CartAndCheckoutResult extends AddToCartResult {
+  cartId?: string;
+  checkoutUrl?: string;
+  cartUrl?: string;
+}
+
 /**
  * Detects if the app is running in an iframe
  */
@@ -213,4 +226,74 @@ export async function addToShopifyCart(
     };
   }
 }
+
+/**
+ * Ensures a Shopify cart exists, adds the item, and returns checkout/cart URLs.
+ * Persists cartId in localStorage for re-use between clicks.
+ */
+export async function ensureCartAndAddProduct(
+  variantId: string,
+  quantity: number = 1
+): Promise<CartAndCheckoutResult> {
+  if (typeof window === "undefined") {
+    return {
+      success: false,
+      message: "Cette action nécessite le navigateur (côté client).",
+    };
+  }
+
+  const merchandiseId = variantId.includes("/")
+    ? variantId
+    : `gid://shopify/ProductVariant/${variantId}`;
+
+  const payload: Record<string, unknown> = {
+    merchandiseId,
+    quantity,
+  };
+
+  const existingCartId = window.localStorage?.getItem(CART_ID_STORAGE_KEY);
+  if (existingCartId) {
+    payload.cartId = existingCartId;
+  }
+
+  try {
+    const response = await fetch("/api/shopify/cart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.success) {
+      return {
+        success: false,
+        message:
+          data?.message ||
+          "Impossible d'ajouter le produit au panier pour le moment.",
+      };
+    }
+
+    if (data.cartId) {
+      window.localStorage?.setItem(CART_ID_STORAGE_KEY, data.cartId);
+    }
+
+    return {
+      success: true,
+      message: data.message || "Produit ajouté au panier! 🛒",
+      cartId: data.cartId,
+      checkoutUrl: data.checkoutUrl,
+      cartUrl: data.cartUrl || `${SHOP_WEB_URL}/cart`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Impossible d'ajouter le produit au panier.",
+    };
+  }
+}
+
 

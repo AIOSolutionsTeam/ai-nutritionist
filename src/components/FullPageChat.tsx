@@ -8,7 +8,7 @@ import {
   trackAddToCart,
   trackEvent,
 } from "../utils/analytics";
-import { addToShopifyCart } from "../utils/shopifyCart";
+import { ensureCartAndAddProduct } from "../utils/shopifyCart";
 
 // TypeScript definitions for Web Speech API
 interface SpeechRecognition extends EventTarget {
@@ -295,15 +295,33 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
 
 // Product Card component
 const ProductCard = ({ product }: { product: ProductSearchResult }) => {
+  const [isAdding, setIsAdding] = useState(false);
+
   const handleAddToCart = async () => {
+    if (isAdding) return;
+    setIsAdding(true);
     trackAddToCart(product.title, product.variantId, product.price, 1);
-    
-    const result = await addToShopifyCart(product.variantId, 1);
-    
-    if (result.success) {
-      alert(result.message);
-    } else {
-      alert(result.message);
+
+    try {
+      const result = await ensureCartAndAddProduct(product.variantId, 1);
+
+      if (!result.success) {
+        alert(result.message);
+        return;
+      }
+
+      const targetUrl =
+        result.checkoutUrl || result.cartUrl || "https://vigaia.com/cart";
+
+      window.open(targetUrl, "_blank", "noopener");
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible d'ajouter le produit au panier."
+      );
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -338,11 +356,15 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
           </div>
           <button
             onClick={handleAddToCart}
-            disabled={!product.available}
+            disabled={!product.available || isAdding}
             className="w-full px-4 py-2.5 text-primary-foreground text-xs font-light uppercase tracking-[0.1em] rounded-full hover:brightness-90 hover:saturate-110 disabled:bg-muted disabled:cursor-not-allowed transition-all duration-300 shadow-sm hover:shadow-md"
             style={{ backgroundColor: product.available ? 'hsl(var(--primary))' : undefined }}
           >
-            {product.available ? "Ajouter au panier" : "Rupture de stock"}
+            {product.available
+              ? isAdding
+                ? "Ajout en cours..."
+                : "Ajouter au panier"
+              : "Rupture de stock"}
           </button>
         </div>
       </div>
