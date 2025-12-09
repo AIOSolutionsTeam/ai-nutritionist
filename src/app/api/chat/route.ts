@@ -112,6 +112,180 @@ const GOAL_TAGS: { [goal: string]: string[] } = {
 }
 
 /**
+ * Structured representation of what the user is trying to achieve
+ * (intent) versus how we satisfy it (Shopify products).
+ */
+interface UserIntent {
+     primaryGoal?: string;
+     secondaryGoals: string[];
+     /**
+      * Budget copied from the persisted profile.
+      * We use max as an upper bound per product for basic filtering.
+      */
+     budget?: {
+          min: number;
+          max: number;
+          currency: string;
+     };
+     /**
+      * Dietary / cultural preferences that should be respected when possible.
+      * Example: halal, vegan, vegetarian.
+      */
+     requiredDietTags: string[];
+     /**
+      * Ingredients / properties to avoid based on allergies (gluten, lactose, nuts, etc.).
+      * These are mapped to Shopify tags or metafields.
+      */
+     avoidTags: string[];
+     /**
+      * Whether the user explicitly prefers halal-compliant products.
+      * This is also reflected in requiredDietTags but kept explicit for logging.
+      */
+     halalPreferred: boolean;
+}
+
+/**
+ * Build a structured UserIntent from profile plus conversation‑derived goals.
+ * This is deliberately rule‑based and deterministic so product selection
+ * can be controlled independently from the language model.
+ */
+function deriveUserIntent(
+     userProfile: IUserProfile | null,
+     goalKeys: string[],
+     userLower: string,
+     replyLower: string
+): UserIntent | null {
+     if (!userProfile && goalKeys.length === 0) {
+          return null
+     }
+
+     const allGoals: string[] = []
+     const seenGoals = new Set<string>()
+     const pushGoal = (g?: string | null) => {
+          if (!g) return
+          const norm = g.trim()
+          if (!norm || seenGoals.has(norm)) return
+          seenGoals.add(norm)
+          allGoals.push(norm)
+     }
+
+     // Goals from stored profile
+     if (userProfile?.goals && Array.isArray(userProfile.goals)) {
+          userProfile.goals.forEach((g) => pushGoal(g))
+     }
+     // Goals from current conversation / detection logic
+     goalKeys.forEach((g) => pushGoal(g))
+
+     const primaryGoal = allGoals[0]
+     const secondaryGoals = allGoals.slice(1)
+
+     const requiredDietTags: string[] = []
+     const avoidTags: string[] = []
+
+     const allergies = (userProfile?.allergies || []).map(a => a.toLowerCase())
+
+     // Positive dietary preferences – interpreted from the same field for now
+     if (allergies.includes('halal') || /\bhalal\b/i.test(userLower) || /\bhalal\b/i.test(replyLower)) {
+          requiredDietTags.push('halal')
+     }
+     if (allergies.includes('vegan')) {
+          requiredDietTags.push('vegan')
+     }
+     if (allergies.includes('vegetarian') || allergies.includes('végétarien') || allergies.includes('vegetarien')) {
+          requiredDietTags.push('vegetarian')
+     }
+
+     // True allergies / intolerances → tags to avoid
+     if (allergies.includes('gluten')) {
+          avoidTags.push('gluten')
+     }
+     if (allergies.includes('lactose')) {
+          avoidTags.push('lactose')
+     }
+     if (allergies.includes('nuts') || allergies.includes('noix')) {
+          avoidTags.push('nuts', 'noix')
+     }
+     if (allergies.includes('peanuts') || allergies.includes('arachides')) {
+          avoidTags.push('peanuts', 'arachides')
+     }
+     if (allergies.includes('shellfish') || allergies.includes('fruits de mer')) {
+          avoidTags.push('shellfish', 'seafood')
+     }
+     if (allergies.includes('eggs') || allergies.includes('œufs') || allergies.includes('oeufs')) {
+          avoidTags.push('eggs', 'œufs', 'oeufs')
+     }
+     if (allergies.includes('soy') || allergies.includes('soja')) {
+          avoidTags.push('soy', 'soja')
+     }
+
+     const halalPreferred = requiredDietTags.includes('halal')
+
+     return {
+          primaryGoal,
+          secondaryGoals,
+          budget: userProfile?.budget,
+          requiredDietTags,
+          avoidTags,
+          halalPreferred
+     }
+}
+
+/**
+ * Apply deterministic filters (budget, halal/diet, allergies) on top of
+ * whatever the Shopify search returns. This keeps merchandising predictable
+ * and independent from free‑text matching.
+ */
+function filterProductsByIntent(
+     products: ProductSearchResult[],
+     intent: UserIntent | null
+): ProductSearchResult[] {
+     if (!intent) return products
+
+     const { budget, requiredDietTags, avoidTags, halalPreferred } = intent
+     if (!products || products.length === 0) return products
+
+     const hasBudget = !!budget && typeof budget.max === 'number' && budget.max > 0
+     const requiredDiet = requiredDietTags.map(t => t.toLowerCase())
+     const avoid = avoidTags.map(t => t.toLowerCase())
+
+     return products.filter((product) => {
+          const tags = (product.tags || []).map(t => t.toLowerCase())
+
+          // Basic price guardrail: keep products under user max budget when defined.
+          if (hasBudget && product.price > (budget!.max || 0)) {
+               return false
+          }
+
+          // If user clearly prefers halal, favour products explicitly tagged halal.
+          if (halalPreferred) {
+               // If tags exist but none are halal‑like, reject.
+               if (tags.length > 0 && !tags.some(t => t.includes('halal'))) {
+                    return false
+               }
+          }
+
+          // Enforce diet tags when we actually have product tags.
+          if (requiredDiet.length > 0 && tags.length > 0) {
+               const hasAllRequired = requiredDiet.every(req =>
+                    tags.some(t => t.includes(req))
+               )
+               if (!hasAllRequired) {
+                    return false
+               }
+          }
+
+          // Exclude products that contain any forbidden tags.
+          if (avoid.length > 0 && tags.length > 0) {
+               if (avoid.some(excluded => tags.some(t => t.includes(excluded)))) {
+                    return false
+               }
+          }
+
+          return true
+     })
+}
+
+/**
  * Derive high-level health goals from the user profile and current conversation.
  * These goals are then mapped to Shopify tags via GOAL_TAGS for curated searches.
  */
@@ -648,6 +822,9 @@ export async function POST(request: NextRequest) {
           // Derive high-level health goals (energy, sleep, stress, etc.) from profile + conversation
           const goalKeys = deriveGoalKeysFromContext(userProfile, userLower, replyLower)
 
+          // Build a structured, deterministic intent object from profile + goals + message
+          const userIntent = deriveUserIntent(userProfile, goalKeys, userLower, replyLower)
+
           // Detect safety/interaction/informational questions where we should avoid suggesting products
           // These are questions asking for information, not product recommendations
           const informationalQuestionPatterns = [
@@ -825,9 +1002,20 @@ export async function POST(request: NextRequest) {
                                    const tagsForGoal = GOAL_TAGS[goal]
                                    if (!tagsForGoal || tagsForGoal.length === 0) continue
 
-                                   console.log(`[API] Searching products by tags for goal "${goal}" -> [${tagsForGoal.join(', ')}]`)
+                                   // Enrich goal tags with dietary preferences when relevant
+                                   const intentAwareTags = [...tagsForGoal]
+                                   if (userIntent?.halalPreferred && !intentAwareTags.includes('halal')) {
+                                        intentAwareTags.push('halal')
+                                   }
+                                   userIntent?.requiredDietTags.forEach(tag => {
+                                        if (!intentAwareTags.includes(tag)) {
+                                             intentAwareTags.push(tag)
+                                        }
+                                   })
+
+                                   console.log(`[API] Searching products by tags for goal "${goal}" -> [${intentAwareTags.join(', ')}]`)
                                    try {
-                                        const goalProducts = await searchProductsByTags(tagsForGoal, 4)
+                                        const goalProducts = await searchProductsByTags(intentAwareTags, 4)
                                         if (goalProducts && goalProducts.length > 0) {
                                              goalProducts.forEach((p) => {
                                                   if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
@@ -846,6 +1034,14 @@ export async function POST(request: NextRequest) {
                               }
 
                               if (recommendedProducts.length > 0) {
+                                   // Apply deterministic filters (budget, diet, allergies)
+                                   const filteredByIntent = filterProductsByIntent(recommendedProducts, userIntent)
+                                   console.log('[API] Goal-based products before/after intent filter:', {
+                                        before: recommendedProducts.length,
+                                        after: filteredByIntent.length
+                                   })
+                                   recommendedProducts = filteredByIntent
+
                                    console.log('[API] Goal-based tag search produced products:', {
                                         goals: goalKeys,
                                         productTitles: recommendedProducts.map(p => p.title)
@@ -1066,6 +1262,16 @@ export async function POST(request: NextRequest) {
                                              console.log('Complementary product search skipped')
                                         }
                                    }
+
+                              // Apply deterministic filters after keyword + complementary search
+                              if (recommendedProducts.length > 0) {
+                                   const filteredByIntent = filterProductsByIntent(recommendedProducts, userIntent)
+                                   console.log('[API] Keyword-based products before/after intent filter:', {
+                                        before: recommendedProducts.length,
+                                        after: filteredByIntent.length
+                                   })
+                                   recommendedProducts = filteredByIntent
+                              }
                               }
 
                               // Track successful product search (with error handling)
