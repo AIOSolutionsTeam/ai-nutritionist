@@ -836,11 +836,13 @@ export async function POST(request: NextRequest) {
                // Questions asking "what" or "which" in informational context (not product requests)
                /\b(quels?\s+compléments?\s+(?:éviter|ne\s+pas|à\s+éviter|incompatibles?)|quels?\s+suppléments?\s+(?:éviter|ne\s+pas|à\s+éviter|incompatibles?))\b/i,
                // Questions about timing/scheduling
-               /\b(quand\s+prendre|when\s+to\s+take|à\s+quelle\s+heure|timing)\b/i,
+               /\b(quand\s+prendre|when\s+to\s+take|à\s+quelle\s+heure|timing|à\s+quel\s+moment)\b/i,
                // General information questions
-               /\b(qu\'?est\s+ce\s+que|qu\'?est-ce\s+que|what\s+is|explique|explain|parle\s+moi|tell\s+me\s+about)\b/i,
+               /\b(qu\'?est\s+ce\s+que|qu\'?est-ce\s+que|what\s+is|explique|explain|parle\s+moi|tell\s+me\s+about|comment\s+fonctionne)\b/i,
                // Questions about benefits/effects (informational, not product request)
-               /\b(quels?\s+sont\s+les\s+bienfaits?|what\s+are\s+the\s+benefits?|à\s+quoi\s+sert)\b/i,
+               /\b(quels?\s+sont\s+les\s+bienfaits?|what\s+are\s+the\s+benefits?|à\s+quoi\s+sert|pourquoi|pour\s+quoi)\b/i,
+               // Questions about spacing/timing between supplements
+               /\b(espacer|séparer|espace|séparation|combien\s+de\s+temps|how\s+long\s+between)\b/i,
           ]
           
           const isInformationalQuestion = informationalQuestionPatterns.some(pattern => pattern.test(userLower))
@@ -850,6 +852,9 @@ export async function POST(request: NextRequest) {
                /\b(éviter|eviter|ne\s+pas\s+combiner|incompatible|interactions?|contre-indications?)\b/i,
                /\b(il\s+est\s+important\s+de\s+éviter|it\s+is\s+important\s+to\s+avoid)\b/i,
                /\b(ne\s+prenez\s+pas|do\s+not\s+take)\b/i,
+               /\b(espacer|séparer|compétition|bloque\s+l\'?action|absorption)\b/i,
+               /\b(optimiser\s+l\'?absorption|maximiser\s+l\'?efficacité)\b/i,
+               /\b(voici\s+les\s+paires|conseille\s+fortement\s+d\'?espacer)\b/i,
           ]
           const replyIsInformational = replyInformationalPatterns.some(pattern => pattern.test(replyLower))
           
@@ -945,9 +950,9 @@ export async function POST(request: NextRequest) {
           
           // Decide whether we should search for products.
           // CRITICAL: If this is an informational/safety question, NEVER show products
-          // unless the user explicitly asks for products in a non-informational context
-          // For example: "Quels compléments éviter" = informational, no products
-          // But: "Donne-moi une liste de produits pour éviter les carences" = product request, show products
+          // unless the user explicitly asks for products in a non-informational context.
+          // Par exemple : "Quels compléments éviter de prendre ensemble ?" = question
+          // d'interactions -> réponse purement pédagogique, sans produits.
           
           // Check if user explicitly asks for products in a way that's NOT informational
           // This means they want a product list, not information about what to avoid
