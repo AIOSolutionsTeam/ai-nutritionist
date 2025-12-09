@@ -21,6 +21,10 @@ const nextConfig: NextConfig = {
         hostname: 'www.vigaia.com',
       },
     ],
+    minimumCacheTTL: 60,
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   async rewrites() {
     return [

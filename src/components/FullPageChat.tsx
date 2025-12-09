@@ -296,6 +296,7 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
 // Product Card component
 const ProductCard = ({ product }: { product: ProductSearchResult }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const handleAddToCart = async () => {
     if (isAdding) return;
@@ -327,13 +328,21 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
   return (
     <div className="bg-card border-none rounded-lg shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col">
       <div className="aspect-square overflow-hidden relative">
-        <Image
-          src={product.image}
-          alt={product.title}
-          fill
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          className="object-cover"
-        />
+        {imageError ? (
+          <div className="w-full h-full bg-muted flex items-center justify-center">
+            <span className="text-muted-foreground text-xs">Image</span>
+          </div>
+        ) : (
+          <Image
+            src={product.image}
+            alt={product.title}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover"
+            unoptimized={product.image?.includes('cdn.shopify.com')}
+            onError={() => setImageError(true)}
+          />
+        )}
       </div>
       <div className="p-4 flex flex-col flex-1">
         <h3
