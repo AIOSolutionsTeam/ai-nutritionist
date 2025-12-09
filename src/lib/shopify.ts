@@ -373,9 +373,44 @@ export const PRODUCT_COMBOS: ProductCombo[] = [
 /**
  * Collection mapping for Vigaia site
  * Maps collection names/handles to search terms
+ * Based on collections available at https://www.vigaia.com/collections/
+ * 
+ * Collections by need:
+ * - Beauté et Peau
+ * - Stress & Sommeil
+ * - Énergie et Endurance
+ * - Cerveau et concentration
+ * - Immunité
+ * - Santé Digestive & Détox
+ * - Santé hormonale
+ * - Articulation & Mobilité
+ * 
+ * Collections by ingredient:
+ * - Vitamines
+ * - Minéraux
+ * - Plantes adaptogènes
+ * - Acides gras essentiels
+ * - Probiotiques
  */
 export const COLLECTION_MAP: { [key: string]: string[] } = {
-     'energie-et-endurance': ['energie', 'endurance', 'energy', 'vitality', 'fatigue', 'vitalité'],
+     // Collections by need
+     'beaute-et-peau': ['beauté', 'beaute', 'peau', 'skin', 'beauty', 'anti-âge', 'anti-age', 'collagène', 'collagen', 'biotine', 'biotin'],
+     'stress-sommeil': ['stress', 'sommeil', 'sleep', 'anxiété', 'anxiete', 'anxiety', 'insomnie', 'insomnia', 'mélatonine', 'melatonin', 'magnésium', 'magnesium', 'ashwagandha'],
+     'energie-et-endurance': ['energie', 'endurance', 'energy', 'vitality', 'fatigue', 'vitalité', 'coup de barre', 'manque d\'énergie'],
+     'cerveau-concentration': ['cerveau', 'cerveau', 'concentration', 'mémoire', 'memoire', 'memory', 'cognitif', 'cognitive', 'brain', 'lion\'s mane', 'lions mane'],
+     'immunite': ['immunité', 'immunite', 'immunity', 'immune', 'défenses', 'defenses', 'vitamine c', 'vitamin c', 'zinc', 'vitamine d', 'vitamin d'],
+     'sante-digestive-detox': ['digestion', 'digestif', 'digestive', 'détox', 'detox', 'foie', 'liver', 'intestin', 'gut', 'probiotique', 'probiotic', 'chardon marie', 'milk thistle'],
+     'sante-hormonale': ['hormonal', 'hormonale', 'hormone', 'hormones', 'équilibre hormonal', 'equilibre hormonal', 'maca', 'maca noire'],
+     'articulation-mobilite': ['articulation', 'articulations', 'mobilité', 'mobilite', 'mobility', 'joints', 'cartilage', 'glucosamine', 'collagène', 'collagen'],
+     
+     // Collections by ingredient
+     'vitamines': ['vitamine', 'vitamines', 'vitamin', 'vitamins', 'multivitamine', 'multivitamin', 'vitamine b', 'vitamin b', 'vitamine c', 'vitamin c', 'vitamine d', 'vitamin d', 'vitamine k', 'vitamin k'],
+     'mineraux': ['minéral', 'minéraux', 'mineral', 'minerals', 'magnésium', 'magnesium', 'calcium', 'fer', 'iron', 'zinc', 'sélénium', 'selenium'],
+     'plantes-adaptogenes': ['plante adaptogène', 'plantes adaptogènes', 'adaptogen', 'adaptogens', 'ashwagandha', 'ginseng', 'rhodiola', 'maca'],
+     'acides-gras-essentiels': ['acides gras', 'acide gras', 'oméga', 'omega', 'omega 3', 'oméga 3', 'fish oil', 'huile de poisson', 'epa', 'dha'],
+     'probiotiques': ['probiotique', 'probiotiques', 'probiotic', 'probiotics', 'bactéries', 'bacteries', 'flore intestinale', 'gut health'],
+     
+     // Legacy/alternative handles (for backward compatibility)
      'energie': ['energie', 'endurance', 'energy', 'vitality', 'fatigue', 'vitalité'],
      'beaute-anti-age': ['beauté', 'anti-âge', 'beauty', 'anti-age', 'peau', 'skin', 'collagène', 'collagen'],
      'sante-bien-etre': ['santé', 'bien-être', 'health', 'wellness', 'immunité', 'immunity'],
@@ -383,6 +418,96 @@ export const COLLECTION_MAP: { [key: string]: string[] } = {
      'super-aliments': ['super', 'aliments', 'superfood', 'moringa', 'spiruline', 'spirulina'],
      'memoire': ['mémoire', 'memory', 'concentration', 'cognitif', 'cognitive'],
 };
+
+type ShopifyCollection = { title: string; handle: string };
+
+// Cache dynamic collections to reduce Shopify API calls
+let cachedCollectionMap: { map: { [key: string]: string[] }; fetchedAt: number | null } = {
+     map: {},
+     fetchedAt: null,
+};
+
+// Cache TTL for collection map: refresh every 15 days
+const COLLECTION_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 15; // ~15 days
+
+function normalizeTerm(term: string): string {
+     return term.trim().toLowerCase();
+}
+
+function buildKeywordsFromCollection(col: ShopifyCollection): string[] {
+     const titleTokens = col.title.split(/[^a-zA-ZÀ-ÿ0-9]+/).filter(Boolean).map(normalizeTerm);
+     const handleTokens = col.handle.split(/[-\s]+/).filter(Boolean).map(normalizeTerm);
+     return Array.from(new Set([normalizeTerm(col.title), normalizeTerm(col.handle), ...titleTokens, ...handleTokens]));
+}
+
+async function fetchCollectionsFromShopify(): Promise<ShopifyCollection[]> {
+     const { shopifyDomain, shopifyToken } = getShopifyConfig();
+
+     const query = `
+      query listCollections {
+        collections(first: 100) {
+          edges {
+            node {
+              title
+              handle
+            }
+          }
+        }
+      }
+    `;
+
+     const response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
+          method: 'POST',
+          headers: {
+               'Content-Type': 'application/json',
+               'X-Shopify-Storefront-Access-Token': shopifyToken,
+          },
+          body: JSON.stringify({ query }),
+     });
+
+     if (!response.ok) {
+          throw new Error(`Shopify collections fetch failed: ${response.status} ${response.statusText}`);
+     }
+
+     const data = await response.json();
+     if (data.errors) {
+          throw new Error('Shopify collections GraphQL error');
+     }
+
+     const edges = data?.data?.collections?.edges || [];
+     return edges
+          .map((edge: { node: ShopifyCollection }) => edge.node)
+          .filter((node: ShopifyCollection) => node?.handle && node?.title);
+}
+
+/**
+ * Returns a collection map merged with live Shopify collections.
+ * Falls back to static COLLECTION_MAP on failure.
+ */
+export async function getCollectionMap(forceRefresh: boolean = false): Promise<{ [key: string]: string[] }> {
+     const now = Date.now();
+     if (!forceRefresh && cachedCollectionMap.fetchedAt && now - cachedCollectionMap.fetchedAt < COLLECTION_CACHE_TTL_MS) {
+          return cachedCollectionMap.map;
+     }
+
+     try {
+          const liveCollections = await fetchCollectionsFromShopify();
+          const merged: { [key: string]: string[] } = { ...COLLECTION_MAP };
+
+          liveCollections.forEach(col => {
+               const keywords = buildKeywordsFromCollection(col);
+               const existing = merged[col.handle] || [];
+               merged[col.handle] = Array.from(new Set([...existing, ...keywords]));
+          });
+
+          cachedCollectionMap = { map: merged, fetchedAt: now };
+          return merged;
+     } catch (err) {
+          console.error('[Shopify] Failed to refresh collections from Shopify, using static map:', err);
+          cachedCollectionMap = { map: { ...COLLECTION_MAP }, fetchedAt: now };
+          return cachedCollectionMap.map;
+     }
+}
 
 /**
  * Search for products using Shopify Storefront API (LIVE DATA)

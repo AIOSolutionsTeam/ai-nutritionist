@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError } from '../../../lib/openai'
-import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS } from '../../../lib/shopify'
+import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS, getCollectionMap } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 
@@ -909,11 +909,19 @@ export async function POST(request: NextRequest) {
                console.log('[API] Detected combo/combination request from user')
           }
 
-          // Detect collection requests
+          // Detect collection requests (live map with static fallback)
           let requestedCollection: string | undefined = undefined
-          const collectionKeywords = Object.keys(COLLECTION_MAP)
+          let collectionMap = COLLECTION_MAP
+          try {
+               collectionMap = await getCollectionMap()
+          } catch (err) {
+               console.error('[API] Failed to load live collection map, using static map', err)
+               collectionMap = COLLECTION_MAP
+          }
+
+          const collectionKeywords = Object.keys(collectionMap)
           for (const collectionHandle of collectionKeywords) {
-               const collectionTerms = COLLECTION_MAP[collectionHandle]
+               const collectionTerms = collectionMap[collectionHandle]
                const hasCollectionTerm = collectionTerms.some(term => {
                     const regex = new RegExp(`\\b${term}\\b`, 'i')
                     return regex.test(userLower) || regex.test(replyLower)
@@ -1154,7 +1162,7 @@ export async function POST(request: NextRequest) {
                          if (searchQueries.length === 0 && (isSaleRequest || requestedCollection)) {
                               if (requestedCollection) {
                                    // Use collection-specific terms
-                                   const collectionTerms = COLLECTION_MAP[requestedCollection]
+                                   const collectionTerms = collectionMap[requestedCollection]
                                    if (collectionTerms && collectionTerms.length > 0) {
                                         searchQueries = [collectionTerms[0]]
                                    } else {
