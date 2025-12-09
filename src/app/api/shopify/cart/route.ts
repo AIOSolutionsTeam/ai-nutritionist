@@ -5,7 +5,7 @@ const SHOPIFY_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
 const SHOPIFY_API_VERSION =
   process.env.SHOPIFY_STOREFRONT_API_VERSION || "2023-10";
 const SHOP_WEB_URL =
-  (process.env.NEXT_PUBLIC_SHOPIFY_SHOP_URL ||
+  (process.env.NEXT_PUBLIC_SHOPIFY_SHOP_URL ||process.env.SHOPIFY_STORE_DOMAIN ||
     process.env.SHOPIFY_SHOP_URL ||
     "https://vigaia.com").replace(/\/$/, "");
 
@@ -69,7 +69,10 @@ async function shopifyFetch<T>(
   }
 
   if (json.errors?.length) {
-    throw new Error(json.errors.map((e: any) => e.message).join(", "));
+    const messages = (json.errors as Array<{ message?: string }>).map(
+      (e) => e.message || "Unknown Shopify error"
+    );
+    throw new Error(messages.join(", "));
   }
 
   return json.data;

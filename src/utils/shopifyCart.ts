@@ -16,7 +16,7 @@ export interface AddToCartResult {
 
 const CART_ID_STORAGE_KEY = "vigaia_shopify_cart_id";
 const SHOP_WEB_URL =
-  (process.env.NEXT_PUBLIC_SHOPIFY_SHOP_URL || "https://vigaia.com").replace(
+  (process.env.NEXT_PUBLIC_SHOPIFY_SHOP_URL ||process.env.SHOPIFY_STORE_DOMAIN || "https://vigaia.com").replace(
     /\/$/,
     ""
   );
