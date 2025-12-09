@@ -297,7 +297,7 @@ export interface ProductCombo {
      targetAudience?: string[];
 }
 
-const PRODUCT_COMBOS: ProductCombo[] = [
+export const PRODUCT_COMBOS: ProductCombo[] = [
      {
           name: "Bone Health Combo",
           description: "Essential nutrients for strong bones",
@@ -500,16 +500,35 @@ export async function searchProducts(
                const variant = product.variants.edges[0]?.node;
                const image = product.images.edges[0]?.node;
                const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
+               const collectionHandles = product.collections?.edges.map((edge) => edge.node.handle) || [];
+               
+               const price = parseFloat(variant?.price.amount || '0');
+               const compareAtPrice = variant?.compareAtPrice?.amount 
+                    ? parseFloat(variant.compareAtPrice.amount) 
+                    : null;
+               
+               const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+               const discountPercentage = isOnSale && compareAtPrice 
+                    ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+                    : undefined;
+               
+               const primaryCollection = collectionHandles.length > 0 
+                    ? collectionHandles[0] 
+                    : undefined;
 
                return {
                     title: product.title,
-                    price: parseFloat(variant?.price.amount || '0'),
+                    price: price,
+                    originalPrice: compareAtPrice || undefined,
+                    discountPercentage: discountPercentage,
+                    isOnSale: isOnSale,
                     image: image?.url || '',
                     variantId: variant?.id || '',
                     available: variant?.availableForSale || false,
                     currency: variant?.price.currencyCode || 'USD',
                     tags: product.tags || [],
                     collections: collections.length > 0 ? collections : undefined,
+                    collection: primaryCollection,
                };
           });
 

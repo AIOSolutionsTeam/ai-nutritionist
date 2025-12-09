@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError } from '../../../lib/openai'
-import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP } from '../../../lib/shopify'
+import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 
@@ -112,180 +112,6 @@ const GOAL_TAGS: { [goal: string]: string[] } = {
 }
 
 /**
- * Structured representation of what the user is trying to achieve
- * (intent) versus how we satisfy it (Shopify products).
- */
-interface UserIntent {
-     primaryGoal?: string;
-     secondaryGoals: string[];
-     /**
-      * Budget copied from the persisted profile.
-      * We use max as an upper bound per product for basic filtering.
-      */
-     budget?: {
-          min: number;
-          max: number;
-          currency: string;
-     };
-     /**
-      * Dietary / cultural preferences that should be respected when possible.
-      * Example: halal, vegan, vegetarian.
-      */
-     requiredDietTags: string[];
-     /**
-      * Ingredients / properties to avoid based on allergies (gluten, lactose, nuts, etc.).
-      * These are mapped to Shopify tags or metafields.
-      */
-     avoidTags: string[];
-     /**
-      * Whether the user explicitly prefers halal-compliant products.
-      * This is also reflected in requiredDietTags but kept explicit for logging.
-      */
-     halalPreferred: boolean;
-}
-
-/**
- * Build a structured UserIntent from profile plus conversation‑derived goals.
- * This is deliberately rule‑based and deterministic so product selection
- * can be controlled independently from the language model.
- */
-function deriveUserIntent(
-     userProfile: IUserProfile | null,
-     goalKeys: string[],
-     userLower: string,
-     replyLower: string
-): UserIntent | null {
-     if (!userProfile && goalKeys.length === 0) {
-          return null
-     }
-
-     const allGoals: string[] = []
-     const seenGoals = new Set<string>()
-     const pushGoal = (g?: string | null) => {
-          if (!g) return
-          const norm = g.trim()
-          if (!norm || seenGoals.has(norm)) return
-          seenGoals.add(norm)
-          allGoals.push(norm)
-     }
-
-     // Goals from stored profile
-     if (userProfile?.goals && Array.isArray(userProfile.goals)) {
-          userProfile.goals.forEach((g) => pushGoal(g))
-     }
-     // Goals from current conversation / detection logic
-     goalKeys.forEach((g) => pushGoal(g))
-
-     const primaryGoal = allGoals[0]
-     const secondaryGoals = allGoals.slice(1)
-
-     const requiredDietTags: string[] = []
-     const avoidTags: string[] = []
-
-     const allergies = (userProfile?.allergies || []).map(a => a.toLowerCase())
-
-     // Positive dietary preferences – interpreted from the same field for now
-     if (allergies.includes('halal') || /\bhalal\b/i.test(userLower) || /\bhalal\b/i.test(replyLower)) {
-          requiredDietTags.push('halal')
-     }
-     if (allergies.includes('vegan')) {
-          requiredDietTags.push('vegan')
-     }
-     if (allergies.includes('vegetarian') || allergies.includes('végétarien') || allergies.includes('vegetarien')) {
-          requiredDietTags.push('vegetarian')
-     }
-
-     // True allergies / intolerances → tags to avoid
-     if (allergies.includes('gluten')) {
-          avoidTags.push('gluten')
-     }
-     if (allergies.includes('lactose')) {
-          avoidTags.push('lactose')
-     }
-     if (allergies.includes('nuts') || allergies.includes('noix')) {
-          avoidTags.push('nuts', 'noix')
-     }
-     if (allergies.includes('peanuts') || allergies.includes('arachides')) {
-          avoidTags.push('peanuts', 'arachides')
-     }
-     if (allergies.includes('shellfish') || allergies.includes('fruits de mer')) {
-          avoidTags.push('shellfish', 'seafood')
-     }
-     if (allergies.includes('eggs') || allergies.includes('œufs') || allergies.includes('oeufs')) {
-          avoidTags.push('eggs', 'œufs', 'oeufs')
-     }
-     if (allergies.includes('soy') || allergies.includes('soja')) {
-          avoidTags.push('soy', 'soja')
-     }
-
-     const halalPreferred = requiredDietTags.includes('halal')
-
-     return {
-          primaryGoal,
-          secondaryGoals,
-          budget: userProfile?.budget,
-          requiredDietTags,
-          avoidTags,
-          halalPreferred
-     }
-}
-
-/**
- * Apply deterministic filters (budget, halal/diet, allergies) on top of
- * whatever the Shopify search returns. This keeps merchandising predictable
- * and independent from free‑text matching.
- */
-function filterProductsByIntent(
-     products: ProductSearchResult[],
-     intent: UserIntent | null
-): ProductSearchResult[] {
-     if (!intent) return products
-
-     const { budget, requiredDietTags, avoidTags, halalPreferred } = intent
-     if (!products || products.length === 0) return products
-
-     const hasBudget = !!budget && typeof budget.max === 'number' && budget.max > 0
-     const requiredDiet = requiredDietTags.map(t => t.toLowerCase())
-     const avoid = avoidTags.map(t => t.toLowerCase())
-
-     return products.filter((product) => {
-          const tags = (product.tags || []).map(t => t.toLowerCase())
-
-          // Basic price guardrail: keep products under user max budget when defined.
-          if (hasBudget && product.price > (budget!.max || 0)) {
-               return false
-          }
-
-          // If user clearly prefers halal, favour products explicitly tagged halal.
-          if (halalPreferred) {
-               // If tags exist but none are halal‑like, reject.
-               if (tags.length > 0 && !tags.some(t => t.includes('halal'))) {
-                    return false
-               }
-          }
-
-          // Enforce diet tags when we actually have product tags.
-          if (requiredDiet.length > 0 && tags.length > 0) {
-               const hasAllRequired = requiredDiet.every(req =>
-                    tags.some(t => t.includes(req))
-               )
-               if (!hasAllRequired) {
-                    return false
-               }
-          }
-
-          // Exclude products that contain any forbidden tags.
-          if (avoid.length > 0 && tags.length > 0) {
-               if (avoid.some(excluded => tags.some(t => t.includes(excluded)))) {
-                    return false
-               }
-          }
-
-          return true
-     })
-}
-
-/**
  * Derive high-level health goals from the user profile and current conversation.
  * These goals are then mapped to Shopify tags via GOAL_TAGS for curated searches.
  */
@@ -335,6 +161,180 @@ function deriveGoalKeysFromContext(
      }
 
      return goals
+}
+
+/**
+ * Structured view of what the user wants right now.
+ * This is intentionally independent from "how we search Shopify".
+ */
+interface UserIntent {
+     goal?: keyof typeof GOAL_TAGS
+     secondaryGoals: Array<keyof typeof GOAL_TAGS>
+     /** Budget range from the stored profile, if available */
+     budget?: {
+          min: number
+          max: number
+          currency: string
+     }
+     /** Dietary / lifestyle constraints inferred from allergies field */
+     requireHalal: boolean
+     requireVegetarian: boolean
+     requireVegan: boolean
+     avoidGluten: boolean
+     avoidLactose: boolean
+     /** True for interaction/safety/information questions where we normally avoid products */
+     informationalQuestion: boolean
+     /** User explicitly asked for a list of products */
+     explicitProductRequest: boolean
+     /** User mentions carences / deficiencies – we can be more proactive */
+     deficiencyIntent: boolean
+     /** Browsing promos / “en solde…” */
+     saleRequest: boolean
+     /** Explicit collection / univers requested (handle) */
+     requestedCollection?: string
+}
+
+/**
+ * Build a structured UserIntent from high-level signals (goals, profile, flags).
+ * This is the single source of truth for "what the user wants" in the product layer.
+ */
+function buildUserIntent(params: {
+     goalKeys: string[]
+     userProfile: IUserProfile | null
+     interactionIntent: boolean
+     explicitProductRequest: boolean
+     deficiencyIntent: boolean
+     isSaleRequest: boolean
+     requestedCollection?: string
+}): UserIntent {
+     const {
+          goalKeys,
+          userProfile,
+          interactionIntent,
+          explicitProductRequest,
+          deficiencyIntent,
+          isSaleRequest,
+          requestedCollection
+     } = params
+
+     const normalizedGoals = goalKeys
+          .filter((g) => g in GOAL_TAGS) as Array<keyof typeof GOAL_TAGS>
+     const [primaryGoal, ...secondaryGoals] = normalizedGoals
+
+     const allergies = (userProfile?.allergies || []).map(a => a.toLowerCase())
+
+     const requireHalal = allergies.includes('halal')
+     const requireVegetarian = allergies.includes('vegetarian')
+     const requireVegan = allergies.includes('vegan')
+     const avoidGluten = allergies.includes('gluten')
+     const avoidLactose = allergies.includes('lactose')
+
+     return {
+          goal: primaryGoal,
+          secondaryGoals,
+          budget: userProfile?.budget
+               ? {
+                    min: userProfile.budget.min,
+                    max: userProfile.budget.max,
+                    currency: userProfile.budget.currency
+               }
+               : undefined,
+          requireHalal,
+          requireVegetarian,
+          requireVegan,
+          avoidGluten,
+          avoidLactose,
+          informationalQuestion: interactionIntent,
+          explicitProductRequest,
+          deficiencyIntent,
+          saleRequest: isSaleRequest,
+          requestedCollection
+     }
+}
+
+/**
+ * Deterministic, profile-aware filtering & sorting on top of any product list.
+ * This layer is completely independent from how products were found (tags, text search, combos, etc.).
+ */
+function applyUserProfileFiltersToProducts(
+     products: ProductSearchResult[],
+     intent: UserIntent
+): ProductSearchResult[] {
+     if (!products.length) return products
+
+     const filtered = products.filter((product) => {
+          const tags = (product.tags || []).map(t => t.toLowerCase())
+
+          // Dietary / lifestyle constraints – only enforce when we have explicit requirements
+          if (intent.requireHalal && !tags.some(t => t.includes('halal'))) {
+               return false
+          }
+
+          if (intent.requireVegan) {
+               const isVegan = tags.some(t =>
+                    t.includes('vegan') ||
+                    t.includes('végétalien') ||
+                    t.includes('vegetal')
+               )
+               if (!isVegan) return false
+          } else if (intent.requireVegetarian) {
+               const isVegetarian = tags.some(t =>
+                    t.includes('vegetarian') ||
+                    t.includes('végétarien') ||
+                    t.includes('vege')
+               )
+               if (!isVegetarian) return false
+          }
+
+          // Simple allergy avoidance based on tags (best-effort)
+          if (intent.avoidGluten) {
+               const hasGlutenTag = tags.some(t =>
+                    t.includes('gluten') &&
+                    !t.includes('sans gluten') &&
+                    !t.includes('gluten-free')
+               )
+               if (hasGlutenTag) return false
+          }
+
+          if (intent.avoidLactose) {
+               const hasLactoseTag = tags.some(t =>
+                    t.includes('lactose') &&
+                    !t.includes('sans lactose') &&
+                    !t.includes('lactose-free')
+               )
+               if (hasLactoseTag) return false
+          }
+
+          // Budget filter: only enforce when currency matches profile budget currency
+          if (intent.budget && typeof product.price === 'number') {
+               if (product.currency && product.currency !== intent.budget.currency) {
+                    // Different currencies – skip strict budget check
+                    return true
+               }
+               if (product.price < intent.budget.min || product.price > intent.budget.max) {
+                    return false
+               }
+          }
+
+          return true
+     })
+
+     // If all products were filtered out (e.g. missing tags), fall back to original list
+     if (!filtered.length) {
+          return products
+     }
+
+     // Optional: sort by proximity to budget mid-point when we have budget info
+     if (intent.budget) {
+          const mid = (intent.budget.min + intent.budget.max) / 2
+          return [...filtered].sort((a, b) => {
+               const priceA = typeof a.price === 'number' ? a.price : mid
+               const priceB = typeof b.price === 'number' ? b.price : mid
+               return Math.abs(priceA - mid) - Math.abs(priceB - mid)
+          })
+     }
+
+     return filtered
 }
 
 /**
@@ -822,9 +822,6 @@ export async function POST(request: NextRequest) {
           // Derive high-level health goals (energy, sleep, stress, etc.) from profile + conversation
           const goalKeys = deriveGoalKeysFromContext(userProfile, userLower, replyLower)
 
-          // Build a structured, deterministic intent object from profile + goals + message
-          const userIntent = deriveUserIntent(userProfile, goalKeys, userLower, replyLower)
-
           // Detect safety/interaction/informational questions where we should avoid suggesting products
           // These are questions asking for information, not product recommendations
           const informationalQuestionPatterns = [
@@ -886,6 +883,27 @@ export async function POST(request: NextRequest) {
                console.log('[API] Detected sale/promotion request from user')
           }
 
+          // Detect combo/combination requests - when user asks about products that work together
+          const comboRequestPatterns = [
+               /\b(combiner|combinaison|combinations?|ensemble|together)\b/i,
+               /\b(quels?\s+produits?\s+(?:peuvent|peuvent-ils|doivent)\s+(?:être\s+)?(?:pris|utilisés?|associés?)\s+ensemble)\b/i,
+               /\b(quels?\s+compléments?\s+(?:peuvent|peuvent-ils|doivent)\s+(?:être\s+)?(?:pris|utilisés?|associés?)\s+ensemble)\b/i,
+               /\b(quels?\s+suppléments?\s+(?:peuvent|peuvent-ils|doivent)\s+(?:être\s+)?(?:pris|utilisés?|associés?)\s+ensemble)\b/i,
+               /\b(produits?\s+qui\s+(?:fonctionnent|marchent|vont)\s+bien\s+ensemble)\b/i,
+               /\b(compléments?\s+qui\s+(?:fonctionnent|marchent|vont)\s+bien\s+ensemble)\b/i,
+               /\b(suppléments?\s+qui\s+(?:fonctionnent|marchent|vont)\s+bien\s+ensemble)\b/i,
+               /\b(meilleur\s+(?:combinaison|stack|pack))\b/i,
+               /\b(quelle\s+combinaison|quelles?\s+combinaisons?)\b/i,
+               /\b(work\s+together|go\s+well\s+together|best\s+combination)\b/i,
+          ]
+          const isComboRequest = comboRequestPatterns.some(pattern => 
+               pattern.test(userLower) || pattern.test(replyLower)
+          )
+          
+          if (isComboRequest) {
+               console.log('[API] Detected combo/combination request from user')
+          }
+
           // Detect collection requests
           let requestedCollection: string | undefined = undefined
           const collectionKeywords = Object.keys(COLLECTION_MAP)
@@ -945,15 +963,15 @@ export async function POST(request: NextRequest) {
           // 3. User expresses deficiency intent (carences/manque)
           const allowProductSearch = !interactionIntent || explicitProductRequest || deficiencyIntent
 
-          // Sale requests and collection requests should always trigger product search
-          const isProductRequest = isSaleRequest || requestedCollection !== undefined
+          // Sale requests, collection requests, and combo requests should always trigger product search
+          const isProductRequest = isSaleRequest || requestedCollection !== undefined || isComboRequest
           
           const shouldSearchProducts = allowProductSearch && !!(
                hasExplicitProducts ||
                (hasExplicitTrigger && hasSupplementMentions && !interactionIntent) ||
                (hasExplicitTrigger && replyLower.includes('sélection') && !interactionIntent) ||
                explicitProductRequest ||
-               isProductRequest || // Sale or collection requests trigger search
+               isProductRequest || // Sale, collection, or combo requests trigger search
                (userHasSpecificSupplement && !interactionIntent && userHasProductIntent) ||
                (hasSpecificSupplement && !interactionIntent && hasExplicitTrigger) ||
                (hasSupplementKeywords && !interactionIntent && hasExplicitTrigger) ||
@@ -980,10 +998,22 @@ export async function POST(request: NextRequest) {
                goalKeys
           })
 
+          // Build a structured intent that summarizes what the user wants for the
+          // merchandising layer (goals, budget, dietary constraints, browsing mode).
+          const intent: UserIntent = buildUserIntent({
+               goalKeys,
+               userProfile,
+               interactionIntent,
+               explicitProductRequest,
+               deficiencyIntent,
+               isSaleRequest,
+               requestedCollection
+          })
+
           if (shouldSearchProducts) {
                try {
                     // 1) Goal-based, tag-driven search (preferred when a clear goal is identified)
-                    if (goalKeys.length > 0) {
+                    if (goalKeys.length > 0 && !isSaleRequest && !requestedCollection) {
                          console.log('[API] Attempting goal-based product search using tags for goals:', goalKeys)
                          try {
                               // Track goal-based search attempt
@@ -1002,20 +1032,9 @@ export async function POST(request: NextRequest) {
                                    const tagsForGoal = GOAL_TAGS[goal]
                                    if (!tagsForGoal || tagsForGoal.length === 0) continue
 
-                                   // Enrich goal tags with dietary preferences when relevant
-                                   const intentAwareTags = [...tagsForGoal]
-                                   if (userIntent?.halalPreferred && !intentAwareTags.includes('halal')) {
-                                        intentAwareTags.push('halal')
-                                   }
-                                   userIntent?.requiredDietTags.forEach(tag => {
-                                        if (!intentAwareTags.includes(tag)) {
-                                             intentAwareTags.push(tag)
-                                        }
-                                   })
-
-                                   console.log(`[API] Searching products by tags for goal "${goal}" -> [${intentAwareTags.join(', ')}]`)
+                                   console.log(`[API] Searching products by tags for goal "${goal}" -> [${tagsForGoal.join(', ')}]`)
                                    try {
-                                        const goalProducts = await searchProductsByTags(intentAwareTags, 4)
+                                        const goalProducts = await searchProductsByTags(tagsForGoal, 4)
                                         if (goalProducts && goalProducts.length > 0) {
                                              goalProducts.forEach((p) => {
                                                   if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
@@ -1034,14 +1053,6 @@ export async function POST(request: NextRequest) {
                               }
 
                               if (recommendedProducts.length > 0) {
-                                   // Apply deterministic filters (budget, diet, allergies)
-                                   const filteredByIntent = filterProductsByIntent(recommendedProducts, userIntent)
-                                   console.log('[API] Goal-based products before/after intent filter:', {
-                                        before: recommendedProducts.length,
-                                        after: filteredByIntent.length
-                                   })
-                                   recommendedProducts = filteredByIntent
-
                                    console.log('[API] Goal-based tag search produced products:', {
                                         goals: goalKeys,
                                         productTitles: recommendedProducts.map(p => p.title)
@@ -1262,16 +1273,6 @@ export async function POST(request: NextRequest) {
                                              console.log('Complementary product search skipped')
                                         }
                                    }
-
-                              // Apply deterministic filters after keyword + complementary search
-                              if (recommendedProducts.length > 0) {
-                                   const filteredByIntent = filterProductsByIntent(recommendedProducts, userIntent)
-                                   console.log('[API] Keyword-based products before/after intent filter:', {
-                                        before: recommendedProducts.length,
-                                        after: filteredByIntent.length
-                                   })
-                                   recommendedProducts = filteredByIntent
-                              }
                               }
 
                               // Track successful product search (with error handling)
@@ -1322,6 +1323,12 @@ export async function POST(request: NextRequest) {
                console.log('No product search needed - AI response indicates no products required')
           }
 
+          // Apply deterministic, profile-based filtering & sorting on the
+          // candidate products, independent of how they were found.
+          if (recommendedProducts.length > 0) {
+               recommendedProducts = applyUserProfileFiltersToProducts(recommendedProducts, intent)
+          }
+
           // Get recommended product combinations based on user profile
           // Skip combos if this is an informational question (no products should be shown)
           let recommendedCombos: Array<{
@@ -1339,20 +1346,40 @@ export async function POST(request: NextRequest) {
                benefits: string;
           } | null = null
 
-          // Only generate combos if we have products AND user explicitly requested products (not informational)
-          if (userProfile && recommendedProducts.length > 0 && allowProductSearch) {
+          // Generate combos if:
+          // 1. User explicitly asks about combinations (isComboRequest), OR
+          // 2. We have products AND user profile (profile-based), OR
+          // 3. We have products AND detected goals from conversation (conversation-based)
+          // Skip combos if this is an informational question (no products should be shown)
+          if (allowProductSearch && (isComboRequest || recommendedProducts.length > 0)) {
                try {
-                    const combos = getRecommendedCombos(
-                         userProfile.goals,
-                         userProfile.age,
-                         userProfile.gender
+                    // Determine goals from profile OR conversation context
+                    const comboGoals = userProfile?.goals || goalKeys
+                    const comboAge = userProfile?.age
+                    const comboGender = userProfile?.gender
+
+                    // If user explicitly asks about combos, prioritize showing combos
+                    // Use conversation-derived goals if no profile available
+                    let combos = getRecommendedCombos(
+                         comboGoals,
+                         comboAge,
+                         comboGender
                     )
 
-                    // Convert combos to include actual product data
+                    // If no combos found but user asked about combinations, show general combos
+                    if (isComboRequest && combos.length === 0) {
+                         // Get all available combos as fallback when user explicitly asks
+                         combos = PRODUCT_COMBOS.slice(0, 3) // Show top 3 general combos
+                         console.log('[API] User asked about combos but no profile/goals - showing general combos')
+                    }
+
+                    // Convert combos to include actual product data and apply the same
+                    // profile-based filtering (budget, halal/vegan, etc.).
                     const combosWithProducts = await Promise.all(
                          combos.map(async (combo) => {
-                              const products = await getComboProducts(combo)
-                              console.log(`[API] Combo "${combo.name}" resolved products: ${products.map(p => p.title).join(', ') || 'none'}`)
+                              const rawProducts = await getComboProducts(combo)
+                              console.log(`[API] Combo "${combo.name}" resolved products: ${rawProducts.map(p => p.title).join(', ') || 'none'}`)
+                              const products = applyUserProfileFiltersToProducts(rawProducts, intent)
                               return {
                                    name: combo.name,
                                    description: combo.description,
@@ -1370,19 +1397,29 @@ export async function POST(request: NextRequest) {
                     }
 
                     // Find a combo that matches the recommended products (for interactive prompt)
-                    const matchingCombo = findMatchingCombo(recommendedProducts)
-                    if (matchingCombo) {
-                         const comboProducts = await getComboProducts(matchingCombo)
-                         if (comboProducts.length > 0) {
-                              suggestedCombo = {
-                                   name: matchingCombo.name,
-                                   description: matchingCombo.description,
-                                   products: comboProducts,
-                                   benefits: matchingCombo.benefits
+                    // Prioritize this if user asked about combinations
+                    if (recommendedProducts.length > 0) {
+                         const matchingCombo = findMatchingCombo(recommendedProducts)
+                         if (matchingCombo) {
+                              const comboProducts = await getComboProducts(matchingCombo)
+                              if (comboProducts.length > 0) {
+                                   suggestedCombo = {
+                                        name: matchingCombo.name,
+                                        description: matchingCombo.description,
+                                        products: comboProducts,
+                                        benefits: matchingCombo.benefits
+                                   }
+                                   console.log('Found matching combo for interactive suggestion:', suggestedCombo.name)
+                                   console.log(`[API] Suggested combo products: ${comboProducts.map(p => p.title).join(', ')}`)
                               }
-                              console.log('Found matching combo for interactive suggestion:', suggestedCombo.name)
-                              console.log(`[API] Suggested combo products: ${comboProducts.map(p => p.title).join(', ')}`)
                          }
+                    }
+
+                    // If user explicitly asked about combos but we don't have a matching combo,
+                    // prioritize showing the first available combo
+                    if (isComboRequest && !suggestedCombo && recommendedCombos.length > 0) {
+                         suggestedCombo = recommendedCombos[0]
+                         console.log('[API] User asked about combos - showing first available combo:', suggestedCombo.name)
                     }
                } catch (comboError) {
                     console.error('Error getting recommended combos:', comboError)
@@ -1421,6 +1458,27 @@ export async function POST(request: NextRequest) {
                recommendedProducts: finalRecommendedProducts,
                recommendedCombos: finalRecommendedCombos,
                suggestedCombo: finalSuggestedCombo,
+               /**
+                * Structured summary of what the user is asking for RIGHT NOW.
+                * This is intentionally separate from the raw AI reply and from
+                * how we actually queried Shopify. It is safe to use on the
+                * frontend (for debugging, analytics, or UI hints).
+                */
+               intent: {
+                    goal: intent.goal ?? null,
+                    secondaryGoals: intent.secondaryGoals,
+                    budget: intent.budget ?? null,
+                    halal: intent.requireHalal,
+                    vegetarian: intent.requireVegetarian,
+                    vegan: intent.requireVegan,
+                    avoidGluten: intent.avoidGluten,
+                    avoidLactose: intent.avoidLactose,
+                    informationalQuestion: intent.informationalQuestion,
+                    explicitProductRequest: intent.explicitProductRequest,
+                    deficiencyIntent: intent.deficiencyIntent,
+                    saleRequest: intent.saleRequest,
+                    requestedCollection: intent.requestedCollection ?? null
+               },
                userId: userId || null,
                provider: selectedProvider,
                timestamp: new Date().toISOString()
