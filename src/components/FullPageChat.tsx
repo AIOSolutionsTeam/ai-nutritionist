@@ -638,14 +638,14 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     const parsedSpeed =
       Number(
         process.env.NEXT_PUBLIC_TYPEWRITER_SPEED ||
-          (process.env.NODE_ENV === "production" ? 1.75 : 1)
-      ) || 1;
-    const speedMultiplier = Math.min(Math.max(parsedSpeed, 0.5), 3); // Clamp for safety
-    const baseDelayMs = 24 / speedMultiplier; // Lower = faster typing
-    const punctuationDelayMultiplier = 3.5 / speedMultiplier; // Shorter pause after punctuation
+          (process.env.NODE_ENV === "production" ? 2.5 : 1.25)
+      ) || 1.25;
+    const speedMultiplier = Math.min(Math.max(parsedSpeed, 0.5), 4); // Clamp for safety
+    const baseDelayMs = 20 / speedMultiplier; // Lower = faster typing
+    const punctuationDelayMultiplier = 2.8 / speedMultiplier; // Shorter pause after punctuation
     const chunkRange =
       speedMultiplier >= 1.5
-        ? { min: 2, max: 4 }
+        ? { min: 2, max: 5 }
         : { min: 1, max: 3 }; // Larger chunks when sped up
     
     // Only process messages that need typing initialization

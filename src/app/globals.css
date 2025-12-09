@@ -113,7 +113,7 @@ body {
 }
 
 .animate-spin-slow {
-  animation: spin-slow 3s linear infinite;
+  animation: spin-slow 1.5s linear infinite;
 }
 
 /* Premium gradients - Vigaia style */
