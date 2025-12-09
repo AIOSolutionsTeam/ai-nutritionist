@@ -532,7 +532,14 @@
                 <div class="vigaia-product-info">
                   <div class="vigaia-product-title">${this.escapeHtml(product.title)}</div>
                   <div class="vigaia-product-footer">
-                    <div class="vigaia-product-price">$${product.price.toFixed(2)}</div>
+                    <div class="vigaia-product-price" style="display: flex; align-items: baseline; gap: 8px;">
+                      ${product.isOnSale && product.originalPrice ? `
+                        <span style="font-size: 14px; color: #9ca3af; text-decoration: line-through;">€${product.originalPrice.toFixed(2)}</span>
+                        <span style="font-size: 18px; color: #cf4a4a; font-weight: 500;">€${product.price.toFixed(2)}</span>
+                      ` : `
+                        <span style="font-size: 18px; font-weight: 500;">€${product.price.toFixed(2)}</span>
+                      `}
+                    </div>
                     <button class="vigaia-add-to-cart" ${!product.available ? 'disabled' : ''} onclick="window.vigaiaChatWidget.addToCart('${product.variantId}')">
                       ${product.available ? 'Add to Cart' : 'Out of Stock'}
                     </button>

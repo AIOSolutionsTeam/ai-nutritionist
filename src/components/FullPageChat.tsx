@@ -349,10 +349,21 @@ const ProductCard = ({ product }: { product: ProductSearchResult }) => {
           {product.title}
         </h3>
         <div className="mt-auto space-y-3">
-          <div className="flex items-baseline">
-            <span className="text-2xl font-light text-foreground">
-            ${product.price.toFixed(2)}
-          </span>
+          <div className="flex items-baseline gap-2">
+            {product.isOnSale && product.originalPrice ? (
+              <>
+                <span className="text-lg font-light text-muted-foreground line-through">
+                  €{product.originalPrice.toFixed(2)}
+                </span>
+                <span className="text-2xl font-light" style={{ color: '#cf4a4a' }}>
+                  €{product.price.toFixed(2)}
+                </span>
+              </>
+            ) : (
+              <span className="text-2xl font-light text-foreground">
+                €{product.price.toFixed(2)}
+              </span>
+            )}
           </div>
           <button
             onClick={handleAddToCart}
