@@ -5,6 +5,69 @@ import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 
 /**
+ * Simple in-memory rate limiter to prevent excessive API calls
+ * Limits: 30 requests per minute per user/IP
+ */
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 30 // 30 requests per minute
+
+function checkRateLimit(identifier: string): { allowed: boolean; remaining: number; resetAt: number } {
+     const now = Date.now()
+     const record = rateLimitMap.get(identifier)
+
+     if (!record || record.resetAt < now) {
+          // Create new record or reset expired one
+          rateLimitMap.set(identifier, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+          return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetAt: now + RATE_LIMIT_WINDOW_MS }
+     }
+
+     if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
+          return { allowed: false, remaining: 0, resetAt: record.resetAt }
+     }
+
+     // Increment count
+     record.count++
+     return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - record.count, resetAt: record.resetAt }
+}
+
+// Clean up old entries periodically (every 5 minutes)
+if (typeof setInterval !== 'undefined') {
+     setInterval(() => {
+          const now = Date.now()
+          for (const [key, record] of rateLimitMap.entries()) {
+               if (record.resetAt < now) {
+                    rateLimitMap.delete(key)
+               }
+          }
+     }, 5 * 60 * 1000)
+}
+
+/**
+ * Health check throttling to prevent excessive API calls during cooldown periods
+ * Only allows health checks once every 10 minutes per provider
+ */
+const healthCheckThrottleMap = new Map<'openai' | 'gemini', number>()
+const HEALTH_CHECK_THROTTLE_MS = 10 * 60 * 1000 // 10 minutes between health checks
+
+function shouldPerformHealthCheck(provider: 'openai' | 'gemini'): boolean {
+     const lastCheck = healthCheckThrottleMap.get(provider)
+     const now = Date.now()
+     
+     if (!lastCheck) {
+          // First check for this provider, allow it
+          return true
+     }
+     
+     // Only allow if enough time has passed since last check
+     return (now - lastCheck) >= HEALTH_CHECK_THROTTLE_MS
+}
+
+function recordHealthCheck(provider: 'openai' | 'gemini'): void {
+     healthCheckThrottleMap.set(provider, Date.now())
+}
+
+/**
  * Extract supplement-related keywords from AI response for product search
  */
 function extractSupplementKeywords(response: string): string[] {
@@ -340,46 +403,79 @@ function applyUserProfileFiltersToProducts(
 /**
  * Perform background health check on AI providers (non-blocking)
  * This checks if providers are back online and resets cooldowns if they are
+ * OPTIMIZED: Only checks providers that are actually in cooldown to reduce API calls
+ * THROTTLED: Only performs health checks once every 10 minutes per provider to prevent API call storms
  */
 function performBackgroundHealthCheck(userId?: string): void {
      // Use setImmediate to run after the response is sent
      setImmediate(async () => {
           try {
-               console.log('[API] Starting background health check for both providers...')
-               const [openaiHealthy, geminiHealthy] = await Promise.allSettled([
-                    openaiService.checkHealth(),
-                    geminiService.checkHealth()
-               ])
+               // Only check health for providers that are actually in cooldown
+               const openaiInCooldown = openaiService.isInCooldown()
+               const geminiInCooldown = geminiService.isInCooldown()
 
-               if (openaiHealthy.status === 'fulfilled' && openaiHealthy.value) {
-                    console.log('[API] ✅ OpenAI is back online - cooldown reset')
-                    try {
-                         await analytics.trackEvent('ai_provider_recovered', {
-                              category: 'ai',
-                              provider: 'openai',
-                              userId: userId || 'anonymous'
-                         })
-                    } catch {
-                         // Ignore analytics errors
-                    }
+               // If neither provider is in cooldown, skip health checks entirely
+               if (!openaiInCooldown && !geminiInCooldown) {
+                    return
                }
 
-               if (geminiHealthy.status === 'fulfilled' && geminiHealthy.value) {
-                    console.log('[API] ✅ Gemini is back online - cooldown reset')
-                    try {
-                         await analytics.trackEvent('ai_provider_recovered', {
-                              category: 'ai',
-                              provider: 'gemini',
-                              userId: userId || 'anonymous'
-                         })
-                    } catch {
-                         // Ignore analytics errors
-                    }
+               // Check throttling before performing health checks
+               const shouldCheckOpenAI = openaiInCooldown && shouldPerformHealthCheck('openai')
+               const shouldCheckGemini = geminiInCooldown && shouldPerformHealthCheck('gemini')
+
+               // If both are throttled, skip entirely
+               if (!shouldCheckOpenAI && !shouldCheckGemini) {
+                    console.log('[API] Health checks throttled - skipping to prevent excessive API calls')
+                    return
                }
 
-               if ((openaiHealthy.status === 'fulfilled' && !openaiHealthy.value) ||
-                    (geminiHealthy.status === 'fulfilled' && !geminiHealthy.value)) {
-                    console.log('[API] ⚠️ Some providers still in quota error - cooldown maintained')
+               console.log('[API] Starting background health check for providers in cooldown...')
+               
+               const healthChecks: Promise<{ provider: 'openai' | 'gemini'; healthy: boolean }>[] = []
+
+               if (shouldCheckOpenAI) {
+                    recordHealthCheck('openai')
+                    healthChecks.push(
+                         openaiService.checkHealth()
+                              .then(healthy => ({ provider: 'openai' as const, healthy }))
+                              .catch(() => ({ provider: 'openai' as const, healthy: false }))
+                    )
+               }
+
+               if (shouldCheckGemini) {
+                    recordHealthCheck('gemini')
+                    healthChecks.push(
+                         geminiService.checkHealth()
+                              .then(healthy => ({ provider: 'gemini' as const, healthy }))
+                              .catch(() => ({ provider: 'gemini' as const, healthy: false }))
+                    )
+               }
+
+               // If no health checks were queued (all throttled), return early
+               if (healthChecks.length === 0) {
+                    return
+               }
+
+               const results = await Promise.allSettled(healthChecks)
+
+               for (const result of results) {
+                    if (result.status === 'fulfilled') {
+                         const { provider, healthy } = result.value
+                         if (healthy) {
+                              console.log(`[API] ✅ ${provider} is back online - cooldown reset`)
+                              try {
+                                   await analytics.trackEvent('ai_provider_recovered', {
+                                        category: 'ai',
+                                        provider,
+                                        userId: userId || 'anonymous'
+                                   })
+                              } catch {
+                                   // Ignore analytics errors
+                              }
+                         } else {
+                              console.log(`[API] ⚠️ ${provider} still in quota error - cooldown maintained`)
+                         }
+                    }
                }
           } catch (healthCheckError) {
                console.error('[API] Background health check error (non-fatal):', healthCheckError)
@@ -499,6 +595,33 @@ export async function POST(request: NextRequest) {
                return NextResponse.json(
                     { error: 'Message is required' },
                     { status: 400 }
+               )
+          }
+
+          // Rate limiting: use userId if available, otherwise use IP address
+          const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0] || 
+                          request.headers.get('x-real-ip') || 
+                          'unknown'
+          const rateLimitId = userId || clientIp
+          const rateLimit = checkRateLimit(rateLimitId)
+
+          if (!rateLimit.allowed) {
+               const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
+               console.warn(`[API] Rate limit exceeded for ${rateLimitId}. Retry after ${retryAfter}s`)
+               return NextResponse.json(
+                    { 
+                         error: 'Rate limit exceeded. Please wait before making another request.',
+                         retryAfter 
+                    },
+                    { 
+                         status: 429,
+                         headers: {
+                              'Retry-After': String(retryAfter),
+                              'X-RateLimit-Limit': String(RATE_LIMIT_MAX_REQUESTS),
+                              'X-RateLimit-Remaining': '0',
+                              'X-RateLimit-Reset': String(rateLimit.resetAt)
+                         }
+                    }
                )
           }
 
