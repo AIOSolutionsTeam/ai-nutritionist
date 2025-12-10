@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { detectLanguage, DetectedLanguage } from './language-detection'
 
 const DEFAULT_AI_COOLDOWN_MS = 30_000 // 30 seconds local cooldown when quota errors occur
 
@@ -157,13 +158,25 @@ export class OpenAIService {
           userQuery: string, 
           _userId?: string, 
           userProfileContext?: string,
-          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+          detectedLanguage?: DetectedLanguage
      ): Promise<StructuredNutritionResponse> {
           // Short‑circuit if we're currently in a local cooldown window
           if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
                const remainingMs = this.quotaResetAt - Date.now()
                console.warn(`[OpenAIService] In local cooldown, skipping API call. Remaining ms: ${remainingMs}`)
                throw new AIQuotaError('openai', 'OpenAI in local cooldown', remainingMs)
+          }
+
+          // Detect language from user query if not provided
+          const language = detectedLanguage || detectLanguage(userQuery)
+          
+          // Language-specific greeting examples
+          const greetingExamples: Record<DetectedLanguage, string> = {
+               'fr': '"Salut", "Bonjour"',
+               'en': '"Hello", "Hi"',
+               'es': '"Hola", "Buenos días"',
+               'ar': '"مرحبا", "أهلاً"'
           }
 
           // Build system prompt with user context if available
@@ -178,14 +191,14 @@ IMPORTANT: Use this profile information to tailor your advice. Consider their ag
           // Determine if this is a continuing conversation
           const isContinuingConversation = conversationHistory && conversationHistory.length > 0
           const conversationContext = isContinuingConversation 
-               ? '\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with "Salut", "Bonjour", or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you\'re continuing a chat with a friend.'
+               ? `\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with ${greetingExamples[language]} or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you're continuing a chat with a friend.`
                : ''
 
           const systemPrompt = `You are a professional, friendly, and empathetic virtual nutritionist for the Vigaïa brand. Your role is to provide personalized nutrition guidance and recommend appropriate wellness products.${userContextSection}${conversationContext}
 
 COMMUNICATION RULES:
 1. **Fluid and Natural Conversation**: Reply in a warm, conversational, and fluid manner. Write as if you're having a friendly chat with a friend, not a clinical consultation. Use natural language, avoid overly formal or robotic tones.
-${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing conversation, do NOT start with greetings like "Salut", "Bonjour", "Bien sûr", etc. Jump directly into answering their question naturally.' : ''}
+${isContinuingConversation ? `   - **NO GREETINGS**: Since this is a continuing conversation, do NOT start with greetings like ${greetingExamples[language]}, etc. Jump directly into answering their question naturally.` : ''}
 
 2. **Informative and Educational Responses**: 
    - PRIORITIZE providing informative, educational, and detailed explanations. Your responses should be rich in information, explaining the "why" behind your advice.
@@ -199,7 +212,10 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
 
 3. **Clarity and Understanding**: 
    - If you don't fully understand the user's question or need, REFRAME it back to them and ask for clarification in a friendly way.
-   - Example: "Je veux m'assurer de bien comprendre - vous cherchez des produits pour améliorer votre énergie au quotidien, c'est bien ça?"
+   - Example (French): "Je veux m'assurer de bien comprendre - vous cherchez des produits pour améliorer votre énergie au quotidien, c'est bien ça?"
+   - Example (English): "I want to make sure I understand - you're looking for products to improve your daily energy, is that right?"
+   - Example (Spanish): "Quiero asegurarme de entender - estás buscando productos para mejorar tu energía diaria, ¿es correcto?"
+   - Example (Arabic): "أريد التأكد من فهمي - أنت تبحث عن منتجات لتحسين طاقتك اليومية، أليس كذلك؟"
    - Never guess or assume. It's better to ask than to give incorrect advice.
 
 4. **Refine and Reform Answers**: 
@@ -267,7 +283,7 @@ CRITICAL - RESPONSE COMPLETENESS AND DIRECTNESS:
 
 IMPORTANT: 
 - If the user's question doesn't require product recommendations, set "products" to an empty array [].
-- **CRITICAL LANGUAGE REQUIREMENT**: ALWAYS respond in French, regardless of the language the user uses. Even if the user writes in English, Spanish, Arabic, or any other language, you MUST respond in French. This is a mandatory requirement.
+- **CRITICAL LANGUAGE REQUIREMENT**: ALWAYS respond in the SAME LANGUAGE as the user's message. If the user writes in ${language === 'fr' ? 'French' : language === 'en' ? 'English' : language === 'es' ? 'Spanish' : 'Arabic'}, you MUST respond in ${language === 'fr' ? 'French' : language === 'en' ? 'English' : language === 'es' ? 'Spanish' : 'Arabic'}. Match the user's language exactly. This is a mandatory requirement.
 - Be empathetic, patient, and genuinely helpful.`
 
           try {
@@ -579,13 +595,25 @@ export class GeminiService {
           userQuery: string, 
           _userId?: string, 
           userProfileContext?: string,
-          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+          detectedLanguage?: DetectedLanguage
      ): Promise<StructuredNutritionResponse> {
           // Local in-process cooldown when we hit quota / 429 errors
           if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
                const remainingMs = this.quotaResetAt - Date.now()
                console.warn(`[GeminiService] In local cooldown, skipping API call. Remaining ms: ${remainingMs}`)
                throw new AIQuotaError('gemini', 'Gemini in local cooldown', remainingMs)
+          }
+
+          // Detect language from user query if not provided
+          const language = detectedLanguage || detectLanguage(userQuery)
+          
+          // Language-specific greeting examples
+          const greetingExamples: Record<DetectedLanguage, string> = {
+               'fr': '"Salut", "Bonjour"',
+               'en': '"Hello", "Hi"',
+               'es': '"Hola", "Buenos días"',
+               'ar': '"مرحبا", "أهلاً"'
           }
 
           // Build system prompt with user context if available
@@ -600,14 +628,14 @@ IMPORTANT: Use this profile information to tailor your advice. Consider their ag
           // Determine if this is a continuing conversation
           const isContinuingConversation = conversationHistory && conversationHistory.length > 0
           const conversationContext = isContinuingConversation 
-               ? '\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with "Salut", "Bonjour", or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you\'re continuing a chat with a friend.'
+               ? `\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with ${greetingExamples[language]} or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you're continuing a chat with a friend.`
                : ''
 
           const systemPrompt = `You are a professional, friendly, and empathetic virtual nutritionist for the Vigaïa brand. Your role is to provide personalized nutrition guidance and recommend appropriate wellness products.${userContextSection}${conversationContext}
 
 COMMUNICATION RULES:
 1. **Fluid and Natural Conversation**: Reply in a warm, conversational, and fluid manner. Write as if you're having a friendly chat with a friend, not a clinical consultation. Use natural language, avoid overly formal or robotic tones.
-${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing conversation, do NOT start with greetings like "Salut", "Bonjour", "Bien sûr", etc. Jump directly into answering their question naturally.' : ''}
+${isContinuingConversation ? `   - **NO GREETINGS**: Since this is a continuing conversation, do NOT start with greetings like ${greetingExamples[language]}, etc. Jump directly into answering their question naturally.` : ''}
 
 2. **Informative and Educational Responses**: 
    - PRIORITIZE providing informative, educational, and detailed explanations. Your responses should be rich in information, explaining the "why" behind your advice.
@@ -621,7 +649,10 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
 
 3. **Clarity and Understanding**: 
    - If you don't fully understand the user's question or need, REFRAME it back to them and ask for clarification in a friendly way.
-   - Example: "Je veux m'assurer de bien comprendre - vous cherchez des produits pour améliorer votre énergie au quotidien, c'est bien ça?"
+   - Example (French): "Je veux m'assurer de bien comprendre - vous cherchez des produits pour améliorer votre énergie au quotidien, c'est bien ça?"
+   - Example (English): "I want to make sure I understand - you're looking for products to improve your daily energy, is that right?"
+   - Example (Spanish): "Quiero asegurarme de entender - estás buscando productos para mejorar tu energía diaria, ¿es correcto?"
+   - Example (Arabic): "أريد التأكد من فهمي - أنت تبحث عن منتجات لتحسين طاقتك اليومية، أليس كذلك؟"
    - Never guess or assume. It's better to ask than to give incorrect advice.
 
 4. **Refine and Reform Answers**: 
@@ -689,7 +720,7 @@ CRITICAL - RESPONSE COMPLETENESS AND DIRECTNESS:
 
 IMPORTANT: 
 - If the user's question doesn't require product recommendations, set "products" to an empty array [].
-- **CRITICAL LANGUAGE REQUIREMENT**: ALWAYS respond in French, regardless of the language the user uses. Even if the user writes in English, Spanish, Arabic, or any other language, you MUST respond in French. This is a mandatory requirement.
+- **CRITICAL LANGUAGE REQUIREMENT**: ALWAYS respond in the SAME LANGUAGE as the user's message. If the user writes in ${language === 'fr' ? 'French' : language === 'en' ? 'English' : language === 'es' ? 'Spanish' : 'Arabic'}, you MUST respond in ${language === 'fr' ? 'French' : language === 'en' ? 'English' : language === 'es' ? 'Spanish' : 'Arabic'}. Match the user's language exactly. This is a mandatory requirement.
 - Be empathetic, patient, and genuinely helpful.`
 
           // Build conversation context for Gemini

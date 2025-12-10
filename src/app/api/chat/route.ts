@@ -3,6 +3,7 @@ import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError
 import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS, getCollectionMap } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
+import { detectLanguage, DetectedLanguage } from '../../../lib/language-detection'
 
 /**
  * Simple in-memory rate limiter to prevent excessive API calls
@@ -487,39 +488,83 @@ function performBackgroundHealthCheck(userId?: string): void {
 /**
  * Create a fallback response when both AI providers fail
  */
-function createFallbackResponse(userMessage: string): StructuredNutritionResponse {
+function createFallbackResponse(userMessage: string, detectedLanguage: DetectedLanguage = 'fr'): StructuredNutritionResponse {
      const messageLower = userMessage.toLowerCase()
      
-     // Detect common question types and provide appropriate fallback responses
-     let reply = "😔 Oups ! Je rencontre actuellement un petit problème technique de mon côté. "
+     // Language-specific fallback responses
+     const fallbackMessages: Record<DetectedLanguage, {
+          intro: string
+          interactions: string
+          deficiency: string
+          products: string
+          general: string
+          disclaimer: string
+     }> = {
+          'fr': {
+               intro: "😔 Oups ! Je rencontre actuellement un petit problème technique de mon côté. ",
+               interactions: "Mais je peux quand même vous donner quelques conseils généraux sur les compléments à éviter ensemble :\n\n• **Fer et Calcium** : Ne pas prendre ensemble, car le calcium peut réduire l'absorption du fer.\n• **Fer et Zinc** : Prendre à des moments différents, car ils peuvent se concurrencer pour l'absorption.\n• **Calcium et Magnésium** : Peuvent être pris ensemble, mais en quantités équilibrées.\n• **Vitamine C et Fer** : La vitamine C améliore l'absorption du fer, donc c'est une bonne combinaison. ✨\n• **Vitamine D et Calcium** : Excellente combinaison pour la santé osseuse. 💪\n\n⚠️ **Important** : Consultez toujours un professionnel de la santé avant de combiner des suppléments, surtout si vous prenez des médicaments.",
+               deficiency: "En attendant que je retrouve mes capacités, voici quelques signes à surveiller pour détecter une carence :\n\n• **Fatigue persistante** 😴 : Peut indiquer un manque de fer, vitamine D, ou vitamines B\n• **Crampes musculaires** 💪 : Souvent liées à un manque de magnésium ou potassium\n• **Mauvaise récupération** ⏱️ : Peut indiquer un déficit en magnésium ou vitamines B\n• **Baisse de performance** 📉 : Peut être liée à diverses carences\n\n💡 La meilleure façon de confirmer une carence est de faire une prise de sang prescrite par votre médecin.",
+               products: "Je ne peux pas vous recommander de produits spécifiques pour le moment, mais ne vous inquiétez pas ! 😊 Je vous recommande de consulter notre catalogue de produits Vigaïa 🛍️ ou de contacter notre service client pour des recommandations personnalisées. Ils seront ravis de vous aider ! 💚",
+               general: "Je ne peux pas traiter votre demande pour le moment, mais je travaille à résoudre ce problème ! 🔧 Veuillez réessayer dans quelques instants. Si le problème persiste, n'hésitez pas à contacter notre service client - ils sont là pour vous aider ! 💚",
+               disclaimer: "💡 Cette réponse a été générée automatiquement en raison de difficultés techniques. Pour des conseils personnalisés, veuillez consulter un professionnel de la santé."
+          },
+          'en': {
+               intro: "😔 Oops! I'm currently experiencing a small technical issue on my end. ",
+               interactions: "But I can still give you some general advice on supplements to avoid together:\n\n• **Iron and Calcium**: Do not take together, as calcium can reduce iron absorption.\n• **Iron and Zinc**: Take at different times, as they can compete for absorption.\n• **Calcium and Magnesium**: Can be taken together, but in balanced amounts.\n• **Vitamin C and Iron**: Vitamin C improves iron absorption, so it's a good combination. ✨\n• **Vitamin D and Calcium**: Excellent combination for bone health. 💪\n\n⚠️ **Important**: Always consult a healthcare professional before combining supplements, especially if you're taking medications.",
+               deficiency: "While I regain my capabilities, here are some signs to watch for to detect a deficiency:\n\n• **Persistent fatigue** 😴: May indicate a lack of iron, vitamin D, or B vitamins\n• **Muscle cramps** 💪: Often related to a lack of magnesium or potassium\n• **Poor recovery** ⏱️: May indicate a deficit in magnesium or B vitamins\n• **Performance decline** 📉: May be related to various deficiencies\n\n💡 The best way to confirm a deficiency is to have a blood test prescribed by your doctor.",
+               products: "I can't recommend specific products at the moment, but don't worry! 😊 I recommend checking our Vigaïa product catalog 🛍️ or contacting our customer service for personalized recommendations. They'll be happy to help! 💚",
+               general: "I can't process your request at the moment, but I'm working to resolve this issue! 🔧 Please try again in a few moments. If the problem persists, don't hesitate to contact our customer service - they're here to help! 💚",
+               disclaimer: "💡 This response was automatically generated due to technical difficulties. For personalized advice, please consult a healthcare professional."
+          },
+          'es': {
+               intro: "😔 ¡Ups! Actualmente estoy experimentando un pequeño problema técnico de mi parte. ",
+               interactions: "Pero aún puedo darte algunos consejos generales sobre los suplementos que debes evitar juntos:\n\n• **Hierro y Calcio**: No tomar juntos, ya que el calcio puede reducir la absorción de hierro.\n• **Hierro y Zinc**: Tomar en momentos diferentes, ya que pueden competir por la absorción.\n• **Calcio y Magnesio**: Pueden tomarse juntos, pero en cantidades equilibradas.\n• **Vitamina C y Hierro**: La vitamina C mejora la absorción de hierro, por lo que es una buena combinación. ✨\n• **Vitamina D y Calcio**: Excelente combinación para la salud ósea. 💪\n\n⚠️ **Importante**: Siempre consulte a un profesional de la salud antes de combinar suplementos, especialmente si está tomando medicamentos.",
+               deficiency: "Mientras recupero mis capacidades, aquí hay algunos signos a tener en cuenta para detectar una deficiencia:\n\n• **Fatiga persistente** 😴: Puede indicar falta de hierro, vitamina D o vitaminas B\n• **Calambres musculares** 💪: A menudo relacionados con falta de magnesio o potasio\n• **Mala recuperación** ⏱️: Puede indicar un déficit de magnesio o vitaminas B\n• **Disminución del rendimiento** 📉: Puede estar relacionada con varias deficiencias\n\n💡 La mejor manera de confirmar una deficiencia es hacerse un análisis de sangre prescrito por su médico.",
+               products: "No puedo recomendar productos específicos en este momento, ¡pero no te preocupes! 😊 Te recomiendo consultar nuestro catálogo de productos Vigaïa 🛍️ o contactar a nuestro servicio al cliente para recomendaciones personalizadas. ¡Estarán encantados de ayudarte! 💚",
+               general: "No puedo procesar tu solicitud en este momento, ¡pero estoy trabajando para resolver este problema! 🔧 Por favor, intenta de nuevo en unos momentos. Si el problema persiste, no dudes en contactar a nuestro servicio al cliente: ¡están aquí para ayudarte! 💚",
+               disclaimer: "💡 Esta respuesta fue generada automáticamente debido a dificultades técnicas. Para consejos personalizados, consulte a un profesional de la salud."
+          },
+          'ar': {
+               intro: "😔 عذراً! أواجه حالياً مشكلة تقنية صغيرة من جانبي. ",
+               interactions: "لكن يمكنني مع ذلك أن أقدم لك بعض النصائح العامة حول المكملات التي يجب تجنبها معاً:\n\n• **الحديد والكالسيوم**: لا تأخذها معاً، لأن الكالسيوم يمكن أن يقلل من امتصاص الحديد.\n• **الحديد والزنك**: خذها في أوقات مختلفة، لأنها قد تتنافس على الامتصاص.\n• **الكالسيوم والمغنيسيوم**: يمكن أخذهما معاً، لكن بكميات متوازنة.\n• **فيتامين C والحديد**: فيتامين C يحسن امتصاص الحديد، لذا فهي مزيج جيد. ✨\n• **فيتامين D والكالسيوم**: مزيج ممتاز لصحة العظام. 💪\n\n⚠️ **مهم**: استشر دائماً أخصائي رعاية صحية قبل الجمع بين المكملات، خاصة إذا كنت تتناول أدوية.",
+               deficiency: "بينما أستعيد قدراتي، إليك بعض العلامات التي يجب مراقبتها للكشف عن النقص:\n\n• **التعب المستمر** 😴: قد يشير إلى نقص الحديد أو فيتامين D أو فيتامينات B\n• **تشنجات العضلات** 💪: غالباً ما ترتبط بنقص المغنيسيوم أو البوتاسيوم\n• **ضعف التعافي** ⏱️: قد يشير إلى نقص في المغنيسيوم أو فيتامينات B\n• **انخفاض الأداء** 📉: قد يكون مرتبطاً بنواقص مختلفة\n\n💡 أفضل طريقة لتأكيد النقص هي إجراء فحص دم يصفه طبيبك.",
+               products: "لا أستطيع أن أوصي بمنتجات محددة في الوقت الحالي، لكن لا تقلق! 😊 أنصحك بالاطلاع على كتالوج منتجات Vigaïa 🛍️ أو الاتصال بخدمة العملاء للحصول على توصيات مخصصة. سيكونون سعداء لمساعدتك! 💚",
+               general: "لا أستطيع معالجة طلبك في الوقت الحالي، لكنني أعمل على حل هذه المشكلة! 🔧 يرجى المحاولة مرة أخرى بعد بضع لحظات. إذا استمرت المشكلة، لا تتردد في الاتصال بخدمة العملاء - إنهم هنا لمساعدتك! 💚",
+               disclaimer: "💡 تم إنشاء هذه الإجابة تلقائياً بسبب صعوبات تقنية. للحصول على نصائح مخصصة، يرجى استشارة أخصائي رعاية صحية."
+          }
+     }
      
-     if (messageLower.includes('éviter') || messageLower.includes('interaction') || messageLower.includes('compatible')) {
-          reply += "Mais je peux quand même vous donner quelques conseils généraux sur les compléments à éviter ensemble :\n\n"
-          reply += "• **Fer et Calcium** : Ne pas prendre ensemble, car le calcium peut réduire l'absorption du fer.\n"
-          reply += "• **Fer et Zinc** : Prendre à des moments différents, car ils peuvent se concurrencer pour l'absorption.\n"
-          reply += "• **Calcium et Magnésium** : Peuvent être pris ensemble, mais en quantités équilibrées.\n"
-          reply += "• **Vitamine C et Fer** : La vitamine C améliore l'absorption du fer, donc c'est une bonne combinaison. ✨\n"
-          reply += "• **Vitamine D et Calcium** : Excellente combinaison pour la santé osseuse. 💪\n\n"
-          reply += "⚠️ **Important** : Consultez toujours un professionnel de la santé avant de combiner des suppléments, surtout si vous prenez des médicaments."
-     } else if (messageLower.includes('carence') || messageLower.includes('manque') || messageLower.includes('vitamine') || messageLower.includes('minéral')) {
-          reply += "En attendant que je retrouve mes capacités, voici quelques signes à surveiller pour détecter une carence :\n\n"
-          reply += "• **Fatigue persistante** 😴 : Peut indiquer un manque de fer, vitamine D, ou vitamines B\n"
-          reply += "• **Crampes musculaires** 💪 : Souvent liées à un manque de magnésium ou potassium\n"
-          reply += "• **Mauvaise récupération** ⏱️ : Peut indiquer un déficit en magnésium ou vitamines B\n"
-          reply += "• **Baisse de performance** 📉 : Peut être liée à diverses carences\n\n"
-          reply += "💡 La meilleure façon de confirmer une carence est de faire une prise de sang prescrite par votre médecin."
-     } else if (messageLower.includes('produit') || messageLower.includes('complément') || messageLower.includes('supplément')) {
-          reply += "Je ne peux pas vous recommander de produits spécifiques pour le moment, mais ne vous inquiétez pas ! 😊 "
-          reply += "Je vous recommande de consulter notre catalogue de produits Vigaïa 🛍️ ou de contacter notre service client pour des recommandations personnalisées. Ils seront ravis de vous aider ! 💚"
+     const messages = fallbackMessages[detectedLanguage]
+     let reply = messages.intro
+     
+     // Detect common question types and provide appropriate fallback responses
+     // Use language-agnostic keywords for detection
+     const hasInteractionKeywords = messageLower.includes('éviter') || messageLower.includes('eviter') || 
+                                   messageLower.includes('interaction') || messageLower.includes('compatible') ||
+                                   messageLower.includes('avoid') || messageLower.includes('together')
+     const hasDeficiencyKeywords = messageLower.includes('carence') || messageLower.includes('manque') || 
+                                   messageLower.includes('vitamine') || messageLower.includes('minéral') ||
+                                   messageLower.includes('deficiency') || messageLower.includes('lack') ||
+                                   messageLower.includes('deficiencia') || messageLower.includes('نقص')
+     const hasProductKeywords = messageLower.includes('produit') || messageLower.includes('complément') || 
+                               messageLower.includes('supplément') || messageLower.includes('product') ||
+                               messageLower.includes('supplement') || messageLower.includes('complemento') ||
+                               messageLower.includes('منتج') || messageLower.includes('مكمل')
+     
+     if (hasInteractionKeywords) {
+          reply += messages.interactions
+     } else if (hasDeficiencyKeywords) {
+          reply += messages.deficiency
+     } else if (hasProductKeywords) {
+          reply += messages.products
      } else {
-          reply += "Je ne peux pas traiter votre demande pour le moment, mais je travaille à résoudre ce problème ! 🔧 "
-          reply += "Veuillez réessayer dans quelques instants. Si le problème persiste, n'hésitez pas à contacter notre service client - ils sont là pour vous aider ! 💚"
+          reply += messages.general
      }
      
      return {
           reply,
           products: [],
-          disclaimer: "💡 Cette réponse a été générée automatiquement en raison de difficultés techniques. Pour des conseils personnalisés, veuillez consulter un professionnel de la santé."
+          disclaimer: messages.disclaimer
      }
 }
 
@@ -673,6 +718,10 @@ export async function POST(request: NextRequest) {
                }
           }
 
+          // Detect language from user message
+          const detectedLanguage = detectLanguage(message)
+          console.log(`[API] Detected language: ${detectedLanguage}`)
+
           // Select AI provider based on request or environment variable
           const selectedProvider = provider || process.env.AI_PROVIDER || 'openai'
           const fallbackProvider = selectedProvider === 'gemini' ? 'openai' : 'gemini'
@@ -699,7 +748,7 @@ export async function POST(request: NextRequest) {
                }
 
                // Skip directly to fallback response
-               const nutritionResponse = createFallbackResponse(message)
+               const nutritionResponse = createFallbackResponse(message, detectedLanguage)
                
                const response = {
                     ...nutritionResponse,
@@ -737,9 +786,9 @@ export async function POST(request: NextRequest) {
           try {
                console.log(`[API] Attempting to generate advice with provider: ${selectedProvider}`)
                if (selectedProvider === 'gemini') {
-                    nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                    nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory, detectedLanguage)
                } else {
-                    nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                    nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory, detectedLanguage)
                }
 
                // Track successful AI response (with error handling)
@@ -799,16 +848,16 @@ export async function POST(request: NextRequest) {
                     console.warn(`[API] Fallback provider ${fallbackProvider} also in cooldown (${Math.ceil(remaining / 1000)}s remaining). Skipping to fallback response.`)
                     
                     // Skip directly to fallback response without attempting API call
-                    nutritionResponse = createFallbackResponse(message)
+                    nutritionResponse = createFallbackResponse(message, detectedLanguage)
                     
                     // Background health check: verify if APIs are back online (non-blocking)
                     performBackgroundHealthCheck(userId)
                } else {
-                    try {
+                         try {
                          if (fallbackProvider === 'gemini') {
-                              nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                              nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory, detectedLanguage)
                          } else {
-                              nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                              nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory, detectedLanguage)
                          }
 
                          // Track successful fallback
@@ -860,7 +909,7 @@ export async function POST(request: NextRequest) {
 
                          // Instead of throwing an error, provide a fallback response
                          console.warn('[API] Both AI providers failed, using fallback response')
-                         nutritionResponse = createFallbackResponse(message)
+                         nutritionResponse = createFallbackResponse(message, detectedLanguage)
                          
                          // Background health check: verify if APIs are back online (non-blocking)
                          performBackgroundHealthCheck(userId)
@@ -871,7 +920,7 @@ export async function POST(request: NextRequest) {
           // Validate that we have a valid nutrition response
           if (!nutritionResponse) {
                console.error('[API] nutritionResponse is null or undefined, using fallback')
-               nutritionResponse = createFallbackResponse(message)
+               nutritionResponse = createFallbackResponse(message, detectedLanguage)
           }
           
           if (!nutritionResponse.reply) {
@@ -880,7 +929,7 @@ export async function POST(request: NextRequest) {
                     responseKeys: nutritionResponse ? Object.keys(nutritionResponse) : [],
                     responseType: typeof nutritionResponse
                })
-               nutritionResponse = createFallbackResponse(message)
+               nutritionResponse = createFallbackResponse(message, detectedLanguage)
           }
 
           // Ensure products array exists
