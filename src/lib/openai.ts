@@ -866,13 +866,13 @@ IMPORTANT:
 export const openaiService = new OpenAIService({
      apiKey: process.env.OPENAI_API_KEY || '',
      model: 'gpt-4o',
-     maxTokens: 2000, // Increased from 500 to allow complete responses with product lists
+     maxTokens: 1800, // Balanced limit: encourages concise responses while preventing truncation with product lists
      temperature: 0.7
 })
 
 export const geminiService = new GeminiService({
      apiKey: process.env.GEMINI_API_KEY || '',
      model: 'gemini-flash-latest',
-     maxOutputTokens: 4000, // Increased from 2000 to allow complete responses with product lists
+     maxOutputTokens: 2500, // Balanced limit: encourages concise responses while preventing truncation with product lists
      temperature: 0.7
 })
