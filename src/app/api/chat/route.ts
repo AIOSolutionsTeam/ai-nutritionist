@@ -169,7 +169,7 @@ const GOAL_TAGS: { [goal: string]: string[] } = {
      digestion: ['digestion', 'gut-health'],
      weight_loss: ['weight-loss', 'slimming'],
      muscle_gain: ['muscle-gain', 'muscle'],
-     fitness: ['fitness', 'sport'],
+     fitness: ['fitness', 'sport', 'recovery', 'récupération'],
      wellness: ['wellness'],
      heart: ['heart-health', 'cardio']
 }
@@ -221,6 +221,13 @@ function deriveGoalKeysFromContext(
      }
      if (/\b(coeur|cœur|cardio|heart)\b/i.test(combined)) {
           addGoal('heart')
+     }
+     // Recovery and sport-related goals
+     if (/\b(récupération|recuperation|recovery|après.*sport|après.*entraînement|après.*entrainement|post.*workout|post.*training|récupérer|recuperer)\b/i.test(combined)) {
+          addGoal('fitness')
+     }
+     if (/\b(sport|entraînement|entrainement|workout|training|exercice|exercices|musculation|fitness)\b/i.test(combined)) {
+          addGoal('fitness')
      }
 
      return goals
@@ -1242,6 +1249,8 @@ export async function POST(request: NextRequest) {
                     // If still empty, map common intents to concrete supplement search terms
                     if (searchQueries.length === 0) {
                          const intentToKeywords: Array<{ test: (s: string) => boolean; keywords: string[] }> = [
+                              // Recovery / Post-workout
+                              { test: s => /\b(récupération|recuperation|recovery|après.*sport|après.*entraînement|après.*entrainement|post.*workout|post.*training|récupérer|recuperer)\b/i.test(s), keywords: ['magnesium', 'protein', 'bcaa', 'creatine'] },
                               // Weight gain / Muscle gain
                               { test: s => /\b(prise de poids|gain de poids|prise de masse|gain de masse|muscle|musculation|bodybuilding|masse musculaire)\b/i.test(s), keywords: ['protein', 'creatine', 'bcaa'] },
                               // Weight loss

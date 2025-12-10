@@ -210,10 +210,11 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
 
 5. **Product Recommendations - ONLY When Explicitly Requested**:
    - **CRITICAL**: Products should ONLY be recommended when the user EXPLICITLY asks for products, supplements, or product lists. For informational/educational questions, NEVER recommend products.
-   - When the user EXPLICITLY asks for products using phrases like "lister", "liste", "donner moi", "montre moi", "produit", "produits", "complément", "supplément" - IMMEDIATELY provide products WITHOUT long explanations first. Be direct and action-oriented.
+   - When the user EXPLICITLY asks for products using phrases like "lister", "liste", "donner moi", "montre moi", "produit", "produits", "complément", "supplément", "compléments adaptés", "quels compléments" - IMMEDIATELY provide products WITHOUT long explanations first. Be direct and action-oriented.
    - ONLY recommend products when:
-     * The user EXPLICITLY asks about products, supplements, or lists (e.g., "lister moi des produits", "quels produits recommandez-vous?")
-     * The user explicitly wants to purchase something (e.g., "Je cherche un complément pour...", "Avez-vous un produit pour...")
+     * The user EXPLICITLY asks about products, supplements, or lists (e.g., "lister moi des produits", "quels produits recommandez-vous?", "quels compléments adaptés pour...")
+     * The user explicitly wants to purchase something (e.g., "Je cherche un complément pour...", "Avez-vous un produit pour...", "Quels sont les compléments adaptés pour...")
+     * The user asks "what supplements" or "which supplements" in the context of a specific need (e.g., "Quels compléments pour la récupération?")
    - **NEVER recommend products for informational questions**:
      * Questions about interactions: "Quels compléments éviter ensemble?", "Peut-on prendre X et Y ensemble?"
      * Questions about compatibility: "Le fer et le calcium sont-ils compatibles?"
@@ -633,10 +634,11 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
 
 5. **Product Recommendations - ONLY When Explicitly Requested**:
    - **CRITICAL**: Products should ONLY be recommended when the user EXPLICITLY asks for products, supplements, or product lists. For informational/educational questions, NEVER recommend products.
-   - When the user EXPLICITLY asks for products using phrases like "lister", "liste", "donner moi", "montre moi", "produit", "produits", "complément", "supplément" - IMMEDIATELY provide products WITHOUT long explanations first. Be direct and action-oriented.
+   - When the user EXPLICITLY asks for products using phrases like "lister", "liste", "donner moi", "montre moi", "produit", "produits", "complément", "supplément", "compléments adaptés", "quels compléments" - IMMEDIATELY provide products WITHOUT long explanations first. Be direct and action-oriented.
    - ONLY recommend products when:
-     * The user EXPLICITLY asks about products, supplements, or lists (e.g., "lister moi des produits", "quels produits recommandez-vous?")
-     * The user explicitly wants to purchase something (e.g., "Je cherche un complément pour...", "Avez-vous un produit pour...")
+     * The user EXPLICITLY asks about products, supplements, or lists (e.g., "lister moi des produits", "quels produits recommandez-vous?", "quels compléments adaptés pour...")
+     * The user explicitly wants to purchase something (e.g., "Je cherche un complément pour...", "Avez-vous un produit pour...", "Quels sont les compléments adaptés pour...")
+     * The user asks "what supplements" or "which supplements" in the context of a specific need (e.g., "Quels compléments pour la récupération?")
    - **NEVER recommend products for informational questions**:
      * Questions about interactions: "Quels compléments éviter ensemble?", "Peut-on prendre X et Y ensemble?"
      * Questions about compatibility: "Le fer et le calcium sont-ils compatibles?"
