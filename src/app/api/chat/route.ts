@@ -604,6 +604,23 @@ export async function POST(request: NextRequest) {
                     { status: 400 }
                )
           }
+          
+          // EDGE CASE: Validate message is not just whitespace
+          if (typeof message !== 'string' || message.trim().length === 0) {
+               return NextResponse.json(
+                    { error: 'Message cannot be empty' },
+                    { status: 400 }
+               )
+          }
+          
+          // EDGE CASE: Limit message length to prevent token limit issues
+          const MAX_MESSAGE_LENGTH = 2000
+          const trimmedMessage = message.length > MAX_MESSAGE_LENGTH 
+               ? message.substring(0, MAX_MESSAGE_LENGTH) 
+               : message
+          if (message.length > MAX_MESSAGE_LENGTH) {
+               console.warn(`[API] Message too long (${message.length} chars), truncating to ${MAX_MESSAGE_LENGTH}`)
+          }
 
           // Rate limiting: use userId if available, otherwise use IP address
           const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0] || 
@@ -662,6 +679,9 @@ export async function POST(request: NextRequest) {
                // Continue execution even if analytics fails
           }
 
+          // Use trimmed message for processing
+          const messageToProcess = trimmedMessage
+          
           // Fetch user profile if userId is provided
           let userProfile: IUserProfile | null = null
           let userProfileContext = ''
@@ -744,9 +764,9 @@ export async function POST(request: NextRequest) {
           try {
                console.log(`[API] Attempting to generate advice with provider: ${selectedProvider}`)
                if (selectedProvider === 'gemini') {
-                    nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                    nutritionResponse = await geminiService.generateNutritionAdvice(messageToProcess, userId, userProfileContext, validHistory)
                } else {
-                    nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                    nutritionResponse = await openaiService.generateNutritionAdvice(messageToProcess, userId, userProfileContext, validHistory)
                }
 
                // Track successful AI response (with error handling)
@@ -805,8 +825,8 @@ export async function POST(request: NextRequest) {
                          : openaiService.getCooldownRemainingMs()
                     console.warn(`[API] Fallback provider ${fallbackProvider} also in cooldown (${Math.ceil(remaining / 1000)}s remaining). Skipping to fallback response.`)
                     
-                    // Skip directly to fallback response without attempting API call
-                    nutritionResponse = createFallbackResponse(message)
+                         // Skip directly to fallback response without attempting API call
+                    nutritionResponse = createFallbackResponse(messageToProcess)
                     
                     // Background health check: verify if APIs are back online (non-blocking)
                     performBackgroundHealthCheck(userId)
@@ -867,7 +887,7 @@ export async function POST(request: NextRequest) {
 
                          // Instead of throwing an error, provide a fallback response
                          console.warn('[API] Both AI providers failed, using fallback response')
-                         nutritionResponse = createFallbackResponse(message)
+                         nutritionResponse = createFallbackResponse(messageToProcess)
                          
                          // Background health check: verify if APIs are back online (non-blocking)
                          performBackgroundHealthCheck(userId)
@@ -878,7 +898,7 @@ export async function POST(request: NextRequest) {
           // Validate that we have a valid nutrition response
           if (!nutritionResponse) {
                console.error('[API] nutritionResponse is null or undefined, using fallback')
-               nutritionResponse = createFallbackResponse(message)
+               nutritionResponse = createFallbackResponse(messageToProcess)
           }
           
           if (!nutritionResponse.reply) {
@@ -887,13 +907,33 @@ export async function POST(request: NextRequest) {
                     responseKeys: nutritionResponse ? Object.keys(nutritionResponse) : [],
                     responseType: typeof nutritionResponse
                })
+               nutritionResponse = createFallbackResponse(messageToProcess)
+          }
+          
+          // EDGE CASE: Check if reply is just whitespace or empty after trimming
+          if (nutritionResponse.reply && nutritionResponse.reply.trim().length === 0) {
+               console.warn('[API] nutritionResponse.reply is empty or whitespace only, using fallback')
                nutritionResponse = createFallbackResponse(message)
           }
 
-          // Ensure products array exists
+          // Ensure products array exists and is valid
           if (!Array.isArray(nutritionResponse.products)) {
                console.warn('[API] nutritionResponse.products is not an array, setting to empty array')
                nutritionResponse.products = []
+          } else {
+               // EDGE CASE: Filter out invalid product entries (null, undefined, missing name)
+               const originalLength = nutritionResponse.products.length
+               nutritionResponse.products = nutritionResponse.products.filter(
+                    (p: unknown) => p !== null && 
+                                   p !== undefined && 
+                                   typeof p === 'object' && 
+                                   'name' in p && 
+                                   typeof (p as { name: unknown }).name === 'string' &&
+                                   (p as { name: string }).name.trim().length > 0
+               )
+               if (originalLength !== nutritionResponse.products.length) {
+                    console.warn(`[API] Filtered out ${originalLength - nutritionResponse.products.length} invalid product entries`)
+               }
           }
 
           // Search for relevant products based on AI response and/or user intent
@@ -905,7 +945,7 @@ export async function POST(request: NextRequest) {
           // 1. AI returned products in the products array (explicit recommendation)
           // 2. OR the response contains explicit product recommendation language
           const replyLower = nutritionResponse.reply.toLowerCase()
-          const userLower = (message || '').toLowerCase()
+          const userLower = (messageToProcess || '').toLowerCase()
           const hasExplicitProducts = nutritionResponse.products.length > 0
           
           // More specific product recommendation triggers (avoid generic words like "recommand")
@@ -934,6 +974,18 @@ export async function POST(request: NextRequest) {
           
           // Also check for specific supplement mentions (not just generic "vitamine")
           const hasSpecificSupplement = replyLower.match(/\b(vitamine [a-z]|vitamine d|vitamine c|magnésium|oméga|probiotique|collagène|protéine|créatine|fer|zinc|calcium|mélatonine|melatonin)\b/i)
+          
+          // EDGE CASE: Detect negative supplement mentions (e.g., "ne prenez pas ces compléments", "éviter ces suppléments")
+          // These should NOT trigger product search
+          const negativeSupplementPatterns = [
+               /\b(ne\s+prenez\s+pas|do\s+not\s+take|n'?utilisez\s+pas|don'?t\s+use)\s+(ces?\s+)?(compléments?|suppléments?|complements?|supplements?)/i,
+               /\b(éviter|eviter|avoid)\s+(ces?\s+)?(compléments?|suppléments?|complements?|supplements?)/i,
+               /\b(compléments?|suppléments?|complements?|supplements?)\s+(à\s+éviter|à\s+eviter|to\s+avoid|ne\s+pas\s+prendre)/i,
+               /\b(déconseillé|deconseille|not\s+recommended)\s+(pour|for)\s+(les\s+)?(compléments?|suppléments?)/i,
+          ]
+          const hasNegativeSupplementMention = negativeSupplementPatterns.some(pattern => 
+               pattern.test(replyLower) || pattern.test(userLower)
+          )
 
           // Detect user intent directly from the user's message
           // Include phrases that explicitly request product lists
@@ -1006,8 +1058,13 @@ export async function POST(request: NextRequest) {
           const replyIsInformational = replyInformationalPatterns.some(pattern => pattern.test(replyLower))
           
           // Combined check: if user asks informational question OR AI gives informational answer
-          const interactionIntent = isInformationalQuestion || replyIsInformational
+          // EDGE CASE: Also include negative supplement mentions as informational (don't show products)
+          const interactionIntent = isInformationalQuestion || replyIsInformational || hasNegativeSupplementMention
           const deficiencyIntent = /\b(carence|manque de|deficiency|insuffisance)\b/i.test(userLower)
+          
+          if (hasNegativeSupplementMention) {
+               console.log('[API] Detected negative supplement mention - treating as informational (no products)')
+          }
           
           if (interactionIntent) {
                console.log('[API] Detected informational/safety question - will not show products')
@@ -1528,7 +1585,8 @@ export async function POST(request: NextRequest) {
           // 2. AI mentions supplements in reply but didn't populate products array
           // 3. Product search was skipped but should have been triggered
           // 4. AI response clearly indicates products should be shown (mentions "voici", "sélection", etc.)
-          if (recommendedProducts.length === 0 && !interactionIntent) {
+          // EDGE CASE: Skip fallback if negative supplement mention detected
+          if (recommendedProducts.length === 0 && !interactionIntent && !hasNegativeSupplementMention) {
                const replyMentionsSupplements = replyLower.includes('complément') || 
                                                  replyLower.includes('supplément') || 
                                                  replyLower.includes('compléments') ||
@@ -1630,8 +1688,38 @@ export async function POST(request: NextRequest) {
           // Apply deterministic, profile-based filtering & sorting on the
           // candidate products, independent of how they were found.
           if (recommendedProducts.length > 0) {
+               const originalCount = recommendedProducts.length
                recommendedProducts = applyUserProfileFiltersToProducts(recommendedProducts, intent)
+               
+               // EDGE CASE: If filtering removed ALL products, log a warning
+               // The filter function already returns original products if filtered is empty,
+               // but we should still log this for monitoring
+               if (recommendedProducts.length === 0 && originalCount > 0) {
+                    console.warn(`[API] Profile filtering removed all ${originalCount} products - this may indicate overly strict filters`)
+               } else if (recommendedProducts.length < originalCount) {
+                    console.log(`[API] Profile filtering: ${originalCount} -> ${recommendedProducts.length} products (removed ${originalCount - recommendedProducts.length})`)
+               }
           }
+          
+          // EDGE CASE: Validate product structure before returning
+          // Ensure all products have required fields
+          recommendedProducts = recommendedProducts.filter((p): p is ProductSearchResult => {
+               const isValid = p !== null && 
+                              p !== undefined && 
+                              typeof p === 'object' &&
+                              'title' in p &&
+                              'variantId' in p &&
+                              typeof p.title === 'string' &&
+                              typeof p.variantId === 'string' &&
+                              p.title.trim().length > 0 &&
+                              p.variantId.trim().length > 0
+               
+               if (!isValid) {
+                    console.warn('[API] Filtered out invalid product:', p)
+               }
+               
+               return isValid
+          })
 
           // Get recommended product combinations based on user profile
           // Skip combos if this is an informational question (no products should be shown)

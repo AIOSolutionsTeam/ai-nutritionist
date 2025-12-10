@@ -313,21 +313,48 @@ IMPORTANT:
 
                // Parse the JSON response
                try {
+                    // EDGE CASE: Check for truncated JSON (OpenAI doesn't have built-in truncation detection like Gemini)
+                    const trimmedContent = responseContent.trim()
+                    const isLikelyTruncated = (
+                         (!trimmedContent.endsWith('}') && !trimmedContent.endsWith(']')) ||
+                         (trimmedContent.match(/\{/g) || []).length !== (trimmedContent.match(/\}/g) || []).length ||
+                         (trimmedContent.match(/\[/g) || []).length !== (trimmedContent.match(/\]/g) || []).length ||
+                         (trimmedContent.match(/"/g) || []).length % 2 !== 0
+                    )
+                    
+                    if (isLikelyTruncated) {
+                         console.warn('[OpenAIService] Response appears to be truncated - JSON structure incomplete')
+                         // Try to extract what we can, but log the issue
+                    }
+
                     const parsedResponse = JSON.parse(responseContent)
 
                     // Validate the response structure
                     if (!parsedResponse.reply || !Array.isArray(parsedResponse.products)) {
                          throw new Error('Invalid response structure')
                     }
+                    
+                    // EDGE CASE: Check if reply is empty or just whitespace
+                    if (typeof parsedResponse.reply === 'string' && parsedResponse.reply.trim().length === 0) {
+                         console.warn('[OpenAIService] Response has empty reply field')
+                         throw new Error('Empty reply field')
+                    }
 
                     return parsedResponse as StructuredNutritionResponse
                } catch (parseError) {
                     console.error('Failed to parse OpenAI response as JSON:', parseError)
-                    console.error('Raw response:', responseContent)
+                    console.error('Raw response (first 500 chars):', responseContent.substring(0, 500))
 
                     // Fallback to a structured response if JSON parsing fails
+                    // EDGE CASE: Try to extract reply text even if JSON is malformed
+                    let extractedReply = responseContent
+                    const jsonMatch = responseContent.match(/"reply"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/)
+                    if (jsonMatch && jsonMatch[1]) {
+                         extractedReply = jsonMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+                    }
+                    
                     return {
-                         reply: responseContent,
+                         reply: extractedReply || responseContent || 'Désolé, je n\'ai pas pu traiter votre demande correctement.',
                          products: [],
                          disclaimer: 'Please consult with a healthcare professional before starting any new supplement regimen.'
                     }
@@ -711,7 +738,6 @@ IMPORTANT:
           const modelsToTry = [this.config.model, ...this.fallbackModels.filter(m => m !== this.config.model).slice(0, 1)] // Limit to 1 fallback
 
           let lastError: Error | null = null
-          let shouldTryFallback = false
 
           for (const modelName of modelsToTry) {
                try {
@@ -742,7 +768,6 @@ IMPORTANT:
                               console.warn(`Gemini response appears truncated for model ${modelName}`)
                               // Only try fallback for truncation errors, not other parsing errors
                               if (modelsToTry.indexOf(modelName) < modelsToTry.length - 1) {
-                                   shouldTryFallback = true
                                    throw new Error('Response appears to be truncated')
                               }
                               throw new Error('Response appears to be truncated')
