@@ -944,9 +944,26 @@ export async function POST(request: NextRequest) {
                'produit', 'produits', 
                'recommande', 'recommander', 'recommandation', 'recommandations',
                'quel produit', 'quels produits',
-               'aide moi', 'aidez moi', 'aide-moi', 'aidez-moi'
+               'aide moi', 'aidez moi', 'aide-moi', 'aidez-moi',
+               // Add patterns for "quels sont les compléments" type questions
+               'quels sont les compléments', 'quels sont les complément',
+               'quels compléments', 'quel complément',
+               'quels sont les suppléments', 'quels sont les supplément',
+               'quels suppléments', 'quel supplément',
+               'compléments adaptés', 'complément adapté',
+               'suppléments adaptés', 'supplément adapté',
+               'compléments pour', 'complément pour',
+               'suppléments pour', 'supplément pour'
           ]
           const userHasProductIntent = productListPhrases.some(t => userLower.includes(t))
+          
+          // Also check for "quels sont" + supplement keywords pattern (more flexible)
+          const quelsSontPattern = /\b(quels?|which)\s+(sont|are)\s+(les\s+)?(compléments?|suppléments?|complements?|supplements?)/i
+          const hasQuelsSontSupplementPattern = quelsSontPattern.test(userLower)
+          if (hasQuelsSontSupplementPattern && !userHasProductIntent) {
+               // This is definitely a product request
+               console.log('[API] Detected "quels sont les compléments" pattern - treating as product request')
+          }
           const userHasSpecificSupplement = userLower.match(/\b(vitamine [a-z]|vitamine d|vitamine c|magnésium|oméga|probiotique|collagène|protéine|créatine|fer|zinc|calcium|mélatonine|melatonin)\b/i)
 
           // Derive high-level health goals (energy, sleep, stress, etc.) from profile + conversation
@@ -1094,11 +1111,18 @@ export async function POST(request: NextRequest) {
           
           // Check if user explicitly asks for products in a way that's NOT informational
           // This means they want a product list, not information about what to avoid
-          const explicitProductRequest = userHasProductIntent && 
+          // Expanded to include "quels sont les compléments" patterns and supplement requests with goals
+          const explicitProductRequest = (
+               (userHasProductIntent || hasQuelsSontSupplementPattern) && 
                !isInformationalQuestion && 
                (userLower.includes('liste') || userLower.includes('lister') || 
                 userLower.includes('donner') || userLower.includes('montrer') ||
-                userLower.includes('recommand'))
+                userLower.includes('recommand') ||
+                hasQuelsSontSupplementPattern ||
+                // If user asks about supplements/complements for a specific goal, it's a product request
+                (userLower.includes('complément') || userLower.includes('supplément')) && goalKeys.length > 0
+               )
+          )
 
           // Only allow product search if:
           // 1. It's NOT an informational question, OR
@@ -1114,6 +1138,7 @@ export async function POST(request: NextRequest) {
                (hasExplicitTrigger && hasSupplementMentions && !interactionIntent) ||
                (hasExplicitTrigger && replyLower.includes('sélection') && !interactionIntent) ||
                explicitProductRequest ||
+               hasQuelsSontSupplementPattern || // Explicitly handle "quels sont les compléments" pattern
                isProductRequest || // Sale, collection, or combo requests trigger search
                (userHasSpecificSupplement && !interactionIntent && userHasProductIntent) ||
                (hasSpecificSupplement && !interactionIntent && hasExplicitTrigger) ||
@@ -1123,12 +1148,16 @@ export async function POST(request: NextRequest) {
                // If we detect a health goal (sleep, energy, stress, etc.) AND the AI mentions supplements,
                // automatically trigger product search - this handles cases where user mentions a health problem
                // and AI recommends supplements without using explicit trigger words
-               (goalKeys.length > 0 && (hasSpecificSupplement || hasSupplementKeywords || hasSupplementMentions) && !interactionIntent)
+               (goalKeys.length > 0 && (hasSpecificSupplement || hasSupplementKeywords || hasSupplementMentions) && !interactionIntent) ||
+               // CRITICAL FIX: If user asks about supplements/complements for a specific goal, always search
+               // This catches cases like "quels compléments pour la récupération"
+               (goalKeys.length > 0 && (userLower.includes('complément') || userLower.includes('supplément') || userLower.includes('complement') || userLower.includes('supplement')) && !interactionIntent)
           )
 
           console.log('[API] Product search gating', {
                interactionIntent,
                explicitProductRequest,
+               hasQuelsSontSupplementPattern,
                deficiencyIntent,
                hasSupplementMentions,
                hasSupplementKeywords,
@@ -1138,7 +1167,8 @@ export async function POST(request: NextRequest) {
                userHasSpecificSupplement,
                userHasProductIntent,
                shouldSearchProducts,
-               goalKeys
+               goalKeys,
+               userMessage: message.substring(0, 100) // Log first 100 chars for debugging
           })
 
           // Build a structured intent that summarizes what the user wants for the
@@ -1156,6 +1186,7 @@ export async function POST(request: NextRequest) {
           if (shouldSearchProducts) {
                try {
                     // 1) Goal-based, tag-driven search (preferred when a clear goal is identified)
+                    // CRITICAL: Always run goal-based search when goals are detected, even if other conditions suggest otherwise
                     if (goalKeys.length > 0 && !isSaleRequest && !requestedCollection) {
                          console.log('[API] Attempting goal-based product search using tags for goals:', goalKeys)
                          try {
@@ -1173,24 +1204,35 @@ export async function POST(request: NextRequest) {
 
                               for (const goal of goalKeys) {
                                    const tagsForGoal = GOAL_TAGS[goal]
-                                   if (!tagsForGoal || tagsForGoal.length === 0) continue
+                                   if (!tagsForGoal || tagsForGoal.length === 0) {
+                                        console.warn(`[API] No tags found for goal "${goal}" in GOAL_TAGS`)
+                                        continue
+                                   }
 
                                    console.log(`[API] Searching products by tags for goal "${goal}" -> [${tagsForGoal.join(', ')}]`)
                                    try {
                                         const goalProducts = await searchProductsByTags(tagsForGoal, 4)
                                         if (goalProducts && goalProducts.length > 0) {
+                                             console.log(`[API] Found ${goalProducts.length} products for goal "${goal}"`)
                                              goalProducts.forEach((p) => {
                                                   if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
                                                        recommendedProducts.push(p)
                                                   }
                                              })
+                                        } else {
+                                             console.warn(`[API] No products found for goal "${goal}" with tags [${tagsForGoal.join(', ')}]`)
                                         }
                                    } catch (tagSearchError) {
                                         console.error(`[API] Error searching products by tags for goal "${goal}":`, tagSearchError)
+                                        // Log the error details for debugging
+                                        if (tagSearchError instanceof Error) {
+                                             console.error(`[API] Tag search error details: ${tagSearchError.message}`, tagSearchError.stack)
+                                        }
                                    }
 
                                    // If we already have a few strong matches, stop early
                                    if (recommendedProducts.length >= 3) {
+                                        console.log(`[API] Found enough products (${recommendedProducts.length}), stopping goal search`)
                                         break
                                    }
                               }
@@ -1449,23 +1491,140 @@ export async function POST(request: NextRequest) {
                          }
                     }
                } catch (productSearchError) {
-                    console.error('Product search error:', productSearchError)
+                    console.error('[API] Product search error:', productSearchError)
+                    
+                    // Log detailed error information for debugging
+                    if (productSearchError instanceof Error) {
+                         console.error('[API] Product search error details:', {
+                              message: productSearchError.message,
+                              stack: productSearchError.stack,
+                              name: productSearchError.name
+                         })
+                    }
 
                     // Track product search error (with error handling)
                     try {
                          await analytics.trackEvent('product_search_error', {
                               category: 'error',
                               errorType: 'search_failure',
-                              userId: userId || 'anonymous'
+                              errorMessage: productSearchError instanceof Error ? productSearchError.message : String(productSearchError),
+                              userId: userId || 'anonymous',
+                              goalKeys: goalKeys.join(', '),
+                              shouldSearchProducts
                          })
                     } catch (analyticsError) {
                          console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
                     }
 
-                    // Continue without products if search fails
+                    // Continue without products if search fails - fallback will handle it
                }
           } else {
                console.log('No product search needed - AI response indicates no products required')
+          }
+          
+          // CRITICAL FIX: Fallback product search when AI mentions supplements but no products were found
+          // This handles cases where:
+          // 1. AI response is truncated and products array is incomplete
+          // 2. AI mentions supplements in reply but didn't populate products array
+          // 3. Product search was skipped but should have been triggered
+          // 4. AI response clearly indicates products should be shown (mentions "voici", "sélection", etc.)
+          if (recommendedProducts.length === 0 && !interactionIntent) {
+               const replyMentionsSupplements = replyLower.includes('complément') || 
+                                                 replyLower.includes('supplément') || 
+                                                 replyLower.includes('compléments') ||
+                                                 replyLower.includes('suppléments') ||
+                                                 hasSupplementKeywords ||
+                                                 hasSpecificSupplement
+               
+               const userAsksForSupplements = userLower.includes('complément') || 
+                                              userLower.includes('supplément') ||
+                                              userLower.includes('complement') ||
+                                              userLower.includes('supplement') ||
+                                              hasQuelsSontSupplementPattern
+               
+               // Check if AI response indicates products should be shown (even if truncated)
+               const replyIndicatesProducts = replyLower.includes('voici') || 
+                                              replyLower.includes('sélection') ||
+                                              replyLower.includes('recommand') ||
+                                              replyLower.includes('compléments qui') ||
+                                              replyLower.includes('suppléments qui') ||
+                                              replyLower.includes('nous allons nous concentrer') ||
+                                              replyLower.includes('concentrer sur')
+               
+               // If AI mentions supplements OR user asked about supplements OR AI indicates products, do a fallback search
+               if ((replyMentionsSupplements || userAsksForSupplements || replyIndicatesProducts) && 
+                   (goalKeys.length > 0 || userAsksForSupplements || hasQuelsSontSupplementPattern)) {
+                    console.log('[API] Fallback: AI mentioned supplements but no products found - performing goal-based search')
+                    try {
+                         // Try goal-based search first
+                         for (const goal of goalKeys) {
+                              const tagsForGoal = GOAL_TAGS[goal]
+                              if (!tagsForGoal || tagsForGoal.length === 0) continue
+                              
+                              try {
+                                   const goalProducts = await searchProductsByTags(tagsForGoal, 4)
+                                   if (goalProducts && goalProducts.length > 0) {
+                                        goalProducts.forEach((p) => {
+                                             if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
+                                                  recommendedProducts.push(p)
+                                             }
+                                        })
+                                   }
+                              } catch (tagSearchError) {
+                                   console.error(`[API] Fallback goal search error for "${goal}":`, tagSearchError)
+                              }
+                              
+                              if (recommendedProducts.length >= 3) break
+                         }
+                         
+                         // If goal-based search didn't work, try keyword-based search
+                         if (recommendedProducts.length === 0) {
+                              // Extract keywords from user message or AI reply
+                              let fallbackQueries = generateProductSearchQueries(userLower)
+                              if (fallbackQueries.length === 0) {
+                                   fallbackQueries = generateProductSearchQueries(replyLower)
+                              }
+                              
+                              // If still empty, use intent-based keywords
+                              if (fallbackQueries.length === 0) {
+                                   const combinedText = `${userLower} ${replyLower}`
+                                   const intentToKeywords: Array<{ test: (s: string) => boolean; keywords: string[] }> = [
+                                        { test: s => /\b(récupération|recuperation|recovery|après.*sport|après.*entraînement|après.*entrainement|post.*workout|post.*training|récupérer|recuperer)\b/i.test(s), keywords: ['magnesium', 'protein', 'bcaa', 'creatine'] },
+                                        { test: s => /\b(sommeil|dormir|insomnie|sleep)\b/i.test(s), keywords: ['melatonin', 'magnesium', 'ashwagandha'] },
+                                        { test: s => /\b(énergie|energie|fatigue|energy)\b/i.test(s), keywords: ['b-complex', 'iron', 'coq10'] },
+                                        { test: s => /\b(immunité|immunite|immune)\b/i.test(s), keywords: ['vitamin c', 'zinc', 'vitamin d'] },
+                                   ]
+                                   
+                                   for (const mapper of intentToKeywords) {
+                                        if (mapper.test(combinedText)) {
+                                             fallbackQueries = mapper.keywords.slice(0, 3)
+                                             break
+                                        }
+                                   }
+                              }
+                              
+                              if (fallbackQueries.length > 0) {
+                                   console.log('[API] Fallback: Performing keyword-based search with:', fallbackQueries)
+                                   try {
+                                        const fallbackProducts = await searchProducts(fallbackQueries[0], { useTagRanking: true })
+                                        if (fallbackProducts && fallbackProducts.length > 0) {
+                                             recommendedProducts = fallbackProducts.slice(0, 4)
+                                             console.log(`[API] Fallback search found ${recommendedProducts.length} products`)
+                                        }
+                                   } catch (fallbackError) {
+                                        console.error('[API] Fallback keyword search error:', fallbackError)
+                                   }
+                              }
+                         }
+                         
+                         if (recommendedProducts.length > 0) {
+                              console.log('[API] Fallback search successful - found products:', recommendedProducts.map(p => p.title))
+                         }
+                    } catch (fallbackError) {
+                         console.error('[API] Fallback product search error:', fallbackError)
+                         // Non-fatal, continue without products
+                    }
+               }
           }
 
           // Apply deterministic, profile-based filtering & sorting on the
