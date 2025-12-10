@@ -389,7 +389,8 @@ IMPORTANT:
 export class GeminiService {
      private genAI: GoogleGenerativeAI
      private config: GeminiConfig
-     private fallbackModels = ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-flash-latest']
+     // Reduced fallback models to prevent excessive API calls - only use one fallback
+     private fallbackModels = ['gemini-2.0-flash']
      private quotaResetAt?: number
 
      constructor(config: GeminiConfig) {
@@ -701,8 +702,12 @@ IMPORTANT:
                }
           }
 
-          // Try the configured model first, then fallback models
-          const modelsToTry = [this.config.model, ...this.fallbackModels.filter(m => m !== this.config.model)]
+          // Try the configured model first, with limited fallback to reduce API calls
+          // Only use fallback for specific errors (truncation, not quota errors)
+          const modelsToTry = [this.config.model, ...this.fallbackModels.filter(m => m !== this.config.model).slice(0, 1)] // Limit to 1 fallback
+
+          let lastError: Error | null = null
+          let shouldTryFallback = false
 
           for (const modelName of modelsToTry) {
                try {
@@ -731,6 +736,11 @@ IMPORTANT:
                          // Check if the JSON appears to be truncated
                          if (this.isTruncatedJson(cleanedContent)) {
                               console.warn(`Gemini response appears truncated for model ${modelName}`)
+                              // Only try fallback for truncation errors, not other parsing errors
+                              if (modelsToTry.indexOf(modelName) < modelsToTry.length - 1) {
+                                   shouldTryFallback = true
+                                   throw new Error('Response appears to be truncated')
+                              }
                               throw new Error('Response appears to be truncated')
                          }
 
@@ -747,12 +757,15 @@ IMPORTANT:
                          console.error('Failed to parse Gemini response as JSON:', parseError)
                          console.error('Raw response:', responseContent)
 
-                         // If this is a truncation error, try the next model
+                         // If this is a truncation error and we have more models to try, continue
                          if (parseError instanceof Error && parseError.message === 'Response appears to be truncated') {
-                              throw parseError
+                              if (modelsToTry.indexOf(modelName) < modelsToTry.length - 1) {
+                                   lastError = parseError
+                                   continue
+                              }
                          }
 
-                         // Try a sanitization pass and parse again
+                         // Try a sanitization pass and parse again (only for current model, don't retry with fallback)
                          try {
                               const cleanedContent = this.cleanJsonResponse(responseContent)
                               const sanitized = this.sanitizeJsonForParse(cleanedContent)
@@ -766,19 +779,22 @@ IMPORTANT:
                               return reparsed as StructuredNutritionResponse
                          } catch (sanitizationError) {
                               console.error('Sanitized parsing also failed:', sanitizationError)
-                         }
-
-                         // Fallback to a structured response if JSON parsing fails
-                         return {
-                              reply: responseContent,
-                              products: [],
-                              disclaimer: 'Please consult with a healthcare professional before starting any new supplement regimen.'
+                              // Don't try fallback for parsing errors - just return fallback response
+                              if (modelsToTry.indexOf(modelName) === modelsToTry.length - 1) {
+                                   // Last model, return fallback response
+                                   return {
+                                        reply: responseContent,
+                                        products: [],
+                                        disclaimer: 'Please consult with a healthcare professional before starting any new supplement regimen.'
+                                   }
+                              }
                          }
                     }
                } catch (modelError) {
                     console.error(`Gemini model ${modelName} failed:`, modelError)
+                    lastError = modelError instanceof Error ? modelError : new Error(String(modelError))
 
-                    // If this is a quota / rate limit error, stop trying other models
+                    // If this is a quota / rate limit error, stop trying other models immediately
                     if (this.isQuotaError(modelError)) {
                          let retryAfterMs: number | undefined
                          const errorObj = modelError as { message?: unknown }
@@ -799,13 +815,22 @@ IMPORTANT:
                          throw new AIQuotaError('gemini', 'Gemini quota exceeded', retryAfterMs)
                     }
 
-                    // Continue to next model for non‑quota errors
-                    continue
+                    // Only continue to next model if:
+                    // 1. We have more models to try
+                    // 2. This is a truncation error (not other errors)
+                    if (modelsToTry.indexOf(modelName) < modelsToTry.length - 1) {
+                         const isTruncationError = lastError?.message === 'Response appears to be truncated'
+                         if (isTruncationError) {
+                              continue // Try next model for truncation
+                         }
+                         // For other errors, don't waste API calls on fallback
+                         break
+                    }
                }
           }
 
           // If all models failed
-          throw new Error('All Gemini models failed to generate response')
+          throw lastError || new Error('All Gemini models failed to generate response')
      }
 
      // eslint-disable-next-line @typescript-eslint/no-unused-vars
