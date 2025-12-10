@@ -107,3 +107,5 @@ Test the following scenarios:
 
 The system now fully supports all collections available on the Vigaia website and will accurately suggest products based on collection requests.
 
+
+
