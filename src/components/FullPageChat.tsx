@@ -815,7 +815,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             
             const timeout = setTimeout(() => {
               typeNextChunk();
-            }, Math.max(5, delay)); // Minimum 5ms delay
+            }, Math.max(2, delay)); // Minimum 2ms delay (reduced for faster start)
             
             timeoutsMap.set(message.id, timeout);
             
@@ -1856,6 +1856,9 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       const fullText = data.reply ||
         "😔 Désolé, je n'ai pas pu traiter votre demande pour le moment. Pouvez-vous réessayer ? 💚";
       
+      // Show first character immediately so bubble appears with content right away
+      const firstChar = fullText.length > 0 ? fullText[0] : "";
+      
       const aiMessage: Message = {
         id: generateMessageId(),
         text: fullText,
@@ -1866,7 +1869,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         suggestedCombo: data.suggestedCombo || undefined,
         pendingComboResponse: data.suggestedCombo ? true : false, // Ask about combo if one is suggested
         isTyping: true, // Start with typewriter effect
-        displayedText: "", // Start with empty text
+        displayedText: firstChar, // Start with first character so bubble appears immediately
       };
 
       setMessages((prev) => [...prev, aiMessage]);
