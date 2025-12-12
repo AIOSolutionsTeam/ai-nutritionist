@@ -601,6 +601,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const typewriterIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const typewriterTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const activeTypingMessagesRef = useRef<Set<string>>(new Set());
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const generateMessageId = (): string => {
     messageIdCounterRef.current += 1;
@@ -610,6 +612,60 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  const handleTextToSpeech = (messageId: string, text: string) => {
+    // Stop any currently playing speech
+    if (speechSynthesisRef.current) {
+      window.speechSynthesis.cancel();
+      speechSynthesisRef.current = null;
+    }
+
+    // If clicking the same message, stop it
+    if (speakingMessageId === messageId) {
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    // Clean text - remove markdown formatting for better speech
+    const cleanText = text
+      .replace(/#{1,6}\s+/g, '') // Remove markdown headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.*?)\*/g, '$1') // Remove italic
+      .replace(/`(.*?)`/g, '$1') // Remove code
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links, keep text
+      .trim();
+
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = 'fr-FR'; // French language
+    utterance.rate = 1.0; // Normal speed
+    utterance.pitch = 1.0; // Normal pitch
+    utterance.volume = 1.0; // Full volume
+
+    utterance.onend = () => {
+      setSpeakingMessageId(null);
+      speechSynthesisRef.current = null;
+    };
+
+    utterance.onerror = () => {
+      setSpeakingMessageId(null);
+      speechSynthesisRef.current = null;
+    };
+
+    speechSynthesisRef.current = utterance;
+    setSpeakingMessageId(messageId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Check if any message is currently typing
@@ -1964,6 +2020,22 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                     : "bg-card text-foreground border border-secondary/30 rounded-bl-lg shadow-sm"
                 }`}
               >
+                {!message.isUser && !message.isTyping && (
+                  <div className="flex justify-end mb-1">
+                    <button
+                      onClick={() => handleTextToSpeech(message.id, message.text)}
+                      className="p-1.5 rounded-full hover:bg-secondary/20 transition-colors"
+                      title={speakingMessageId === message.id ? "Arrêter la lecture" : "Lire le texte"}
+                      aria-label={speakingMessageId === message.id ? "Arrêter la lecture" : "Lire le texte"}
+                    >
+                      {speakingMessageId === message.id ? (
+                        <span className="text-sm">⏸️</span>
+                      ) : (
+                        <span className="text-sm">🔊</span>
+                      )}
+                    </button>
+                  </div>
+                )}
                 <div className={`text-xs sm:text-sm md:text-base leading-relaxed prose prose-sm max-w-none break-words ${
                   message.isUser 
                     ? "prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-em:text-gray-200" 
