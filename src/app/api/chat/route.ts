@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError } from '../../../lib/openai'
-import { searchProducts, searchProductsByTags, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS, getCollectionMap } from '../../../lib/shopify'
+import { searchProducts, searchProductsByTags, searchProductsByCollection, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS, getCollectionMap, generateProductContext, generateDynamicCombosFromProducts } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 
@@ -171,7 +171,8 @@ const GOAL_TAGS: { [goal: string]: string[] } = {
      muscle_gain: ['muscle-gain', 'muscle'],
      fitness: ['fitness', 'sport', 'recovery', 'récupération'],
      wellness: ['wellness'],
-     heart: ['heart-health', 'cardio']
+     heart: ['heart-health', 'cardio'],
+     beauty: ['beauty', 'beauté', 'beaute', 'skin', 'peau', 'hair', 'cheveux', 'collagen', 'collagène', 'biotin', 'biotine']
 }
 
 /**
@@ -228,6 +229,10 @@ function deriveGoalKeysFromContext(
      }
      if (/\b(sport|entraînement|entrainement|workout|training|exercice|exercices|musculation|fitness)\b/i.test(combined)) {
           addGoal('fitness')
+     }
+     // Beauty, skin, and hair goals
+     if (/\b(peau|skin|beauté|beaute|beauty|cheveux|hair|cheveu|collagène|collagen|biotine|biotin|anti-âge|anti-age|anti-aging)\b/i.test(combined)) {
+          addGoal('beauty')
      }
 
      return goals
@@ -326,6 +331,104 @@ function buildUserIntent(params: {
  * Deterministic, profile-aware filtering & sorting on top of any product list.
  * This layer is completely independent from how products were found (tags, text search, combos, etc.).
  */
+/**
+ * Score products based on structured data matching with user profile and goals
+ * Returns products with relevance scores for better ranking
+ */
+function scoreProductsWithStructuredData(
+     products: ProductSearchResult[],
+     userProfile: IUserProfile | null,
+     goalKeys: string[]
+): Array<ProductSearchResult & { relevanceScore: number }> {
+     if (!products.length) return []
+
+     const scored = products.map((product) => {
+          let score = 0
+
+          // Match target audience with user profile
+          if (product.targetAudience && product.targetAudience.length > 0 && userProfile) {
+               const audienceLower = product.targetAudience.map(a => a.toLowerCase())
+               
+               // Age-based matching
+               if (userProfile.age) {
+                    if (userProfile.age >= 65) {
+                         if (audienceLower.some(a => a.includes('senior') || a.includes('âgé'))) {
+                              score += 3
+                         }
+                    } else if (userProfile.age < 30) {
+                         if (audienceLower.some(a => a.includes('jeune') || a.includes('adolescent'))) {
+                              score += 3
+                         }
+                    }
+                    // Adult matching (most products)
+                    if (audienceLower.some(a => a.includes('adulte'))) {
+                         score += 1
+                    }
+               }
+
+               // Gender-based matching
+               if (userProfile.gender) {
+                    const genderLower = userProfile.gender.toLowerCase()
+                    if (genderLower === 'female' || genderLower === 'femme') {
+                         if (audienceLower.some(a => a.includes('femme') || a.includes('women') || a.includes('féminin'))) {
+                              score += 3
+                         }
+                    } else if (genderLower === 'male' || genderLower === 'homme') {
+                         if (audienceLower.some(a => a.includes('homme') || a.includes('men') || a.includes('masculin'))) {
+                              score += 3
+                         }
+                    }
+               }
+
+               // Goal-based matching with target audience
+               goalKeys.forEach(goal => {
+                    const goalLower = goal.toLowerCase()
+                    if (audienceLower.some(a => {
+                         const aLower = a.toLowerCase()
+                         return aLower.includes(goalLower) ||
+                                (goalLower.includes('energie') && (aLower.includes('fatigué') || aLower.includes('fatigue'))) ||
+                                (goalLower.includes('immun') && (aLower.includes('immunité') || aLower.includes('défense'))) ||
+                                (goalLower.includes('sport') && (aLower.includes('sportif') || aLower.includes('athlète'))) ||
+                                (goalLower.includes('beaute') && (aLower.includes('peau') || aLower.includes('beauté')))
+                    })) {
+                         score += 2
+                    }
+               })
+          }
+
+          // Match benefits with goals
+          if (product.benefits && product.benefits.length > 0 && goalKeys.length > 0) {
+               const benefitsLower = product.benefits.map(b => b.toLowerCase())
+               goalKeys.forEach(goal => {
+                    const goalLower = goal.toLowerCase()
+                    if (benefitsLower.some(b => {
+                         return b.includes(goalLower) ||
+                                (goalLower.includes('energie') && (b.includes('énergie') || b.includes('fatigue'))) ||
+                                (goalLower.includes('immun') && (b.includes('immunité') || b.includes('défense'))) ||
+                                (goalLower.includes('sport') && (b.includes('muscle') || b.includes('récupération'))) ||
+                                (goalLower.includes('beaute') && (b.includes('peau') || b.includes('collagène'))) ||
+                                (goalLower.includes('sommeil') && (b.includes('sommeil') || b.includes('relaxation')))
+                    })) {
+                         score += 2
+                    }
+               })
+          }
+
+          // Boost score if product has structured data (more complete information)
+          if (product.benefits && product.benefits.length > 0) score += 1
+          if (product.targetAudience && product.targetAudience.length > 0) score += 1
+          if (product.usageInstructions && product.usageInstructions.dosage) score += 1
+
+          return {
+               ...product,
+               relevanceScore: score
+          }
+     })
+
+     // Sort by relevance score (highest first)
+     return scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
+}
+
 function applyUserProfileFiltersToProducts(
      products: ProductSearchResult[],
      intent: UserIntent
@@ -595,7 +698,18 @@ function formatUserProfileContext(userProfile: IUserProfile | null): string {
 
 export async function POST(request: NextRequest) {
      try {
-          const body = await request.json()
+          // Parse request body with error handling
+          let body: { message?: string; userId?: string; provider?: string; conversationHistory?: unknown }
+          try {
+               body = await request.json()
+          } catch (parseError) {
+               console.error('[API] Failed to parse request body:', parseError)
+               return NextResponse.json(
+                    { error: 'Invalid request body. Expected JSON.' },
+                    { status: 400 }
+               )
+          }
+          
           const { message, userId, provider = 'gemini', conversationHistory } = body
 
           if (!message) {
@@ -663,7 +777,7 @@ export async function POST(request: NextRequest) {
                          role: msg.role,
                          content: msg.content
                     }))
-                    .slice(-20) // Limit to last 20 messages to avoid token limits
+                    .slice(-10) // Limit to last 10 messages (will be further optimized to 5 in AI services)
           }
 
           // Track chat API request (with error handling)
@@ -759,14 +873,47 @@ export async function POST(request: NextRequest) {
                return NextResponse.json(response)
           }
 
+          // Fetch product context (uses cache, very fast after first call)
+          // This is now optimized: context is cached and only regenerated when products are refreshed
+          let productContext: string | undefined
+          try {
+               // Use cached context if available (generated automatically when products are fetched)
+               productContext = await generateProductContext(50) // Limit to 50 products to avoid token limits
+               console.log(`[API] Product context ready (${productContext.length} characters, from cache if available)`)
+          } catch (error) {
+               console.error('[API] Error fetching product context (non-fatal, continuing without it):', error)
+               // Continue without product context - AI will still work, just without product reference
+          }
+
+          // Detect budget mentions in user message for budget-aware upselling
+          const budgetPattern = /\b(budget|prix|coût|coûte|coûter|payer|paye|payé|euros?|€|eur)\s*(?:de|:)?\s*(\d+)/i
+          const budgetMatch = messageToProcess.match(budgetPattern)
+          let detectedBudget: number | undefined = undefined
+          if (budgetMatch) {
+               detectedBudget = parseInt(budgetMatch[2], 10)
+               console.log(`[API] Detected budget mention: ${detectedBudget}€`)
+          }
+          
+          // Also check user profile for budget
+          if (!detectedBudget && userProfile?.budget) {
+               detectedBudget = userProfile.budget
+               console.log(`[API] Using budget from user profile: ${detectedBudget}€`)
+          }
+
+          // Add budget context to product context if budget is detected
+          if (detectedBudget && productContext) {
+               productContext += `\n\nUSER BUDGET: ${detectedBudget}€\n`;
+               productContext += `IMPORTANT: When recommending products, if a product is within 5-10€ of the user's budget (${detectedBudget}€), suggest it as a worthwhile investment. Frame price differences as small investments that provide significant value. For example: "Pour seulement [X]€ de plus, vous obtenez [benefit]". Be helpful and sales-oriented, not pushy.\n`;
+          }
+
           let nutritionResponse
 
           try {
                console.log(`[API] Attempting to generate advice with provider: ${selectedProvider}`)
                if (selectedProvider === 'gemini') {
-                    nutritionResponse = await geminiService.generateNutritionAdvice(messageToProcess, userId, userProfileContext, validHistory)
+                    nutritionResponse = await geminiService.generateNutritionAdvice(messageToProcess, userId, userProfileContext, validHistory, productContext)
                } else {
-                    nutritionResponse = await openaiService.generateNutritionAdvice(messageToProcess, userId, userProfileContext, validHistory)
+                    nutritionResponse = await openaiService.generateNutritionAdvice(messageToProcess, userId, userProfileContext, validHistory, productContext)
                }
 
                // Track successful AI response (with error handling)
@@ -833,9 +980,9 @@ export async function POST(request: NextRequest) {
                } else {
                     try {
                          if (fallbackProvider === 'gemini') {
-                              nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                              nutritionResponse = await geminiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory, productContext)
                          } else {
-                              nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory)
+                              nutritionResponse = await openaiService.generateNutritionAdvice(message, userId, userProfileContext, validHistory, productContext)
                          }
 
                          // Track successful fallback
@@ -1330,6 +1477,44 @@ export async function POST(request: NextRequest) {
                          } catch (goalSearchError) {
                               console.error('[API] Goal-based product search error:', goalSearchError)
                          }
+                         
+                         // 1b) Also try collection-based search to complement tag search
+                         // This uses collections and descriptions to find relevant products
+                         if (goalKeys.length > 0 && !isSaleRequest && !requestedCollection) {
+                              try {
+                                   console.log('[API] Attempting collection-based product search for goals:', goalKeys)
+                                   const collectionProducts = await searchProductsByCollection(goalKeys, 3)
+                                   
+                                   if (collectionProducts && collectionProducts.length > 0) {
+                                        console.log(`[API] Found ${collectionProducts.length} products via collection-based search`)
+                                        
+                                        // Add unique products from collection search
+                                        collectionProducts.forEach((p) => {
+                                             if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
+                                                  recommendedProducts.push(p)
+                                             }
+                                        })
+                                        
+                                        console.log(`[API] Total products after collection search: ${recommendedProducts.length}`)
+                                        
+                                        // Track collection-based search
+                                        try {
+                                             await analytics.trackEvent('product_search_completed', {
+                                                  category: 'ecommerce',
+                                                  searchMode: 'collections',
+                                                  goals: goalKeys.join(', '),
+                                                  productCount: collectionProducts.length,
+                                                  userId: userId || 'anonymous'
+                                             })
+                                        } catch (analyticsError) {
+                                             console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
+                                        }
+                                   }
+                              } catch (collectionSearchError) {
+                                   console.error('[API] Collection-based product search error:', collectionSearchError)
+                                   // Non-fatal, continue with other search methods
+                              }
+                         }
                     }
 
                     // 2) If goal-based tag search didn't find anything, fall back to keyword-based search
@@ -1362,6 +1547,8 @@ export async function POST(request: NextRequest) {
                               { test: s => /\b(énergie|energie|fatigue|energy)\b/i.test(s), keywords: ['b-complex', 'iron', 'coq10'] },
                               // Immunity
                               { test: s => /\b(immunité|immunite|immune)\b/i.test(s), keywords: ['vitamin c', 'zinc', 'vitamin d'] },
+                              // Beauty / Skin / Hair
+                              { test: s => /\b(peau|skin|beauté|beaute|beauty|cheveux|hair|cheveu|anti-âge|anti-age|anti-aging)\b/i.test(s), keywords: ['collagen', 'collagène', 'biotin', 'biotine', 'vitamin c'] },
                          ]
 
                          // Check both user message and AI reply for intents
@@ -1614,7 +1801,7 @@ export async function POST(request: NextRequest) {
                    (goalKeys.length > 0 || userAsksForSupplements || hasQuelsSontSupplementPattern)) {
                     console.log('[API] Fallback: AI mentioned supplements but no products found - performing goal-based search')
                     try {
-                         // Try goal-based search first
+                         // Try goal-based search first (tag-based)
                          for (const goal of goalKeys) {
                               const tagsForGoal = GOAL_TAGS[goal]
                               if (!tagsForGoal || tagsForGoal.length === 0) continue
@@ -1633,6 +1820,24 @@ export async function POST(request: NextRequest) {
                               }
                               
                               if (recommendedProducts.length >= 3) break
+                         }
+                         
+                         // Also try collection-based search in fallback
+                         if (goalKeys.length > 0 && recommendedProducts.length < 3) {
+                              try {
+                                   console.log('[API] Fallback: Trying collection-based search for goals:', goalKeys)
+                                   const collectionProducts = await searchProductsByCollection(goalKeys, 3)
+                                   if (collectionProducts && collectionProducts.length > 0) {
+                                        collectionProducts.forEach((p) => {
+                                             if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
+                                                  recommendedProducts.push(p)
+                                             }
+                                        })
+                                        console.log(`[API] Fallback: Collection search added ${collectionProducts.length} products`)
+                                   }
+                              } catch (collectionError) {
+                                   console.error('[API] Fallback collection search error:', collectionError)
+                              }
                          }
                          
                          // If goal-based search didn't work, try keyword-based search
@@ -1691,6 +1896,25 @@ export async function POST(request: NextRequest) {
                const originalCount = recommendedProducts.length
                recommendedProducts = applyUserProfileFiltersToProducts(recommendedProducts, intent)
                
+               // Score and rank products using structured data for better matching
+               if (recommendedProducts.length > 0) {
+                    const scoredProducts = scoreProductsWithStructuredData(
+                         recommendedProducts,
+                         userProfile,
+                         goalKeys
+                    )
+                    // Remove relevanceScore before returning (it's only for sorting)
+                    recommendedProducts = scoredProducts.map(({ relevanceScore, ...product }) => product)
+                    
+                    console.log('[API] Products ranked by structured data matching:', {
+                         topProducts: recommendedProducts.slice(0, 3).map(p => ({
+                              title: p.title,
+                              hasBenefits: !!(p.benefits && p.benefits.length > 0),
+                              hasTargetAudience: !!(p.targetAudience && p.targetAudience.length > 0)
+                         }))
+                    })
+               }
+               
                // EDGE CASE: If filtering removed ALL products, log a warning
                // The filter function already returns original products if filtered is empty,
                // but we should still log this for monitoring
@@ -1740,78 +1964,102 @@ export async function POST(request: NextRequest) {
 
           // Generate combos if:
           // 1. User explicitly asks about combinations (isComboRequest), OR
-          // 2. We have products AND user profile (profile-based), OR
-          // 3. We have products AND detected goals from conversation (conversation-based)
+          // 2. We have products (always suggest combos when products are recommended - sales strategy)
           // Skip combos if this is an informational question (no products should be shown)
+          // ALWAYS show combos when products are recommended to encourage bundling (sales-oriented)
           if (allowProductSearch && (isComboRequest || recommendedProducts.length > 0)) {
                try {
-                    // Determine goals from profile OR conversation context
-                    const comboGoals = userProfile?.goals || goalKeys
-                    const comboAge = userProfile?.age
-                    const comboGender = userProfile?.gender
-
-                    // If user explicitly asks about combos, prioritize showing combos
-                    // Use conversation-derived goals if no profile available
-                    let combos = getRecommendedCombos(
-                         comboGoals,
-                         comboAge,
-                         comboGender
-                    )
-
-                    // If no combos found but user asked about combinations, show general combos
-                    if (isComboRequest && combos.length === 0) {
-                         // Get all available combos as fallback when user explicitly asks
-                         combos = PRODUCT_COMBOS.slice(0, 3) // Show top 3 general combos
-                         console.log('[API] User asked about combos but no profile/goals - showing general combos')
-                    }
-
-                    // Convert combos to include actual product data and apply the same
-                    // profile-based filtering (budget, halal/vegan, etc.).
-                    const combosWithProducts = await Promise.all(
-                         combos.map(async (combo) => {
-                              const rawProducts = await getComboProducts(combo)
-                              console.log(`[API] Combo "${combo.name}" resolved products: ${rawProducts.map(p => p.title).join(', ') || 'none'}`)
-                              const products = applyUserProfileFiltersToProducts(rawProducts, intent)
-                              return {
-                                   name: combo.name,
-                                   description: combo.description,
-                                   products,
-                                   benefits: combo.benefits
-                              }
-                         })
-                    )
-
-                    recommendedCombos = combosWithProducts.filter(combo => combo.products.length > 0) // Only include combos with available products
-
-                    console.log('Recommended combos:', recommendedCombos.length)
-                    if (recommendedCombos.length > 0) {
-                         console.log('[API] Combo names:', recommendedCombos.map(c => c.name).join(', '))
-                    }
-
-                    // Find a combo that matches the recommended products (for interactive prompt)
-                    // Prioritize this if user asked about combinations
+                    // PRIORITY 1: Generate dynamic combos from recommended products (sales-based approach)
+                    // This creates combos based on what the chat actually recommended, with complementary upsales
                     if (recommendedProducts.length > 0) {
-                         const matchingCombo = findMatchingCombo(recommendedProducts)
-                         if (matchingCombo) {
-                              const comboProducts = await getComboProducts(matchingCombo)
-                              if (comboProducts.length > 0) {
-                                   suggestedCombo = {
-                                        name: matchingCombo.name,
-                                        description: matchingCombo.description,
-                                        products: comboProducts,
-                                        benefits: matchingCombo.benefits
-                                   }
-                                   console.log('Found matching combo for interactive suggestion:', suggestedCombo.name)
-                                   console.log(`[API] Suggested combo products: ${comboProducts.map(p => p.title).join(', ')}`)
+                         console.log('[API] Generating dynamic combos from recommended products:', recommendedProducts.map(p => p.title).join(', '))
+                         
+                         const dynamicCombos = await generateDynamicCombosFromProducts(recommendedProducts)
+                         
+                         // Apply user profile filters to dynamic combos
+                         const filteredDynamicCombos = dynamicCombos.map(combo => ({
+                              ...combo,
+                              products: applyUserProfileFiltersToProducts(combo.products, intent)
+                         })).filter(combo => combo.products.length > 0)
+
+                         if (filteredDynamicCombos.length > 0) {
+                              recommendedCombos = filteredDynamicCombos
+                              console.log('[API] Dynamic combos generated:', recommendedCombos.map(c => c.name).join(', '))
+                              
+                              // Use the first dynamic combo as suggested combo
+                              if (filteredDynamicCombos.length > 0) {
+                                   suggestedCombo = filteredDynamicCombos[0]
+                                   console.log('[API] Suggested combo from dynamic generation:', suggestedCombo.name)
                               }
                          }
                     }
 
-                    // If user explicitly asked about combos but we don't have a matching combo,
-                    // prioritize showing the first available combo
-                    if (isComboRequest && !suggestedCombo && recommendedCombos.length > 0) {
-                         suggestedCombo = recommendedCombos[0]
-                         console.log('[API] User asked about combos - showing first available combo:', suggestedCombo.name)
+                    // PRIORITY 2: Fall back to hardcoded combos only if:
+                    // - We don't have recommended products, OR
+                    // - Dynamic combos didn't generate any results, OR
+                    // - User explicitly asked about combos and we want to show more options
+                    if (recommendedCombos.length === 0 || (isComboRequest && recommendedCombos.length < 2)) {
+                         console.log('[API] Falling back to hardcoded combos')
+                         
+                         // Determine goals from profile OR conversation context
+                         const comboGoals = userProfile?.goals || goalKeys
+                         const comboAge = userProfile?.age
+                         const comboGender = userProfile?.gender
+
+                         // Use conversation-derived goals if no profile available
+                         let combos = getRecommendedCombos(
+                              comboGoals,
+                              comboAge,
+                              comboGender
+                         )
+
+                         // If no combos found but user asked about combinations, show general combos
+                         if (isComboRequest && combos.length === 0) {
+                              // Get all available combos as fallback when user explicitly asks
+                              combos = PRODUCT_COMBOS.slice(0, 3) // Show top 3 general combos
+                              console.log('[API] User asked about combos but no profile/goals - showing general combos')
+                         }
+
+                         // Convert combos to include actual product data and apply the same
+                         // profile-based filtering (budget, halal/vegan, etc.).
+                         const combosWithProducts = await Promise.all(
+                              combos.map(async (combo) => {
+                                   const rawProducts = await getComboProducts(combo)
+                                   console.log(`[API] Combo "${combo.name}" resolved products: ${rawProducts.map(p => p.title).join(', ') || 'none'}`)
+                                   const products = applyUserProfileFiltersToProducts(rawProducts, intent)
+                                   return {
+                                        name: combo.name,
+                                        description: combo.description,
+                                        products,
+                                        benefits: combo.benefits
+                                   }
+                              })
+                         )
+
+                         const fallbackCombos = combosWithProducts.filter(combo => combo.products.length > 0)
+                         
+                         // Merge with existing dynamic combos (if any) or replace if none
+                         if (recommendedCombos.length === 0) {
+                              recommendedCombos = fallbackCombos
+                         } else {
+                              // Add fallback combos that don't duplicate dynamic ones
+                              const existingProductIds = new Set(recommendedCombos.flatMap(c => c.products.map(p => p.variantId)))
+                              const uniqueFallbackCombos = fallbackCombos.filter(combo => 
+                                   !combo.products.some(p => existingProductIds.has(p.variantId))
+                              )
+                              recommendedCombos.push(...uniqueFallbackCombos.slice(0, 2)) // Add max 2 fallback combos
+                         }
+
+                         console.log('Recommended combos (after fallback):', recommendedCombos.length)
+                         if (recommendedCombos.length > 0) {
+                              console.log('[API] Combo names:', recommendedCombos.map(c => c.name).join(', '))
+                         }
+
+                         // If we still don't have a suggested combo, use the first available one
+                         if (!suggestedCombo && recommendedCombos.length > 0) {
+                              suggestedCombo = recommendedCombos[0]
+                              console.log('[API] Using first available combo as suggested:', suggestedCombo.name)
+                         }
                     }
                } catch (comboError) {
                     console.error('Error getting recommended combos:', comboError)
@@ -1896,22 +2144,44 @@ export async function POST(request: NextRequest) {
 
           return NextResponse.json(response)
      } catch (error) {
-          console.error('Chat API error:', error)
+          // Enhanced error logging
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          const errorStack = error instanceof Error ? error.stack : undefined
+          const errorName = error instanceof Error ? error.name : 'UnknownError'
+          
+          console.error('[API] Chat API error:', {
+               name: errorName,
+               message: errorMessage,
+               stack: errorStack,
+               error: error
+          })
 
           // Track API error (with error handling to prevent double errors)
           try {
                await analytics.trackEvent('chat_api_error', {
                     category: 'error',
                     errorType: 'internal_server_error',
-                    errorMessage: error instanceof Error ? error.message : 'Unknown error',
+                    errorMessage: errorMessage,
+                    errorName: errorName,
                     userId: 'unknown'
                })
           } catch (analyticsError) {
                console.error('[API] Analytics tracking error during error handling (non-fatal):', analyticsError)
           }
 
+          // Return more informative error in development, generic in production
+          const isDevelopment = process.env.NODE_ENV === 'development'
+          const errorResponse = isDevelopment
+               ? {
+                    error: 'Internal server error',
+                    message: errorMessage,
+                    name: errorName,
+                    ...(errorStack && { stack: errorStack })
+               }
+               : { error: 'Internal server error. Please try again later.' }
+
           return NextResponse.json(
-               { error: 'Internal server error' },
+               errorResponse,
                { status: 500 }
           )
      }

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { extractProductData } = require('./parse-product-data');
 
 // Load environment variables from .env.local or .env
 function loadEnvFile() {
@@ -235,6 +236,7 @@ async function fetchProductsFromAdminAPI() {
                                         id
                                         title
                                         price
+                                        compareAtPrice
                                         sku
                                         barcode
                                         availableForSale
@@ -323,16 +325,34 @@ async function fetchProductsFromAdminAPI() {
             const collections = product.collections.edges.map(e => e.node);
             const metafields = product.metafields.edges.map(e => e.node);
 
+            const price = parseFloat(variant?.price || '0');
+            const compareAtPrice = variant?.compareAtPrice 
+                ? parseFloat(variant.compareAtPrice) 
+                : null;
+            
+            const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+            const originalPrice = isOnSale ? compareAtPrice : undefined;
+
+            // Extract structured product data from description HTML and metafields
+            const parsedData = extractProductData({
+                descriptionHtml: product.descriptionHtml || '',
+                description: product.description || '',
+                metafields: metafields
+            });
+
             return {
                 productId: product.id,
                 title: product.title,
                 handle: product.handle,
                 description: product.description || product.descriptionHtml || '',
+                descriptionHtml: product.descriptionHtml || '',
                 productType: product.productType,
                 vendor: product.vendor,
                 tags: product.tags || [],
                 status: product.status,
-                price: parseFloat(variant?.price || '0'),
+                price: price,
+                originalPrice: originalPrice,
+                isOnSale: isOnSale,
                 image: image?.url || '',
                 variantId: variant?.id || '',
                 sku: variant?.sku || '',
@@ -343,6 +363,11 @@ async function fetchProductsFromAdminAPI() {
                 currency: 'USD', // Admin API doesn't return currency, will get from Storefront
                 createdAt: product.createdAt,
                 updatedAt: product.updatedAt,
+                // Structured product data
+                benefits: parsedData.benefits,
+                targetAudience: parsedData.targetAudience,
+                usageInstructions: parsedData.usageInstructions,
+                contraindications: parsedData.contraindications,
             };
         });
 
@@ -419,6 +444,10 @@ async function fetchProductsFromStorefrontAPI() {
                                             amount
                                             currencyCode
                                         }
+                                        compareAtPrice {
+                                            amount
+                                            currencyCode
+                                        }
                                         availableForSale
                                         sku
                                     }
@@ -467,21 +496,44 @@ async function fetchProductsFromStorefrontAPI() {
             const image = product.images.edges[0]?.node;
             const collections = product.collections.edges.map(e => e.node);
 
+            const price = parseFloat(variant?.price?.amount || '0');
+            const compareAtPrice = variant?.compareAtPrice?.amount 
+                ? parseFloat(variant.compareAtPrice.amount) 
+                : null;
+            
+            const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+            const originalPrice = isOnSale ? compareAtPrice : undefined;
+
+            // Extract structured product data from description (Storefront API doesn't have descriptionHtml)
+            const parsedData = extractProductData({
+                descriptionHtml: product.descriptionHtml || '', // May be empty for Storefront API
+                description: product.description || '',
+                metafields: [] // Storefront API doesn't return metafields
+            });
+
             return {
                 productId: product.id,
                 title: product.title,
                 handle: product.handle,
                 description: product.description || product.descriptionHtml || '',
+                descriptionHtml: product.descriptionHtml || '',
                 productType: product.productType,
                 vendor: product.vendor,
                 tags: product.tags || [],
-                price: parseFloat(variant?.price?.amount || '0'),
+                price: price,
+                originalPrice: originalPrice,
+                isOnSale: isOnSale,
                 image: image?.url || '',
                 variantId: variant?.id || '',
                 sku: variant?.sku || '',
                 available: variant?.availableForSale || false,
                 currency: variant?.price?.currencyCode || 'USD',
                 collections: collections,
+                // Structured product data (may be empty if descriptionHtml not available)
+                benefits: parsedData.benefits,
+                targetAudience: parsedData.targetAudience,
+                usageInstructions: parsedData.usageInstructions,
+                contraindications: parsedData.contraindications,
             };
         });
 
@@ -534,8 +586,16 @@ function mergeProductData(adminProducts, storefrontProducts) {
                 productMap.set(key, {
                     ...existing,
                     currency: existing.currency || product.currency,
+                    // Preserve sale information from either source
+                    isOnSale: existing.isOnSale !== undefined ? existing.isOnSale : product.isOnSale,
+                    originalPrice: existing.originalPrice !== undefined ? existing.originalPrice : product.originalPrice,
                     // Keep Admin API metafields if available
                     metafields: existing.metafields || [],
+                    // Preserve structured data from Admin API (more complete), fallback to Storefront
+                    benefits: existing.benefits?.length > 0 ? existing.benefits : (product.benefits || []),
+                    targetAudience: existing.targetAudience?.length > 0 ? existing.targetAudience : (product.targetAudience || []),
+                    usageInstructions: existing.usageInstructions?.dosage ? existing.usageInstructions : (product.usageInstructions || {}),
+                    contraindications: existing.contraindications?.length > 0 ? existing.contraindications : (product.contraindications || []),
                 });
             } else if (key) {
                 productMap.set(key, { ...product });
@@ -583,14 +643,32 @@ function generateMockDataArray(products) {
     }
 
     const mockData = products.map((product, index) => {
-        return {
+        const mockProduct = {
             title: product.title,
             price: product.price,
+            originalPrice: product.originalPrice,
+            isOnSale: product.isOnSale,
             image: product.image || `https://picsum.photos/400/400?random=${index + 1}`,
             variantId: product.variantId || `gid://shopify/ProductVariant/${index + 1}`,
             available: product.available !== undefined ? product.available : true,
             currency: product.currency || 'USD'
         };
+
+        // Add structured data if available
+        if (product.benefits && product.benefits.length > 0) {
+            mockProduct.benefits = product.benefits;
+        }
+        if (product.targetAudience && product.targetAudience.length > 0) {
+            mockProduct.targetAudience = product.targetAudience;
+        }
+        if (product.usageInstructions && (product.usageInstructions.dosage || product.usageInstructions.timing)) {
+            mockProduct.usageInstructions = product.usageInstructions;
+        }
+        if (product.contraindications && product.contraindications.length > 0) {
+            mockProduct.contraindications = product.contraindications;
+        }
+
+        return mockProduct;
     });
 
     return mockData;
@@ -615,13 +693,57 @@ function updateShopifyFile(mockData) {
 
         // Generate the new mock products array as a string
         const mockProductsString = mockData.map(product => {
+            const fields = [
+                `title: ${JSON.stringify(product.title)}`,
+                `price: ${product.price}`,
+            ];
+            
+            // Add optional sale fields if they exist
+            if (product.originalPrice !== undefined) {
+                fields.push(`originalPrice: ${product.originalPrice}`);
+            }
+            if (product.isOnSale !== undefined) {
+                fields.push(`isOnSale: ${product.isOnSale}`);
+            }
+            
+            fields.push(
+                `image: ${JSON.stringify(product.image)}`,
+                `variantId: ${JSON.stringify(product.variantId)}`,
+                `available: ${product.available}`,
+                `currency: ${JSON.stringify(product.currency)}`
+            );
+
+            // Add structured data fields if they exist
+            if (product.benefits && product.benefits.length > 0) {
+                fields.push(`benefits: ${JSON.stringify(product.benefits)}`);
+            }
+            if (product.targetAudience && product.targetAudience.length > 0) {
+                fields.push(`targetAudience: ${JSON.stringify(product.targetAudience)}`);
+            }
+            if (product.usageInstructions) {
+                const usageFields = [];
+                if (product.usageInstructions.dosage) {
+                    usageFields.push(`dosage: ${JSON.stringify(product.usageInstructions.dosage)}`);
+                }
+                if (product.usageInstructions.timing) {
+                    usageFields.push(`timing: ${JSON.stringify(product.usageInstructions.timing)}`);
+                }
+                if (product.usageInstructions.duration) {
+                    usageFields.push(`duration: ${JSON.stringify(product.usageInstructions.duration)}`);
+                }
+                if (product.usageInstructions.tips && product.usageInstructions.tips.length > 0) {
+                    usageFields.push(`tips: ${JSON.stringify(product.usageInstructions.tips)}`);
+                }
+                if (usageFields.length > 0) {
+                    fields.push(`usageInstructions: {\n               ${usageFields.join(',\n               ')}\n          }`);
+                }
+            }
+            if (product.contraindications && product.contraindications.length > 0) {
+                fields.push(`contraindications: ${JSON.stringify(product.contraindications)}`);
+            }
+            
             return `     {
-          title: ${JSON.stringify(product.title)},
-          price: ${product.price},
-          image: ${JSON.stringify(product.image)},
-          variantId: ${JSON.stringify(product.variantId)},
-          available: ${product.available},
-          currency: ${JSON.stringify(product.currency)}
+          ${fields.join(',\n          ')}
      }`;
         }).join(',\n');
 

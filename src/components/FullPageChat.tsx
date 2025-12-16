@@ -132,7 +132,7 @@ const InitialLoadingScreen = () => (
       {/* Loading Text */}
       <div className="text-center space-y-2">
         <h2 className="font-serif uppercase tracking-widest text-lg sm:text-xl font-light text-foreground">
-          Nutritionniste virtuel
+          Assistante virtuelle
         </h2>
         <p className="text-sm text-muted-foreground uppercase tracking-[0.15em]">
           Initialisation en cours...
@@ -603,6 +603,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const activeTypingMessagesRef = useRef<Set<string>>(new Set());
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
   const generateMessageId = (): string => {
     messageIdCounterRef.current += 1;
@@ -1821,7 +1822,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           role: msg.isUser ? 'user' as const : 'assistant' as const,
           content: msg.text
         }))
-        .slice(-10) // Limit to last 10 messages to avoid token limits
+        .slice(-5) // Limit to last 5 messages to reduce tokens (older messages are summarized)
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -1836,7 +1837,23 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Try to extract error details from response
+        let errorDetails = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorDetails = errorData.error;
+            if (errorData.message) {
+              errorDetails += `: ${errorData.message}`;
+            }
+          } else if (errorData.message) {
+            errorDetails = errorData.message;
+          }
+        } catch {
+          // If we can't parse the error response, use the status
+          errorDetails = `HTTP error! status: ${response.status}`;
+        }
+        throw new Error(errorDetails);
       }
 
       const data = await response.json();
@@ -1881,6 +1898,13 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         productCount: (data.recommendedProducts || []).length,
         ...(userId && { userId }),
       });
+
+      // Track product recommendations for analytics
+      if (data.recommendedProducts && data.recommendedProducts.length > 0) {
+        data.recommendedProducts.forEach((product: ProductSearchResult) => {
+          trackProductRecommended(product.title, product.variantId, product.price);
+        });
+      }
 
       if (data.recommendedProducts && data.recommendedProducts.length > 0) {
         data.recommendedProducts.forEach((product: ProductSearchResult) => {
@@ -1958,6 +1982,96 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     }
   };
 
+  const handleGeneratePlan = async () => {
+    if (!userId || isGeneratingPlan) return;
+
+    setIsGeneratingPlan(true);
+
+    try {
+      // Collect all recommended products from messages
+      const allRecommendedProducts: ProductSearchResult[] = [];
+      messages.forEach(message => {
+        if (message.recommendedProducts && message.recommendedProducts.length > 0) {
+          message.recommendedProducts.forEach(product => {
+            // Avoid duplicates
+            if (!allRecommendedProducts.some(p => p.variantId === product.variantId)) {
+              allRecommendedProducts.push(product);
+            }
+          });
+        }
+      });
+
+      // Call the generate-plan API
+      const response = await fetch("/api/generate-plan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          recommendedProducts: allRecommendedProducts,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate plan");
+      }
+
+      const data = await response.json();
+
+      // Download PDF automatically
+      if (data.pdfUrl) {
+        try {
+          // Fetch the PDF as a blob to ensure proper download
+          const pdfResponse = await fetch(data.pdfUrl);
+          const blob = await pdfResponse.blob();
+          const url = window.URL.createObjectURL(blob);
+          
+          // Create a temporary anchor element to trigger download
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `plan-nutritionnel-${new Date().toISOString().split('T')[0]}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          // Clean up the object URL
+          window.URL.revokeObjectURL(url);
+        } catch (downloadError) {
+          console.error('Error downloading PDF:', downloadError);
+          // Fallback: open in new tab if download fails
+          window.open(data.pdfUrl, "_blank", "noopener");
+        }
+      }
+
+      // Show success message
+      const successMessage: Message = {
+        id: generateMessageId(),
+        text: "✅ Votre plan nutritionnel personnalisé a été généré avec succès ! Le téléchargement du PDF a démarré. 💚",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, successMessage]);
+
+      trackEvent("plan_generated", {
+        category: "engagement",
+        productCount: allRecommendedProducts.length,
+        ...(userId && { userId }),
+      });
+    } catch (error) {
+      console.error("Error generating plan:", error);
+      const errorMessage: Message = {
+        id: generateMessageId(),
+        text: "😔 Désolé, une erreur s'est produite lors de la génération du plan. Pouvez-vous réessayer ? 💚",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
+
   if (!isConsultationStarted) {
     return null;
   }
@@ -1978,27 +2092,54 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
               <p className="text-xs text-muted-foreground uppercase tracking-[0.15em] hidden sm:block">En ligne • Prêt à aider</p>
             </div>
           </div>
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="text-muted-foreground hover:text-foreground transition-colors duration-300 flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm uppercase tracking-[0.1em] flex-shrink-0"
-            >
-              <svg
-                className="w-3 h-3 sm:w-4 sm:h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isOnboardingComplete && userId && (
+              <button
+                onClick={handleGeneratePlan}
+                disabled={isGeneratingPlan || isLoading}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-primary text-primary-foreground text-xs sm:text-sm font-light uppercase tracking-[0.1em] rounded-full hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-sm hover:shadow-md flex items-center gap-1.5 sm:gap-2"
+                title="Générer un plan nutritionnel personnalisé"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-              <span className="hidden sm:inline">Retour</span>
-            </button>
-          )}
+                {isGeneratingPlan ? (
+                  <>
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="hidden sm:inline">Génération...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Générer un plan</span>
+                  </>
+                )}
+              </button>
+            )}
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="text-muted-foreground hover:text-foreground transition-colors duration-300 flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm uppercase tracking-[0.1em] flex-shrink-0"
+              >
+                <svg
+                  className="w-3 h-3 sm:w-4 sm:h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                <span className="hidden sm:inline">Retour</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

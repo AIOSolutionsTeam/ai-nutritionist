@@ -9,9 +9,14 @@
     "lint": "eslint",
     "build-widget": "node scripts/build-widget.js",
     "test-widget": "open public/test.html",
+    "test-pdf": "tsx scripts/test-pdf-generation.ts",
+    "test-pdf-standalone": "tsx scripts/test-pdf-standalone.ts",
+    "generate-pdf": "tsx scripts/test-pdf-standalone.ts",
     "create-test-user": "node scripts/create-test-user.js",
     "test-db": "node scripts/test-db-connection.js",
-    "update-mock-data": "node scripts/update-mock-data.js"
+    "update-mock-data": "node scripts/update-mock-data.js",
+    "test-shopify-api": "node scripts/test-shopify-api.js",
+    "check-product-endpoints": "node scripts/check-product-endpoints.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -36,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "^15.5.7",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

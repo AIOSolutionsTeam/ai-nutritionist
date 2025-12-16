@@ -3,12 +3,15 @@
  * Provides functions to interact with Shopify's Storefront API
  */
 
+import { extractProductData } from './product-parser';
+
 // Types for Shopify API responses
 export interface ShopifyProduct {
      id: string;
      title: string;
      handle: string;
      description: string;
+     descriptionHtml?: string;
      tags: string[];
      collections?: {
           edges: Array<{
@@ -55,10 +58,21 @@ export interface ProductSearchResult {
      currency: string;
      tags?: string[];
      collections?: string[];
+     description?: string; // Product description for better matching
      originalPrice?: number; // Original price before discount
      discountPercentage?: number; // Discount percentage (e.g., 40 for 40% off)
      isOnSale?: boolean; // Whether the product is currently on sale
      collection?: string; // Primary collection handle (e.g., "energie-et-endurance")
+     // Structured product data extracted from description
+     benefits?: string[];
+     targetAudience?: string[];
+     usageInstructions?: {
+          dosage?: string;
+          timing?: string;
+          duration?: string;
+          tips?: string[];
+     };
+     contraindications?: string[];
 }
 
 function getShopifyConfig() {
@@ -271,6 +285,8 @@ const MOCK_PRODUCTS: ProductSearchResult[] = [
           currency: "EUR"
      }
 ];
+
+
 */
 
 
@@ -430,6 +446,36 @@ let cachedCollectionMap: { map: { [key: string]: string[] }; fetchedAt: number |
 // Cache TTL for collection map: refresh every 15 days
 const COLLECTION_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 15; // ~15 days
 
+// Cache for all products with parsed data
+interface CachedProductData extends ProductSearchResult {
+     parsedData: {
+          benefits: string[];
+          targetAudience: string[];
+          usageInstructions: {
+               dosage: string;
+               timing: string;
+               duration: string;
+               tips: string[];
+          };
+          contraindications: string[];
+     };
+}
+
+let cachedProducts: { products: CachedProductData[]; fetchedAt: number | null } = {
+     products: [],
+     fetchedAt: null,
+};
+
+// Cache TTL for products: refresh every 4 hours (reduces API calls significantly)
+const PRODUCT_CACHE_TTL_MS = 1000 * 60 * 60 * 4; // 4 hours
+
+// Cache for generated product context string (regenerated when products are fetched)
+let cachedProductContext: { context: string; maxProducts: number; generatedAt: number | null } = {
+     context: '',
+     maxProducts: 50,
+     generatedAt: null,
+};
+
 function normalizeTerm(term: string): string {
      return term.trim().toLowerCase();
 }
@@ -510,6 +556,374 @@ export async function getCollectionMap(forceRefresh: boolean = false): Promise<{
 }
 
 /**
+ * Fetch all products from Shopify with parsed data and cache them
+ * This is called once to build product context for the AI
+ * @param forceRefresh - Force refresh even if cache is valid
+ * @returns Promise<CachedProductData[]> - Array of all products with parsed data
+ */
+export async function fetchAllProductsWithParsedData(forceRefresh: boolean = false): Promise<CachedProductData[]> {
+     const now = Date.now();
+     
+     // Return cached products if still valid
+     if (!forceRefresh && cachedProducts.fetchedAt && now - cachedProducts.fetchedAt < PRODUCT_CACHE_TTL_MS) {
+          console.log(`[Shopify] Using cached products (${cachedProducts.products.length} products, cached ${Math.round((now - cachedProducts.fetchedAt) / 1000 / 60)} minutes ago)`);
+          return cachedProducts.products;
+     }
+
+     const { shopifyDomain, shopifyToken } = getShopifyConfig();
+
+     try {
+          console.log('[Shopify] Fetching all products with parsed data...');
+          
+          // Fetch products in batches (Shopify limit is 250 per query)
+          const allProducts: CachedProductData[] = [];
+          let hasNextPage = true;
+          let cursor: string | null = null;
+          const batchSize = 250;
+
+          while (hasNextPage) {
+               // Build query with conditional cursor
+               const query = cursor
+                    ? `
+                         query fetchAllProducts($cursor: String!) {
+                              products(first: ${batchSize}, after: $cursor) {
+                                   pageInfo {
+                                        hasNextPage
+                                        endCursor
+                                   }
+                                   edges {
+                                        node {
+                                             id
+                                             title
+                                             handle
+                                             description
+                                             descriptionHtml
+                                             tags
+                                             collections(first: 5) {
+                                                  edges {
+                                                       node {
+                                                            id
+                                                            title
+                                                            handle
+                                                       }
+                                                  }
+                                             }
+                                             images(first: 1) {
+                                                  edges {
+                                                       node {
+                                                            url
+                                                            altText
+                                                       }
+                                                  }
+                                             }
+                                             variants(first: 1) {
+                                                  edges {
+                                                       node {
+                                                            id
+                                                            title
+                                                            price {
+                                                                 amount
+                                                                 currencyCode
+                                                            }
+                                                            compareAtPrice {
+                                                                 amount
+                                                                 currencyCode
+                                                            }
+                                                            availableForSale
+                                                       }
+                                                  }
+                                             }
+                                        }
+                                   }
+                              }
+                         }
+                    `
+                    : `
+                         query fetchAllProducts {
+                              products(first: ${batchSize}) {
+                                   pageInfo {
+                                        hasNextPage
+                                        endCursor
+                                   }
+                                   edges {
+                                        node {
+                                             id
+                                             title
+                                             handle
+                                             description
+                                             descriptionHtml
+                                             tags
+                                             collections(first: 5) {
+                                                  edges {
+                                                       node {
+                                                            id
+                                                            title
+                                                            handle
+                                                       }
+                                                  }
+                                             }
+                                             images(first: 1) {
+                                                  edges {
+                                                       node {
+                                                            url
+                                                            altText
+                                                       }
+                                                  }
+                                             }
+                                             variants(first: 1) {
+                                                  edges {
+                                                       node {
+                                                            id
+                                                            title
+                                                            price {
+                                                                 amount
+                                                                 currencyCode
+                                                            }
+                                                            compareAtPrice {
+                                                                 amount
+                                                                 currencyCode
+                                                            }
+                                                            availableForSale
+                                                       }
+                                                  }
+                                             }
+                                        }
+                                   }
+                              }
+                         }
+                    `;
+
+               const response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
+                    method: 'POST',
+                    headers: {
+                         'Content-Type': 'application/json',
+                         'X-Shopify-Storefront-Access-Token': shopifyToken,
+                    },
+                    body: JSON.stringify({
+                         query,
+                         variables: cursor ? { cursor } : {},
+                    }),
+               });
+
+               if (!response.ok) {
+                    throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
+               }
+
+               const data = await response.json();
+
+               if (data.errors) {
+                    console.error('GraphQL errors:', data.errors);
+                    throw new Error('GraphQL query failed');
+               }
+
+               const edges = data.data.products.edges || [];
+               
+               for (const edge of edges) {
+                    const product = edge.node;
+                    const variant = product.variants.edges[0]?.node;
+                    const image = product.images.edges[0]?.node;
+                    const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
+                    const collectionHandles = product.collections?.edges.map((edge) => edge.node.handle) || [];
+                    
+                    const price = parseFloat(variant?.price.amount || '0');
+                    const compareAtPrice = variant?.compareAtPrice?.amount 
+                         ? parseFloat(variant.compareAtPrice.amount) 
+                         : null;
+                    
+                    const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+                    const discountPercentage = isOnSale && compareAtPrice 
+                         ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+                         : undefined;
+                    
+                    const primaryCollection = collectionHandles.length > 0 
+                         ? collectionHandles[0] 
+                         : undefined;
+
+                    // Extract structured product data from description HTML
+                    const parsedData = extractProductData({
+                         descriptionHtml: product.descriptionHtml || '',
+                         description: product.description || '',
+                         metafields: [] // Storefront API doesn't return metafields
+                    });
+
+                    const cachedProduct: CachedProductData = {
+                         title: product.title,
+                         price: price,
+                         originalPrice: compareAtPrice || undefined,
+                         discountPercentage: discountPercentage,
+                         isOnSale: isOnSale,
+                         image: image?.url || '',
+                         variantId: variant?.id || '',
+                         available: variant?.availableForSale || false,
+                         currency: variant?.price.currencyCode || 'USD',
+                         tags: product.tags || [],
+                         collections: collections.length > 0 ? collections : undefined,
+                         collection: primaryCollection,
+                         description: product.description || '',
+                         // Structured product data
+                         benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
+                         targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
+                         usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
+                         contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
+                         parsedData: parsedData,
+                    };
+
+                    allProducts.push(cachedProduct);
+               }
+
+               // Check if there's a next page
+               hasNextPage = data.data.products.pageInfo.hasNextPage;
+               cursor = data.data.products.pageInfo.endCursor;
+          }
+
+          // Update cache
+          cachedProducts = {
+               products: allProducts,
+               fetchedAt: now,
+          };
+
+          // Invalidate context cache when products are refreshed
+          cachedProductContext = {
+               context: '',
+               maxProducts: 50,
+               generatedAt: null,
+          };
+
+          console.log(`[Shopify] Successfully fetched and cached ${allProducts.length} products with parsed data`);
+          return allProducts;
+     } catch (error) {
+          console.error('[Shopify] Error fetching all products:', error);
+          
+          // Return cached products if available, even if expired
+          if (cachedProducts.products.length > 0) {
+               console.log(`[Shopify] Using expired cache as fallback (${cachedProducts.products.length} products)`);
+               return cachedProducts.products;
+          }
+          
+          throw error;
+     }
+}
+
+/**
+ * Generate a product context string for the AI (internal, generates from products)
+ * @param products - Array of products to generate context from
+ * @param maxProducts - Maximum number of products to include
+ * @returns string - Formatted product context string
+ */
+function generateProductContextFromProducts(products: CachedProductData[], maxProducts: number = 50): string {
+     // Limit products to avoid token limits
+     const limitedProducts = products.slice(0, maxProducts);
+     
+     let context = `\n\nAVAILABLE PRODUCTS IN STORE (use this information for accurate product recommendations and details):\n`;
+     context += `Total products available: ${products.length}\n`;
+     context += `Showing ${limitedProducts.length} products for context:\n\n`;
+
+     for (const product of limitedProducts) {
+          context += `PRODUCT: ${product.title}\n`;
+          
+          if (product.tags && product.tags.length > 0) {
+               context += `  Tags: ${product.tags.join(', ')}\n`;
+          }
+          
+          if (product.collections && product.collections.length > 0) {
+               context += `  Collections: ${product.collections.join(', ')}\n`;
+          }
+          
+          if (product.description) {
+               const shortDesc = product.description.substring(0, 200);
+               context += `  Description: ${shortDesc}${product.description.length > 200 ? '...' : ''}\n`;
+          }
+          
+          // Add parsed structured data
+          if (product.parsedData.benefits.length > 0) {
+               context += `  Benefits: ${product.parsedData.benefits.join('; ')}\n`;
+          }
+          
+          if (product.parsedData.targetAudience.length > 0) {
+               context += `  Target Audience: ${product.parsedData.targetAudience.join('; ')}\n`;
+          }
+          
+          if (product.parsedData.usageInstructions.dosage) {
+               context += `  Dosage: ${product.parsedData.usageInstructions.dosage}\n`;
+          }
+          
+          if (product.parsedData.usageInstructions.timing) {
+               context += `  Timing: ${product.parsedData.usageInstructions.timing}\n`;
+          }
+          
+          if (product.parsedData.usageInstructions.duration) {
+               context += `  Duration: ${product.parsedData.usageInstructions.duration}\n`;
+          }
+          
+          if (product.parsedData.contraindications.length > 0) {
+               context += `  Contraindications: ${product.parsedData.contraindications.join('; ')}\n`;
+          }
+          
+          context += `  Price: ${product.price} ${product.currency}\n`;
+          context += `  Available: ${product.available ? 'Yes' : 'No'}\n`;
+          
+          context += '\n';
+     }
+
+     context += `\nIMPORTANT INSTRUCTIONS FOR USING PRODUCT CONTEXT:\n`;
+     context += `- When recommending products, ONLY recommend products that exist in the list above.\n`;
+     context += `- Use the exact product names from the list.\n`;
+     context += `- When asked about specific products, use the detailed information provided (benefits, dosage, timing, contraindications).\n`;
+     context += `- When asked about measures, dosages, or specific details, use the exact information from the product context.\n`;
+     context += `- If a product is not in the list, do not recommend it.\n`;
+     context += `- Always provide accurate, specific information based on the product context provided.\n`;
+
+     return context;
+}
+
+/**
+ * Generate a product context string for the AI (public API, uses cache)
+ * This provides the AI with information about all available products
+ * The context is cached and regenerated only when products are refreshed
+ * @param maxProducts - Maximum number of products to include (default: 50, to avoid token limits)
+ * @returns Promise<string> - Formatted product context string
+ */
+export async function generateProductContext(maxProducts: number = 50): Promise<string> {
+     try {
+          // Check if we have a cached context for the same maxProducts
+          if (cachedProductContext.context && 
+              cachedProductContext.maxProducts === maxProducts && 
+              cachedProductContext.generatedAt &&
+              cachedProducts.fetchedAt &&
+              cachedProductContext.generatedAt >= cachedProducts.fetchedAt) {
+               console.log(`[Shopify] Using cached product context (${cachedProductContext.context.length} characters)`);
+               return cachedProductContext.context;
+          }
+
+          // Fetch products (uses cache if available)
+          const products = await fetchAllProductsWithParsedData();
+          
+          // Generate context from products
+          const context = generateProductContextFromProducts(products, maxProducts);
+          
+          // Cache the generated context
+          cachedProductContext = {
+               context,
+               maxProducts,
+               generatedAt: Date.now(),
+          };
+
+          console.log(`[Shopify] Generated and cached product context (${context.length} characters, ${maxProducts} products)`);
+          return context;
+     } catch (error) {
+          console.error('[Shopify] Error generating product context:', error);
+          
+          // Return cached context if available, even if expired
+          if (cachedProductContext.context) {
+               console.log(`[Shopify] Using expired context cache as fallback`);
+               return cachedProductContext.context;
+          }
+          
+          return '\n\nNote: Product catalog information is temporarily unavailable. Please provide general advice based on your knowledge.\n';
+     }
+}
+
+/**
  * Search for products using Shopify Storefront API (LIVE DATA)
  * This function queries the live Shopify store in real-time
  * It searches across product titles, descriptions, tags, and collections
@@ -555,6 +969,7 @@ export async function searchProducts(
               title
               handle
               description
+              descriptionHtml
               tags
               collections(first: 5) {
                 edges {
@@ -641,6 +1056,13 @@ export async function searchProducts(
                     ? collectionHandles[0] 
                     : undefined;
 
+               // Extract structured product data from description HTML
+               const parsedData = extractProductData({
+                    descriptionHtml: product.descriptionHtml || '',
+                    description: product.description || '',
+                    metafields: [] // Storefront API doesn't return metafields
+               });
+
                return {
                     title: product.title,
                     price: price,
@@ -654,6 +1076,11 @@ export async function searchProducts(
                     tags: product.tags || [],
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
+                    // Structured product data
+                    benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
+                    targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
+                    usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
+                    contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
                };
           });
 
@@ -664,31 +1091,52 @@ export async function searchProducts(
                console.log(`[Shopify] Filtered to ${filteredProducts.length} products on sale (from ${products.length} total)`);
           }
 
-          // Enhance search results by ranking products with matching tags higher
+          // Enhance search results by ranking products with matching tags, collections, and descriptions
           if (useTagRanking && filteredProducts.length > 0) {
                const queryLower = query.toLowerCase();
                const queryWords = queryLower.split(/\s+/).filter((w: string) => w.length > 2);
                
-               // Score products based on tag matches
+               // Score products based on tag matches, collection matches, and description matches
                type ScoredProduct = { product: ProductSearchResult; score: number };
                const scoredProducts = filteredProducts.map((product: ProductSearchResult) => {
                     let score = 0;
                     const productTags = (product.tags || []).map((t: string) => t.toLowerCase());
                     const productTitle = product.title.toLowerCase();
+                    const productDescription = (product.description || '').toLowerCase();
                     const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
+                    const productCollectionHandles = product.collection ? [product.collection.toLowerCase()] : [];
                     
-                    // Higher score for exact tag matches
+                    // Score based on query words
                     queryWords.forEach((word: string) => {
+                         // Higher score for exact tag matches
                          if (productTags.some((tag: string) => tag === word || tag.includes(word) || word.includes(tag))) {
                               score += 10; // Strong tag match
                          }
+                         // Title match
                          if (productTitle.includes(word)) {
                               score += 5; // Title match
                          }
+                         // Description match (check if description contains the word)
+                         if (productDescription.includes(word)) {
+                              score += 4; // Description match - important for relevance
+                         }
+                         // Collection name match
                          if (productCollections.some((col: string) => col.includes(word))) {
-                              score += 3; // Collection match
+                              score += 6; // Collection name match - higher weight
+                         }
+                         // Collection handle match
+                         if (productCollectionHandles.some((handle: string) => handle.includes(word))) {
+                              score += 6; // Collection handle match
                          }
                     });
+                    
+                    // Bonus scoring for multi-word matches in description
+                    if (queryWords.length > 1 && productDescription) {
+                         const allWordsMatch = queryWords.every(word => productDescription.includes(word));
+                         if (allWordsMatch) {
+                              score += 8; // Bonus for matching all query words in description
+                         }
+                    }
                     
                     return { product, score };
                });
@@ -697,11 +1145,14 @@ export async function searchProducts(
                scoredProducts.sort((a: ScoredProduct, b: ScoredProduct) => b.score - a.score);
                const topProducts = scoredProducts.slice(0, 3).map((sp: ScoredProduct) => sp.product);
                
-               console.log(`[Shopify] searchProducts success | query="${query}" | count=${topProducts.length} | tag-enhanced`);
+               console.log(`[Shopify] searchProducts success | query="${query}" | count=${topProducts.length} | tag-collection-description-enhanced`);
                if (topProducts.length > 0) {
                     console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
                     if (topProducts[0].tags && topProducts[0].tags.length > 0) {
                          console.log('[Shopify] top product tags:', topProducts[0].tags.join(', '));
+                    }
+                    if (topProducts[0].collections && topProducts[0].collections.length > 0) {
+                         console.log('[Shopify] top product collections:', topProducts[0].collections.join(', '));
                     }
                     if (onlyOnSale) {
                          console.log(`[Shopify] Products on sale: ${topProducts.filter((p: ProductSearchResult) => p.isOnSale).length}`);
@@ -850,6 +1301,7 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                     available: variant?.availableForSale || false,
                     currency: variant?.price.currencyCode || 'USD',
                     tags: product.tags || [],
+                    description: product.description || '',
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
                };
@@ -899,23 +1351,49 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                }
           }
 
-          // Rank products by tag match count (products with more matching tags rank higher)
-          type TagScoredProduct = { product: ProductSearchResult; matchCount: number };
+          // Rank products by tag match count, collection matches, and description matches
+          type TagScoredProduct = { product: ProductSearchResult; score: number };
           const tagScoredProducts = products.map((product: ProductSearchResult) => {
                const productTags = (product.tags || []).map((t: string) => t.toLowerCase());
+               const productDescription = (product.description || '').toLowerCase();
+               const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
+               const productCollectionHandle = product.collection ? product.collection.toLowerCase() : '';
                const searchTags = tags.map((t: string) => t.toLowerCase());
-               const matchCount = searchTags.filter((searchTag: string) => 
+               
+               let score = 0;
+               
+               // Count tag matches (primary scoring)
+               const tagMatchCount = searchTags.filter((searchTag: string) => 
                     productTags.some((productTag: string) => 
                          productTag === searchTag || 
                          productTag.includes(searchTag) || 
                          searchTag.includes(productTag)
                     )
                ).length;
-               return { product, matchCount };
+               score += tagMatchCount * 10; // Tag matches are most important
+               
+               // Check description matches
+               searchTags.forEach((searchTag: string) => {
+                    if (productDescription.includes(searchTag)) {
+                         score += 4; // Description match bonus
+                    }
+               });
+               
+               // Check collection matches
+               searchTags.forEach((searchTag: string) => {
+                    if (productCollections.some((col: string) => col.includes(searchTag))) {
+                         score += 6; // Collection name match bonus
+                    }
+                    if (productCollectionHandle && productCollectionHandle.includes(searchTag)) {
+                         score += 6; // Collection handle match bonus
+                    }
+               });
+               
+               return { product, score };
           });
 
-          // Sort by match count (highest first) and return top products
-          tagScoredProducts.sort((a: TagScoredProduct, b: TagScoredProduct) => b.matchCount - a.matchCount);
+          // Sort by score (highest first) and return top products
+          tagScoredProducts.sort((a: TagScoredProduct, b: TagScoredProduct) => b.score - a.score);
           const topProducts = tagScoredProducts.slice(0, limit).map((sp: TagScoredProduct) => sp.product);
 
           console.log(`[Shopify] searchProductsByTags success | tags=[${tags.join(', ')}] | count=${topProducts.length}`);
@@ -934,6 +1412,143 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
      } catch (error) {
           console.error(`[Shopify] Error searching products by tags "${tags.join(', ')}":`, error);
           throw error;
+     }
+}
+
+/**
+ * Search for products by collection based on user goals
+ * Uses COLLECTION_MAP to find relevant collections for the given goals
+ * @param goalKeys - Array of goal keys (e.g., ['energy', 'sleep', 'immunity'])
+ * @param limit - Maximum number of products to return (default: 3)
+ * @returns Promise<ProductSearchResult[]> - Array of products from relevant collections
+ */
+export async function searchProductsByCollection(
+     goalKeys: string[],
+     limit: number = 3
+): Promise<ProductSearchResult[]> {
+     if (!goalKeys || goalKeys.length === 0) {
+          return [];
+     }
+
+     try {
+          console.log(`[Shopify] searchProductsByCollection start | goals=[${goalKeys.join(', ')}] | limit=${limit}`);
+          
+          // Get collection map (with live data if available)
+          const collectionMap = await getCollectionMap();
+          
+          // Find relevant collections for the goals
+          const relevantCollections: string[] = [];
+          
+          goalKeys.forEach(goal => {
+               // Check each collection in the map
+               Object.keys(collectionMap).forEach(collectionHandle => {
+                    const keywords = collectionMap[collectionHandle];
+                    const goalLower = goal.toLowerCase();
+                    
+                    // Check if goal matches any keyword in this collection
+                    if (keywords.some(keyword => {
+                         const keywordLower = keyword.toLowerCase();
+                         return keywordLower.includes(goalLower) || goalLower.includes(keywordLower);
+                    })) {
+                         if (!relevantCollections.includes(collectionHandle)) {
+                              relevantCollections.push(collectionHandle);
+                         }
+                    }
+               });
+          });
+          
+          if (relevantCollections.length === 0) {
+               console.log(`[Shopify] No relevant collections found for goals: [${goalKeys.join(', ')}]`);
+               return [];
+          }
+          
+          console.log(`[Shopify] Found ${relevantCollections.length} relevant collections: [${relevantCollections.join(', ')}]`);
+          
+          // Search products from each relevant collection
+          const allProducts: ProductSearchResult[] = [];
+          const seenVariants = new Set<string>();
+          
+          for (const collectionHandle of relevantCollections.slice(0, 3)) { // Limit to top 3 collections
+               try {
+                    // Use a broad search query within the collection
+                    const collectionKeywords = collectionMap[collectionHandle] || [];
+                    const searchQuery = collectionKeywords.slice(0, 2).join(' ') || collectionHandle.split('-')[0];
+                    
+                    console.log(`[Shopify] Searching collection "${collectionHandle}" with query: "${searchQuery}"`);
+                    
+                    const products = await searchProducts(searchQuery, {
+                         useTagRanking: true,
+                         collection: collectionHandle
+                    });
+                    
+                    // Add unique products
+                    products.forEach(product => {
+                         if (!seenVariants.has(product.variantId)) {
+                              allProducts.push(product);
+                              seenVariants.add(product.variantId);
+                         }
+                    });
+                    
+                    if (allProducts.length >= limit) {
+                         break;
+                    }
+               } catch (error) {
+                    console.error(`[Shopify] Error searching collection "${collectionHandle}":`, error);
+               }
+          }
+          
+          // Score and rank products based on description and collection relevance
+          type CollectionScoredProduct = { product: ProductSearchResult; score: number };
+          const scoredProducts = allProducts.map((product: ProductSearchResult) => {
+               let score = 0;
+               const productDescription = (product.description || '').toLowerCase();
+               const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
+               const productCollectionHandle = product.collection ? product.collection.toLowerCase() : '';
+               
+               // Score based on goal matches in description
+               goalKeys.forEach(goal => {
+                    const goalLower = goal.toLowerCase();
+                    if (productDescription.includes(goalLower)) {
+                         score += 8; // Strong description match
+                    }
+                    
+                    // Check if product is in a relevant collection
+                    if (relevantCollections.some(relCol => {
+                         const relColLower = relCol.toLowerCase();
+                         return productCollectionHandle === relColLower || 
+                                productCollections.some(col => col.includes(relColLower));
+                    })) {
+                         score += 10; // High score for being in a relevant collection
+                    }
+               });
+               
+               return { product, score };
+          });
+          
+          // Sort by score and return top products
+          scoredProducts.sort((a: CollectionScoredProduct, b: CollectionScoredProduct) => b.score - a.score);
+          const topProducts = scoredProducts
+               .filter(sp => sp.score > 0) // Only include products with some relevance
+               .slice(0, limit)
+               .map(sp => sp.product);
+          
+          console.log(`[Shopify] searchProductsByCollection success | goals=[${goalKeys.join(', ')}] | count=${topProducts.length}`);
+          if (topProducts.length > 0) {
+               console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
+               topProducts.forEach((p: ProductSearchResult, idx: number) => {
+                    if (p.collection) {
+                         console.log(`[Shopify] Product ${idx + 1} collection: ${p.collection}`);
+                    }
+                    if (p.collections && p.collections.length > 0) {
+                         console.log(`[Shopify] Product ${idx + 1} collections: ${p.collections.join(', ')}`);
+                    }
+               });
+          }
+          
+          return topProducts;
+     } catch (error) {
+          console.error(`[Shopify] Error searching products by collection for goals "${goalKeys.join(', ')}":`, error);
+          return [];
      }
 }
 
@@ -1059,6 +1674,208 @@ export async function getComboProducts(combo: ProductCombo): Promise<ProductSear
 }
 
 /**
+ * Find complementary products (upsales) for a given product
+ * @param product - Product to find complements for
+ * @returns Promise<ProductSearchResult[]> - Array of complementary products
+ */
+async function findComplementaryProducts(product: ProductSearchResult): Promise<ProductSearchResult[]> {
+     const complementaryMap: { [key: string]: string[] } = {
+          'vitamin d': ['magnesium', 'vitamin k2', 'calcium'],
+          'vitamin d3': ['magnesium', 'vitamin k2', 'calcium'],
+          'magnesium': ['vitamin d', 'vitamin b6', 'calcium'],
+          'calcium': ['vitamin d', 'magnesium', 'vitamin k2'],
+          'iron': ['vitamin c'],
+          'vitamin c': ['iron', 'zinc'],
+          'omega': ['vitamin e'],
+          'probiotic': ['prebiotic', 'fiber'],
+          'protein': ['bcaa', 'creatine'],
+          'bcaa': ['protein', 'creatine'],
+          'creatine': ['protein', 'bcaa'],
+          'zinc': ['vitamin c', 'copper'],
+          'b-complex': ['vitamin c', 'magnesium'],
+          'coq10': ['omega', 'vitamin e'],
+          'ashwagandha': ['magnesium', 'melatonin'],
+          'turmeric': ['omega', 'black pepper'],
+          'melatonin': ['magnesium', 'ashwagandha'],
+     };
+
+     const productTitleLower = product.title.toLowerCase();
+     const productTags = product.tags?.map(t => t.toLowerCase()) || [];
+     const allProductTerms = [productTitleLower, ...productTags].join(' ');
+
+     // Find matching complementary keywords
+     const complementaryKeywords: string[] = [];
+     for (const [key, complements] of Object.entries(complementaryMap)) {
+          if (allProductTerms.includes(key)) {
+               complementaryKeywords.push(...complements);
+          }
+     }
+
+     // Also check product tags for collection-based complements
+     if (product.collection) {
+          const collectionComplements: { [key: string]: string[] } = {
+               'energie-et-endurance': ['magnesium', 'b-complex', 'coq10'],
+               'stress-sommeil': ['magnesium', 'melatonin', 'ashwagandha'],
+               'immunite': ['vitamin d', 'zinc', 'probiotic'],
+               'beaute-et-peau': ['vitamin c', 'omega', 'collagen'],
+               'cerveau-et-concentration': ['omega', 'b-complex', 'coq10'],
+          };
+          const collectionLower = product.collection.toLowerCase();
+          if (collectionComplements[collectionLower]) {
+               complementaryKeywords.push(...collectionComplements[collectionLower]);
+          }
+     }
+
+     // Remove duplicates
+     const uniqueKeywords = [...new Set(complementaryKeywords)];
+
+     if (uniqueKeywords.length === 0) {
+          return [];
+     }
+
+     // Search for complementary products (limit to 2-3 per product)
+     const complementaryProducts: ProductSearchResult[] = [];
+     const seenVariantIds = new Set<string>([product.variantId]); // Exclude the original product
+
+     for (const keyword of uniqueKeywords.slice(0, 3)) {
+          try {
+               const results = await searchProducts(keyword);
+               // Take first 2 results and filter out duplicates
+               for (const result of results.slice(0, 2)) {
+                    if (!seenVariantIds.has(result.variantId)) {
+                         complementaryProducts.push(result);
+                         seenVariantIds.add(result.variantId);
+                         if (complementaryProducts.length >= 3) break;
+                    }
+               }
+               if (complementaryProducts.length >= 3) break;
+          } catch (error) {
+               console.error(`[Shopify] Error searching for complementary product "${keyword}":`, error);
+          }
+     }
+
+     return complementaryProducts;
+}
+
+/**
+ * Generate dynamic combos from recommended products and their complementary upsales
+ * @param recommendedProducts - Products recommended by the chat
+ * @returns Promise<Array<{name: string, description: string, products: ProductSearchResult[], benefits: string}>> - Dynamic combos
+ */
+export async function generateDynamicCombosFromProducts(
+     recommendedProducts: ProductSearchResult[]
+): Promise<Array<{ name: string; description: string; products: ProductSearchResult[]; benefits: string }>> {
+     if (!recommendedProducts || recommendedProducts.length === 0) {
+          return [];
+     }
+
+     const combos: Array<{ name: string; description: string; products: ProductSearchResult[]; benefits: string }> = [];
+     const seenVariantIds = new Set<string>();
+
+     // For each recommended product, create a combo with complementary products
+     for (const mainProduct of recommendedProducts.slice(0, 3)) { // Limit to first 3 products to avoid too many combos
+          if (seenVariantIds.has(mainProduct.variantId)) continue;
+
+          const complementaryProducts = await findComplementaryProducts(mainProduct);
+          
+          if (complementaryProducts.length > 0) {
+               // Create combo with main product + complementary products
+               const comboProducts = [mainProduct, ...complementaryProducts.slice(0, 2)]; // Max 3 products per combo
+               
+               // Generate combo name based on products
+               const productNames = comboProducts.map(p => {
+                    // Extract key ingredient/nutrient from product title
+                    const title = p.title.toLowerCase();
+                    if (title.includes('vitamin d') || title.includes('vitamin d3')) return 'Vitamine D';
+                    if (title.includes('magnesium')) return 'Magnésium';
+                    if (title.includes('iron') || title.includes('fer')) return 'Fer';
+                    if (title.includes('calcium')) return 'Calcium';
+                    if (title.includes('omega')) return 'Oméga-3';
+                    if (title.includes('probiotic') || title.includes('probiotique')) return 'Probiotiques';
+                    if (title.includes('protein') || title.includes('protéine')) return 'Protéine';
+                    if (title.includes('b-complex') || title.includes('vitamin b')) return 'Complexe B';
+                    if (title.includes('coq10') || title.includes('coenzyme')) return 'CoQ10';
+                    if (title.includes('ashwagandha')) return 'Ashwagandha';
+                    if (title.includes('zinc')) return 'Zinc';
+                    if (title.includes('vitamin c')) return 'Vitamine C';
+                    if (title.includes('vitamin b12') || title.includes('vitamine b12')) return 'Vitamine B12';
+                    if (title.includes('vitamin b') || title.includes('vitamine b')) {
+                         // Extract B vitamin number if present
+                         const bMatch = title.match(/b\s*(\d+)/i);
+                         if (bMatch) return `Vitamine B${bMatch[1]}`;
+                         return 'Vitamine B';
+                    }
+                    if (title.includes('collagen') || title.includes('collagène')) return 'Collagène';
+                    if (title.includes('biotin') || title.includes('biotine')) return 'Biotine';
+                    
+                    // Better fallback: extract meaningful part of title
+                    // Try to get the main product name (before the em dash or first meaningful words)
+                    const parts = p.title.split('–').map(s => s.trim());
+                    if (parts.length > 1) {
+                         // If there's an em dash, use the part before it
+                         const mainPart = parts[0];
+                         // Remove brand name "Vigaia" if present
+                         const withoutBrand = mainPart.replace(/^vigaia\s+/i, '').trim();
+                         if (withoutBrand) {
+                              // Take first 2-3 meaningful words
+                              const words = withoutBrand.split(/\s+/).filter(w => w.length > 2);
+                              if (words.length > 0) {
+                                   return words.slice(0, 2).join(' ');
+                              }
+                         }
+                    }
+                    
+                    // Last resort: take first 2 words (skip brand if it's "Vigaia")
+                    const words = p.title.split(/\s+/);
+                    if (words[0].toLowerCase() === 'vigaia' && words.length > 1) {
+                         return words.slice(1, 3).join(' ');
+                    }
+                    return words.slice(0, 2).join(' ');
+               });
+
+               const comboName = productNames.length > 1 
+                    ? `Combo ${productNames.join(' + ')}`
+                    : `${productNames[0]} & Compléments`;
+
+               // Generate description
+               const mainProductName = mainProduct.title.split('–')[0].trim() || mainProduct.title;
+               const description = `Optimisez les bienfaits de ${mainProductName} avec des produits complémentaires`;
+
+               // Generate benefits
+               const benefits = `Ces produits se complètent parfaitement : ${mainProduct.title} est renforcé par ${complementaryProducts.map(p => p.title).join(' et ')}, créant un effet synergique pour maximiser les résultats.`;
+
+               combos.push({
+                    name: comboName,
+                    description,
+                    products: comboProducts,
+                    benefits
+               });
+
+               // Mark all products as seen
+               comboProducts.forEach(p => seenVariantIds.add(p.variantId));
+          }
+     }
+
+     // If we have multiple recommended products, create a combo with all of them
+     if (recommendedProducts.length >= 2 && combos.length === 0) {
+          const allProducts = recommendedProducts.slice(0, 3);
+          const comboName = `Combo Recommandé`;
+          const description = `Combinaison optimale de produits recommandés pour vos besoins`;
+          const productTitles = allProducts.map(p => p.title).join(', ');
+          const benefits = `Ces produits fonctionnent en synergie : ${productTitles}. Ensemble, ils offrent une solution complète pour vos objectifs de santé.`;
+
+          combos.push({
+               name: comboName,
+               description,
+               products: allProducts,
+               benefits
+          });
+     }
+
+     return combos;
+}
+
+/**
  * Find combos that contain some of the recommended products
  * @param recommendedProducts - Array of recommended products
  * @returns ProductCombo | null - Best matching combo or null
@@ -1132,6 +1949,7 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
             id
             title
             handle
+            description
             tags
             collections(first: 5) {
               edges {
@@ -1208,6 +2026,7 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
                available: variant.availableForSale,
                currency: variant.price.currencyCode,
                tags: product.tags || [],
+               description: product.description || '',
                collections: collections.length > 0 ? collections : undefined,
                collection: primaryCollection,
           };

@@ -49,8 +49,16 @@ export interface Product {
      brand: string
      ingredients: string[]
      benefits: string[]
-     dosage?: string
-     warnings?: string[]
+     targetAudience?: string[]
+     usageInstructions?: {
+          dosage?: string
+          timing?: string
+          duration?: string
+          tips?: string[]
+     }
+     dosage?: string // Legacy field, kept for backward compatibility
+     warnings?: string[] // Maps to contraindications
+     contraindications?: string[]
 }
 
 // API types

@@ -242,6 +242,8 @@
       padding: 16px;
       background: linear-gradient(90deg, #f0fdf4 0%, #ecfdf5 100%);
       border-top: 1px solid #bbf7d0;
+      position: relative;
+      z-index: 1;
     }
 
     .vigaia-input-container {
@@ -261,6 +263,9 @@
       transition: border-color 0.2s;
       min-height: 44px;
       max-height: 100px;
+      background: white;
+      -webkit-appearance: none;
+      appearance: none;
     }
 
     .vigaia-input-field:focus {
@@ -390,25 +395,70 @@
       }
 
       .vigaia-chat-window {
-        bottom: ${CONFIG.mobile.bottom};
-        right: ${CONFIG.mobile.right};
-        width: calc(100vw - 2rem);
-        height: calc(100vh - 2rem);
-        max-height: calc(100vh - 2rem);
-        border-radius: 16px;
+        bottom: 0;
+        right: 0;
+        left: 0;
+        top: 0;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+        border-radius: 0;
+        display: flex;
+        flex-direction: column;
       }
 
       .vigaia-chat-header {
         padding: 12px 16px;
+        flex-shrink: 0;
       }
 
       .vigaia-chat-messages {
         padding: 12px;
         gap: 12px;
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
       .vigaia-chat-input {
         padding: 12px;
+        flex-shrink: 0;
+        position: relative;
+        background: linear-gradient(90deg, #f0fdf4 0%, #ecfdf5 100%);
+        border-top: 1px solid #bbf7d0;
+        z-index: 10;
+      }
+
+      .vigaia-input-container {
+        position: relative;
+        z-index: 11;
+      }
+
+      .vigaia-input-field {
+        font-size: 16px;
+        -webkit-appearance: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+        min-height: 44px;
+        cursor: text;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
+      .vigaia-input-field:focus {
+        border-color: ${CONFIG.theme.primaryColor};
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        outline: none;
+      }
+
+      .vigaia-send-button {
+        min-width: 44px;
+        min-height: 44px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        cursor: pointer;
       }
     }
   `;
@@ -469,7 +519,7 @@
         <div class="vigaia-chat-window" id="vigaia-chat-window">
           <div class="vigaia-chat-header">
             <div class="vigaia-chat-header-info">
-              <div class="vigaia-chat-avatar"><img src="https://www.vigaia.com/cdn/shop/files/vigaia-high-resolution-logo-transparent_06884d1a-0548-44bc-932e-1cad07cb1f1d.png?crop=center&height=32&v=1758274822&width=32" alt="Vigaia AI" style="width: 80%; height: 80%; object-fit: contain;" /></div>
+              <div class="vigaia-chat-avatar"><img src="https://www.vigaia.com/cdn/shop/files/vigaia-high-resolution-logo-transparent_06884d1a-0548-44bc-932e-1cad07cb1f1d.png?crop=center&height=32&v=1758274822&width=32" alt="${this.escapeHtml('Vigaia AI')}" style="width: 80%; height: 80%; object-fit: contain;" /></div>
               <div>
                 <div class="vigaia-chat-title">AI Nutritionist</div>
                 <div class="vigaia-chat-subtitle">Online • Ready to help</div>
@@ -491,8 +541,13 @@
                 id="vigaia-input-field" 
                 placeholder="Ask about nutrition, supplements..."
                 rows="1"
+                inputmode="text"
+                autocapitalize="sentences"
+                autocomplete="off"
+                autocorrect="on"
+                spellcheck="true"
               ></textarea>
-              <button class="vigaia-send-button" id="vigaia-send-button">
+              <button class="vigaia-send-button" id="vigaia-send-button" type="button">
                 <svg viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
@@ -533,7 +588,7 @@
                   <div class="vigaia-product-title">${this.escapeHtml(product.title)}</div>
                   <div class="vigaia-product-footer">
                     <div class="vigaia-product-price" style="display: flex; align-items: baseline; gap: 8px;">
-                      ${product.isOnSale && product.originalPrice ? `
+                      ${(product.isOnSale === true && typeof product.originalPrice === 'number' && product.originalPrice > product.price) ? `
                         <span style="font-size: 14px; color: #9ca3af; text-decoration: line-through;">€${product.originalPrice.toFixed(2)}</span>
                         <span style="font-size: 18px; color: #cf4a4a; font-weight: 500;">€${product.price.toFixed(2)}</span>
                       ` : `
@@ -580,15 +635,44 @@
                if (this.isOpen) return;
 
                this.isOpen = true;
+               // Prevent body scroll on mobile when chat is open
+               if (window.innerWidth <= 640) {
+                    document.body.style.overflow = 'hidden';
+                    document.body.style.position = 'fixed';
+                    document.body.style.width = '100%';
+               }
                this.container.innerHTML = this.getWindowHTML();
                this.bindWindowEvents();
                this.scrollToBottom();
+               
+               // Focus input on mobile after a short delay to ensure it's rendered
+               if (window.innerWidth <= 640) {
+                    setTimeout(() => {
+                         const inputField = document.getElementById('vigaia-input-field');
+                         if (inputField) {
+                              inputField.focus();
+                              // Scroll input into view
+                              inputField.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                         }
+                    }, 100);
+               }
           }
 
           closeChat() {
                if (!this.isOpen) return;
 
                this.isOpen = false;
+               // Restore body scroll on mobile
+               if (window.innerWidth <= 640) {
+                    document.body.style.overflow = '';
+                    document.body.style.position = '';
+                    document.body.style.width = '';
+               }
+               // Clean up mobile resize handler
+               if (this._mobileResizeHandler) {
+                    window.removeEventListener('resize', this._mobileResizeHandler);
+                    this._mobileResizeHandler = null;
+               }
                this.container.innerHTML = this.getBubbleHTML();
                this.bindEvents();
           }
@@ -619,6 +703,40 @@
                               this.sendMessage();
                          }
                     });
+
+                    // Mobile-specific: Ensure input stays visible when focused
+                    if (window.innerWidth <= 640) {
+                         inputField.addEventListener('focus', () => {
+                              // Small delay to let keyboard appear
+                              setTimeout(() => {
+                                   inputField.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                   const inputContainer = inputField.closest('.vigaia-chat-input');
+                                   if (inputContainer) {
+                                        inputContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                                   }
+                              }, 300);
+                         });
+
+                         // Handle viewport resize (keyboard open/close)
+                         let resizeTimer;
+                         const handleResize = () => {
+                              clearTimeout(resizeTimer);
+                              resizeTimer = setTimeout(() => {
+                                   if (document.activeElement === inputField) {
+                                        inputField.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                   }
+                              }, 100);
+                         };
+                         window.addEventListener('resize', handleResize);
+                         
+                         // Store cleanup function
+                         this._mobileResizeHandler = handleResize;
+                    }
+
+                    // Touch event for better mobile interaction
+                    inputField.addEventListener('touchstart', (e) => {
+                         e.stopPropagation();
+                    }, { passive: true });
                }
           }
 

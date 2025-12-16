@@ -2,6 +2,8 @@
   {
     "title": "Ashwagandha KSM 66® – Gélules Adaptogènes Premium",
     "price": 24,
+    "originalPrice": 35,
+    "isOnSale": true,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/ashwagandha.png?v=1761681782",
     "variantId": "gid://shopify/ProductVariant/55737980060025",
     "available": true,
@@ -10,6 +12,7 @@
   {
     "title": "Vigaia Biotine 2500 mcg – Fortifiant Cheveux, Peau & Ongles",
     "price": 20,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/biotine.png?v=1761681781",
     "variantId": "gid://shopify/ProductVariant/55817313419641",
     "available": true,
@@ -18,6 +21,7 @@
   {
     "title": "Vigaia Chardon Marie – Détox Foie et Protection Hépatique Naturelle",
     "price": 20,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/CHARDON_MARIE.png?v=1761681783",
     "variantId": "gid://shopify/ProductVariant/55817789604217",
     "available": true,
@@ -26,6 +30,7 @@
   {
     "title": "Collagène Complexe de Vigaia – Beauté, Articulations et Vitalité",
     "price": 20,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/COLLAGENE.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55820929991033",
     "available": true,
@@ -34,6 +39,7 @@
   {
     "title": "Vigaia Collagène Peptides – Beauté et Articulations",
     "price": 23,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/COLLAGENE_peptides.png?v=1761681787",
     "variantId": "gid://shopify/ProductVariant/55821427016057",
     "available": true,
@@ -42,6 +48,7 @@
   {
     "title": "Vigaia Glucosamine Complexe – Articulations, Cartilages et Mobilité Naturelle",
     "price": 24,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/GLUCOSAMINE.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55821551763833",
     "available": true,
@@ -50,6 +57,7 @@
   {
     "title": "Vigaia L-Glutathion – Antioxydant Puissant et Détox Naturelle",
     "price": 25,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/L-glutathion.png?v=1761681779",
     "variantId": "gid://shopify/ProductVariant/55822301331833",
     "available": true,
@@ -58,6 +66,7 @@
   {
     "title": "Vigaia Lion’s Mane – Soutien Cognitif & Bien-être Cérébral",
     "price": 25,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/LION_S_MANE.png?v=1761681783",
     "variantId": "gid://shopify/ProductVariant/55826225135993",
     "available": true,
@@ -66,6 +75,7 @@
   {
     "title": "Vigaia Maca Noire – Vitalité, Énergie et Équilibre Hormonal",
     "price": 23,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/MACA_NOIRE.png?v=1761681780",
     "variantId": "gid://shopify/ProductVariant/55826415911289",
     "available": true,
@@ -74,6 +84,7 @@
   {
     "title": "Vigaia Magnésium Bisglycinate + B6 – Sérénité, Sommeil et Vitalité Musculaire",
     "price": 25,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/Magnesium.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55826524340601",
     "available": true,
@@ -82,6 +93,8 @@
   {
     "title": "Vigaia Extrait de Moringa – Superaliment Énergisant et Protecteur",
     "price": 26,
+    "originalPrice": 36,
+    "isOnSale": true,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/MORINGA.png?v=1761681783",
     "variantId": "gid://shopify/ProductVariant/55827233112441",
     "available": true,
@@ -90,6 +103,7 @@
   {
     "title": "Vigaia Matcha : Énergie et Bien-être au Quotidien",
     "price": 23,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/matcha.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55827401212281",
     "available": true,
@@ -98,6 +112,8 @@
   {
     "title": "Vigaia Multivitamine – Votre Allié Quotidien pour Énergie et Équilibre",
     "price": 25,
+    "originalPrice": 42,
+    "isOnSale": true,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/MULTIVITAMINEs.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55827745800569",
     "available": true,
@@ -106,6 +122,7 @@
   {
     "title": "Vigaia NMN – Soutien Avancé Anti-Âge et Vitalité Cellulaire",
     "price": 25,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/NMN.png?v=1761681783",
     "variantId": "gid://shopify/ProductVariant/55827986547065",
     "available": true,
@@ -114,6 +131,7 @@
   {
     "title": "Vigaia Oméga 3 1000mg – Gélules d’huile de poisson certifiées",
     "price": 25,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/OMEGA_3.png?v=1761681783",
     "variantId": "gid://shopify/ProductVariant/55829489549689",
     "available": true,
@@ -122,6 +140,7 @@
   {
     "title": "Vigaia Probiotique – Équilibre Digestif et Bien-être Intestinal",
     "price": 24,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/PROBIOTIC.png?v=1761681783",
     "variantId": "gid://shopify/ProductVariant/55831420764537",
     "available": true,
@@ -130,6 +149,7 @@
   {
     "title": "Vigaia Shilajit – L'Élixir de Montagne pour Votre Vitalité",
     "price": 23,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/SHILAJIT.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55831690543481",
     "available": true,
@@ -138,6 +158,7 @@
   {
     "title": "Vigaia Tongkat Ali – Énergie, Force et Bien-être Quotidien",
     "price": 25,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/tongkat_ali.png?v=1761681782",
     "variantId": "gid://shopify/ProductVariant/55831874306425",
     "available": true,
@@ -146,6 +167,7 @@
   {
     "title": "Vigaia Vitamine B Complexe – Votre Sourc de Vitalité et d'Équilibre Nerveux",
     "price": 24,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/vitamine_b.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55832972657017",
     "available": true,
@@ -154,6 +176,8 @@
   {
     "title": "Vigaia Vitamine B12 – Soutien Essentiel Contre la Fatigue et pour les Fonctions Cérébrales",
     "price": 25,
+    "originalPrice": 38,
+    "isOnSale": true,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/Vitamine_B12.png?v=1761681782",
     "variantId": "gid://shopify/ProductVariant/55833101173113",
     "available": true,
@@ -162,6 +186,8 @@
   {
     "title": "Vigaia Vitamine C Complexe – Bouclier Antioxydant et Énergie Naturelle",
     "price": 23,
+    "originalPrice": 32,
+    "isOnSale": true,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/vitamine_c.png?v=1761681782",
     "variantId": "gid://shopify/ProductVariant/55833233228153",
     "available": true,
@@ -170,6 +196,7 @@
   {
     "title": "Vigaia Vitamine D3+K2 – Le Duo Essentiel pour des Os Solides et un Cœur Sain",
     "price": 22,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/Vitamines_D3_K2.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55833509167481",
     "available": true,
@@ -178,6 +205,8 @@
   {
     "title": "Vigaia Zinc Complexe – Soutien Immunitaire et Beauté Cellulaire",
     "price": 25,
+    "originalPrice": 35,
+    "isOnSale": true,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/ZINC_PLUS.png?v=1761681784",
     "variantId": "gid://shopify/ProductVariant/55833923420537",
     "available": true,
@@ -186,6 +215,7 @@
   {
     "title": "Pack Énergie Automne",
     "price": 65,
+    "isOnSale": false,
     "image": "https://cdn.shopify.com/s/files/1/0934/8933/2601/files/WhatsApp_Image_2025-11-13_at_2.11.56_PM.jpg?v=1764787490",
     "variantId": "gid://shopify/ProductVariant/56312320688505",
     "available": false,

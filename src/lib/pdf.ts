@@ -4,7 +4,7 @@ import path from 'path';
 import { IUserProfile } from './db';
 import { Product } from '../utils/types';
 
-// PDF generation configuration
+// PDF generation configuration with VIGAIA brand colors
 interface PDFConfig {
      pageWidth: number;
      pageHeight: number;
@@ -16,17 +16,46 @@ interface PDFConfig {
           small: number;
      };
      colors: {
-          primary: string;
-          secondary: string;
-          text: string;
-          lightGray: string;
-          darkGray: string;
+          primary: string; // Dark brown #423f37
+          secondary: string; // Off-white #FAF8F3
+          text: string; // Dark brown #423f37
+          lightGray: string; // Off-white #FAF8F3
+          darkGray: string; // Dark brown #423f37
+          accent: string; // Pastel colors for categories
+     };
+     brand: {
+          name: string;
+          website: string;
+          linktree?: string; // Optional linktree URL
      };
 }
 
-// Nutrition plan data structure
+// Extended user profile for PDF
+interface ExtendedUserProfile {
+     userId: string;
+     age: number;
+     gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+     goals: string[];
+     allergies: string[];
+     budget: {
+          min: number;
+          max: number;
+          currency: string;
+     };
+     height?: number; // in cm
+     weight?: number; // in kg
+     medications?: string[];
+     activityLevel?: string;
+     shopifyCustomerId?: string;
+     shopifyCustomerName?: string;
+     lastInteraction?: Date;
+     createdAt?: Date;
+     updatedAt?: Date;
+}
+
+// Nutrition plan data structure matching VIGAIA template
 interface NutritionPlan {
-     userProfile: IUserProfile;
+     userProfile: ExtendedUserProfile;
      recommendations: {
           dailyCalories: number;
           macronutrients: {
@@ -34,20 +63,23 @@ interface NutritionPlan {
                carbs: { grams: number; percentage: number };
                fats: { grams: number; percentage: number };
           };
+          activityLevel?: string;
           mealPlan: {
                breakfast: string[];
+               morningSnack?: string[];
                lunch: string[];
+               afternoonSnack?: string[];
                dinner: string[];
-               snacks: string[];
+               eveningSnack?: string[];
           };
-          hydration: {
-               dailyWater: number; // in liters
-               tips: string[];
-          };
-          supplements: Product[];
+          supplements: Array<Product & {
+               moment?: string; // Time of day to take
+               duration?: string; // Duration of intake
+               comments?: string; // Additional comments
+          }>;
      };
      personalizedTips: string[];
-     weeklyGoals: string[];
+     disclaimer?: string;
 }
 
 class PDFGenerator {
@@ -65,11 +97,17 @@ class PDFGenerator {
                     small: 10,
                },
                colors: {
-                    primary: '#2563eb', // Blue
-                    secondary: '#059669', // Green
-                    text: '#1f2937', // Dark gray
-                    lightGray: '#f3f4f6',
-                    darkGray: '#6b7280',
+                    primary: '#423f37', // VIGAIA dark brown
+                    secondary: '#FAF8F3', // VIGAIA off-white
+                    text: '#423f37', // VIGAIA dark brown
+                    lightGray: '#FAF8F3', // VIGAIA off-white
+                    darkGray: '#423f37', // VIGAIA dark brown
+                    accent: '#C8D9C0', // VIGAIA sage green (Health & Wellness)
+               },
+               brand: {
+                    name: 'VIGAIA',
+                    website: 'www.vigaia.com',
+                    linktree: process.env.VIGAIA_LINKTREE_URL || 'https://linktr.ee/vigaia', // Default or from env
                },
           };
      }
@@ -105,15 +143,14 @@ class PDFGenerator {
           const stream = fs.createWriteStream(fullPath);
           doc.pipe(stream);
 
-          // Generate PDF content
-          await this.addHeader(doc, nutritionPlan);
-          await this.addUserProfile(doc, nutritionPlan.userProfile);
-          await this.addNutritionalRecommendations(doc, nutritionPlan.recommendations);
+          // Generate PDF content matching VIGAIA template
+          await this.addHeader(doc);
+          await this.addClientProfile(doc, nutritionPlan.userProfile);
+          await this.addDailyNeeds(doc, nutritionPlan.recommendations);
           await this.addMealPlan(doc, nutritionPlan.recommendations.mealPlan);
-          await this.addHydrationGuide(doc, nutritionPlan.recommendations.hydration);
-          await this.addSupplements(doc, nutritionPlan.recommendations.supplements);
-          await this.addPersonalizedTips(doc, nutritionPlan.personalizedTips);
-          await this.addWeeklyGoals(doc, nutritionPlan.weeklyGoals);
+          await this.addSupplementsTable(doc, nutritionPlan.recommendations.supplements);
+          await this.addTipsAndRemarks(doc, nutritionPlan.personalizedTips);
+          await this.addDisclaimer(doc);
           await this.addFooter(doc);
 
           // Finalize PDF
@@ -128,261 +165,419 @@ class PDFGenerator {
      }
 
      /**
-      * Add header with title and date
+      * Add header with VIGAIA logo, title and date
       */
-     private async addHeader(doc: InstanceType<typeof PDFDocument>, nutritionPlan: NutritionPlan): Promise<void> {
-          // Title
-          doc.fontSize(this.config.fontSizes.title)
+     private async addHeader(doc: InstanceType<typeof PDFDocument>): Promise<void> {
+          const startY = this.config.margin;
+          
+          // VIGAIA Logo (text-based, bold)
+          doc.fontSize(28)
                .fillColor(this.config.colors.primary)
-               .text('Personalized Nutrition Plan', this.config.margin, this.config.margin, {
-                    align: 'center',
+               .font('Helvetica-Bold')
+               .text(this.config.brand.name, this.config.margin, startY, {
+                    align: 'left',
                });
 
-          // Subtitle
-          doc.fontSize(this.config.fontSizes.subtitle)
-               .fillColor(this.config.colors.secondary)
-               .text(`Generated for ${nutritionPlan.userProfile.userId}`, this.config.margin, 80, {
+          // Title: "Plan Nutrition & Compléments Personnalisé"
+          doc.fontSize(this.config.fontSizes.title)
+               .fillColor(this.config.colors.primary)
+               .font('Helvetica-Bold')
+               .text('Plan Nutrition & Compléments Personnalisé', this.config.margin, startY + 35, {
                     align: 'center',
                });
 
           // Date
+          const currentDate = new Date().toLocaleDateString('fr-FR', {
+               day: '2-digit',
+               month: '2-digit',
+               year: 'numeric'
+          });
           doc.fontSize(this.config.fontSizes.small)
                .fillColor(this.config.colors.darkGray)
-               .text(`Generated on: ${new Date().toLocaleDateString()}`, this.config.margin, 110, {
+               .font('Helvetica')
+               .text(`Date : ${currentDate}`, this.config.margin, startY + 65, {
                     align: 'center',
+               });
+
+          // Website
+          doc.fontSize(this.config.fontSizes.small)
+               .fillColor(this.config.colors.darkGray)
+               .text(this.config.brand.website, this.config.pageWidth - this.config.margin - 100, startY, {
+                    align: 'right',
                });
 
           // Add decorative line
           doc.strokeColor(this.config.colors.primary)
-               .lineWidth(2)
-               .moveTo(this.config.margin, 130)
-               .lineTo(this.config.pageWidth - this.config.margin, 130)
+               .lineWidth(1.5)
+               .moveTo(this.config.margin, startY + 85)
+               .lineTo(this.config.pageWidth - this.config.margin, startY + 85)
                .stroke();
 
           // Move cursor down
-          doc.y = 150;
+          doc.y = startY + 100;
      }
 
      /**
-      * Add user profile section
+      * Add client profile section (matching VIGAIA template)
       */
-     private async addUserProfile(doc: InstanceType<typeof PDFDocument>, userProfile: IUserProfile): Promise<void> {
-          this.addSectionHeader(doc, 'Your Profile');
+     private async addClientProfile(doc: InstanceType<typeof PDFDocument>, userProfile: ExtendedUserProfile): Promise<void> {
+          this.addSectionHeader(doc, 'Profil du client');
+
+          // Map gender to French
+          const genderMap: Record<string, string> = {
+               'male': 'Homme',
+               'female': 'Femme',
+               'other': 'Autre',
+               'prefer-not-to-say': 'Non spécifié'
+          };
+
+          // Goals are already translated in the userProfile (from the API)
+          const goalsText = userProfile.goals.length > 0 ? userProfile.goals.join(', ') : 'Non spécifié';
 
           const profileData = [
-               { label: 'Age', value: userProfile.age.toString() },
-               { label: 'Gender', value: userProfile.gender },
-               { label: 'Goals', value: userProfile.goals.join(', ') },
-               { label: 'Allergies', value: userProfile.allergies.length > 0 ? userProfile.allergies.join(', ') : 'None' },
-               { label: 'Budget Range', value: `${userProfile.budget.currency} ${userProfile.budget.min} - ${userProfile.budget.max}` },
+               { label: 'Sexe', value: genderMap[userProfile.gender] || userProfile.gender },
+               { label: 'Âge', value: `${userProfile.age} ans` },
+               { label: 'Taille', value: userProfile.height ? `${userProfile.height} cm` : 'Non spécifié' },
+               { label: 'Poids', value: userProfile.weight ? `${userProfile.weight} kg` : 'Non spécifié' },
+               { label: 'Objectif', value: goalsText },
+               { label: 'Niveau d\'activité', value: userProfile.activityLevel || 'Non spécifié' },
+               { label: 'Allergies ou régime', value: userProfile.allergies.length > 0 ? userProfile.allergies.join(', ') : 'Aucune' },
+               { label: 'Médicaments et remarques', value: userProfile.medications && userProfile.medications.length > 0 ? userProfile.medications.join(', ') : 'Aucun' },
           ];
 
-          profileData.forEach((item, index) => {
+          profileData.forEach((item) => {
+               const currentY = doc.y;
                doc.fontSize(this.config.fontSizes.body)
                     .fillColor(this.config.colors.text)
-                    .text(`${item.label}:`, this.config.margin, doc.y + (index * 20))
-                    .text(item.value, this.config.margin + 120, doc.y + (index * 20), {
-                         continued: false,
+                    .font('Helvetica')
+                    .text(`• ${item.label} : ${item.value}`, this.config.margin, currentY, {
+                         width: this.config.pageWidth - (this.config.margin * 2),
                     });
+               // Move to next line with consistent spacing
+               doc.y = currentY + 18;
           });
 
-          doc.y += (profileData.length * 20) + 20;
+          doc.y += 20;
      }
 
      /**
-      * Add nutritional recommendations
+      * Add daily needs summary (matching VIGAIA template)
       */
-     private async addNutritionalRecommendations(doc: InstanceType<typeof PDFDocument>, recommendations: NutritionPlan['recommendations']): Promise<void> {
-          this.addSectionHeader(doc, 'Daily Nutritional Targets');
+     private async addDailyNeeds(doc: InstanceType<typeof PDFDocument>, recommendations: NutritionPlan['recommendations']): Promise<void> {
+          this.addSectionHeader(doc, 'Besoins journaliers estimés');
 
           // Daily calories
-          doc.fontSize(this.config.fontSizes.subtitle)
-               .fillColor(this.config.colors.primary)
-               .text(`Daily Calorie Target: ${recommendations.dailyCalories} calories`, this.config.margin, doc.y);
-
-          doc.y += 30;
-
-          // Macronutrients
           doc.fontSize(this.config.fontSizes.body)
                .fillColor(this.config.colors.text)
-               .text('Macronutrient Breakdown:', this.config.margin, doc.y);
+               .font('Helvetica')
+               .text(`• Apport calorique cible : ${recommendations.dailyCalories.toLocaleString('fr-FR')} kcal / jour`, this.config.margin, doc.y);
 
-          doc.y += 20;
+          doc.y += 10;
+
+          // Macronutrients
+          doc.text('• Répartition des macronutriments :', this.config.margin, doc.y);
+          doc.y += 8;
 
           const macros = recommendations.macronutrients;
           const macroData = [
-               { name: 'Protein', grams: macros.protein.grams, percentage: macros.protein.percentage },
-               { name: 'Carbohydrates', grams: macros.carbs.grams, percentage: macros.carbs.percentage },
-               { name: 'Fats', grams: macros.fats.grams, percentage: macros.fats.percentage },
+               { name: 'Protéines', grams: macros.protein.grams, percentage: macros.protein.percentage },
+               { name: 'Glucides', grams: macros.carbs.grams, percentage: macros.carbs.percentage },
+               { name: 'Lipides', grams: macros.fats.grams, percentage: macros.fats.percentage },
           ];
 
           macroData.forEach((macro, index) => {
-               doc.text(`${macro.name}: ${macro.grams}g (${macro.percentage}%)`, this.config.margin + 20, doc.y + (index * 15));
+               doc.text(`  - ${macro.name} : ${macro.grams} g / jour`, this.config.margin + 20, doc.y + (index * 10));
           });
 
-          doc.y += (macroData.length * 15) + 20;
+          doc.y += (macroData.length * 10)-5;
+
+          // Activity level
+          if (recommendations.activityLevel) {
+               doc.text(`• Niveau d'activité : ${recommendations.activityLevel}`, this.config.margin, doc.y);
+               doc.y += 12;
+          }
+
+          // Add separator line
+          doc.strokeColor(this.config.colors.primary)
+               .lineWidth(0.5)
+               .moveTo(this.config.margin, doc.y)
+               .lineTo(this.config.pageWidth - this.config.margin, doc.y)
+               .stroke();
+
+          doc.y += 20;
      }
 
      /**
-      * Add meal plan
+      * Add meal plan (matching VIGAIA template with 6 meals)
       */
      private async addMealPlan(doc: InstanceType<typeof PDFDocument>, mealPlan: NutritionPlan['recommendations']['mealPlan']): Promise<void> {
-          this.addSectionHeader(doc, 'Daily Meal Plan');
+          this.addSectionHeader(doc, 'Plan de repas sur une journée type');
 
           const meals = [
-               { name: 'Breakfast', items: mealPlan.breakfast },
-               { name: 'Lunch', items: mealPlan.lunch },
-               { name: 'Dinner', items: mealPlan.dinner },
-               { name: 'Snacks', items: mealPlan.snacks },
+               { name: '1. Petit-déjeuner', items: mealPlan.breakfast },
+               { name: '2. Collation matin', items: mealPlan.morningSnack || [] },
+               { name: '3. Déjeuner', items: mealPlan.lunch },
+               { name: '4. Collation après-midi', items: mealPlan.afternoonSnack || [] },
+               { name: '5. Dîner', items: mealPlan.dinner },
+               { name: '6. Collation soir', items: mealPlan.eveningSnack || [] },
           ];
 
           meals.forEach((meal) => {
-               doc.fontSize(this.config.fontSizes.subtitle)
-                    .fillColor(this.config.colors.secondary)
-                    .text(meal.name, this.config.margin, doc.y);
+               // Check if we need a new page - only if we're very close to the bottom
+               if (doc.y > this.config.pageHeight - 100) {
+                    doc.addPage();
+                    doc.y = this.config.margin;
+               }
 
-               doc.y += 20;
-
-               meal.items.forEach((item, itemIndex) => {
+               if (meal.items.length > 0) {
                     doc.fontSize(this.config.fontSizes.body)
-                         .fillColor(this.config.colors.text)
-                         .text(`• ${item}`, this.config.margin + 20, doc.y + (itemIndex * 15));
-               });
+                         .fillColor(this.config.colors.primary)
+                         .font('Helvetica-Bold')
+                         .text(meal.name, this.config.margin, doc.y);
 
-               doc.y += (meal.items.length * 15) + 20;
-          });
-     }
+                    doc.y += 8;
 
-     /**
-      * Add hydration guide
-      */
-     private async addHydrationGuide(doc: InstanceType<typeof PDFDocument>, hydration: NutritionPlan['recommendations']['hydration']): Promise<void> {
-          this.addSectionHeader(doc, 'Hydration Guide');
+                    meal.items.forEach((item) => {
+                         const itemY = doc.y;
+                         doc.fontSize(this.config.fontSizes.body)
+                              .fillColor(this.config.colors.text)
+                              .font('Helvetica')
+                              .text(`• ${item}`, this.config.margin + 20, itemY, {
+                                   width: this.config.pageWidth - (this.config.margin * 2) - 20,
+                              });
+                         doc.y = itemY + 18;
+                    });
 
-          doc.fontSize(this.config.fontSizes.body)
-               .fillColor(this.config.colors.text)
-               .text(`Daily Water Intake: ${hydration.dailyWater} liters`, this.config.margin, doc.y);
-
-          doc.y += 20;
-
-          doc.text('Hydration Tips:', this.config.margin, doc.y);
-          doc.y += 15;
-
-          hydration.tips.forEach((tip, index) => {
-               doc.text(`• ${tip}`, this.config.margin + 20, doc.y + (index * 15));
+                    doc.y += 5;
+               }
           });
 
-          doc.y += (hydration.tips.length * 15) + 20;
+          doc.y += 10;
      }
 
+
      /**
-      * Add supplements section
+      * Add supplements plan table (matching VIGAIA template)
       */
-     private async addSupplements(doc: InstanceType<typeof PDFDocument>, supplements: Product[]): Promise<void> {
-          this.addSectionHeader(doc, 'Recommended Supplements');
+     private async addSupplementsTable(doc: InstanceType<typeof PDFDocument>, supplements: NutritionPlan['recommendations']['supplements']): Promise<void> {
+          this.addSectionHeader(doc, 'Plan de prise des compléments');
 
           if (supplements.length === 0) {
                doc.fontSize(this.config.fontSizes.body)
                     .fillColor(this.config.colors.darkGray)
-                    .text('No specific supplements recommended at this time.', this.config.margin, doc.y);
+                    .font('Helvetica')
+                    .text('Aucun complément spécifique recommandé pour le moment.', this.config.margin, doc.y);
                doc.y += 20;
                return;
           }
 
-          supplements.forEach((supplement) => {
-               // Check if we need a new page
-               if (doc.y > this.config.pageHeight - 200) {
+          // Check if we need a new page
+          if (doc.y > this.config.pageHeight - 250) {
+               doc.addPage();
+               doc.y = this.config.margin;
+          }
+
+          // Table header
+          const tableTop = doc.y;
+          const colWidths = {
+               produit: 120,
+               moment: 100,
+               dose: 80,
+               duree: 100,
+               commentaires: 192,
+          };
+          const minRowHeight = 20;
+          const headerHeight = 25;
+
+          // Draw table header background
+          doc.rect(this.config.margin, tableTop, this.config.pageWidth - (this.config.margin * 2), headerHeight)
+               .fillColor(this.config.colors.primary)
+               .fill();
+
+          // Header text
+          doc.fontSize(this.config.fontSizes.small)
+               .fillColor('#FFFFFF')
+               .font('Helvetica-Bold')
+               .text('Produit', this.config.margin + 5, tableTop + 7, { width: colWidths.produit })
+               .text('Moment', this.config.margin + colWidths.produit + 5, tableTop + 7, { width: colWidths.moment })
+               .text('Dose', this.config.margin + colWidths.produit + colWidths.moment + 5, tableTop + 7, { width: colWidths.dose })
+               .text('Durée', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + 5, tableTop + 7, { width: colWidths.duree })
+               .text('Commentaires', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + colWidths.duree + 5, tableTop + 7, { width: colWidths.commentaires });
+
+          doc.y = tableTop + headerHeight;
+
+          // Table rows
+          supplements.forEach((supplement, index) => {
+               // Check if we need a new page - only if we're very close to the bottom
+               if (doc.y > this.config.pageHeight - 80) {
                     doc.addPage();
                     doc.y = this.config.margin;
+                    // Redraw header on new page
+                    const newTableTop = doc.y;
+                    doc.rect(this.config.margin, newTableTop, this.config.pageWidth - (this.config.margin * 2), headerHeight)
+                         .fillColor(this.config.colors.primary)
+                         .fill();
+                    doc.fontSize(this.config.fontSizes.small)
+                         .fillColor('#FFFFFF')
+                         .font('Helvetica-Bold')
+                         .text('Produit', this.config.margin + 5, newTableTop + 7, { width: colWidths.produit })
+                         .text('Moment', this.config.margin + colWidths.produit + 5, newTableTop + 7, { width: colWidths.moment })
+                         .text('Dose', this.config.margin + colWidths.produit + colWidths.moment + 5, newTableTop + 7, { width: colWidths.dose })
+                         .text('Durée', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + 5, newTableTop + 7, { width: colWidths.duree })
+                         .text('Commentaires', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + colWidths.duree + 5, newTableTop + 7, { width: colWidths.commentaires });
+                    doc.y = newTableTop + headerHeight;
                }
 
-               doc.fontSize(this.config.fontSizes.subtitle)
-                    .fillColor(this.config.colors.primary)
-                    .text(supplement.title, this.config.margin, doc.y);
+               // Calculate dynamic row height based on content
+               doc.fontSize(this.config.fontSizes.small);
+               
+               // Calculate height needed for each column
+               const titleHeight = doc.heightOfString(supplement.title || 'N/A', {
+                    width: colWidths.produit - 10
+               });
+               const momentHeight = doc.heightOfString(supplement.moment || 'À définir', {
+                    width: colWidths.moment - 10
+               });
+               const dosageHeight = doc.heightOfString(supplement.dosage || 'N/A', {
+                    width: colWidths.dose - 10
+               });
+               const durationHeight = doc.heightOfString(supplement.duration || 'En continu', {
+                    width: colWidths.duree - 10
+               });
+               const commentsHeight = doc.heightOfString(supplement.comments || supplement.description?.substring(0, 50) || 'Aucun', {
+                    width: colWidths.commentaires - 10
+               });
+               
+               // Use the maximum height plus padding
+               const contentHeight = Math.max(titleHeight, momentHeight, dosageHeight, durationHeight, commentsHeight);
+               const dynamicRowHeight = Math.max(minRowHeight, contentHeight + 8); // Add 8px padding
+               
+               // Alternate row background
+               if (index % 2 === 0) {
+                    doc.rect(this.config.margin, doc.y, this.config.pageWidth - (this.config.margin * 2), dynamicRowHeight)
+                         .fillColor(this.config.colors.secondary)
+                         .fill();
+               }
 
-               doc.y += 15;
-
-               doc.fontSize(this.config.fontSizes.body)
-                    .fillColor(this.config.colors.text)
-                    .text(supplement.description, this.config.margin, doc.y, {
-                         width: this.config.pageWidth - (this.config.margin * 2),
-                    });
-
-               doc.y += 20;
-
-               // Price and dosage
+               // Row content - align text vertically in center of row
+               // Calculate center Y position for the row
+               const rowCenterY = doc.y + (dynamicRowHeight / 2);
+               // Approximate text height for small font (around 7-8px)
+               const textHeight = 7;
+               const textY = rowCenterY - (textHeight / 2);
+               
                doc.fontSize(this.config.fontSizes.small)
-                    .fillColor(this.config.colors.darkGray)
-                    .text(`Price: ${supplement.currency} ${supplement.price}`, this.config.margin, doc.y);
-
-               if (supplement.dosage) {
-                    doc.text(`Dosage: ${supplement.dosage}`, this.config.margin + 150, doc.y);
-               }
-
-               doc.y += 15;
-
-               // Benefits
-               if (supplement.benefits && supplement.benefits.length > 0) {
-                    doc.text('Benefits:', this.config.margin, doc.y);
-                    doc.y += 10;
-                    supplement.benefits.forEach((benefit, benefitIndex) => {
-                         doc.text(`• ${benefit}`, this.config.margin + 20, doc.y + (benefitIndex * 12));
+                    .fillColor(this.config.colors.text)
+                    .font('Helvetica')
+                    .text(supplement.title || 'N/A', this.config.margin + 5, textY, { 
+                         width: colWidths.produit - 10,
+                         align: 'left'
+                    })
+                    .text(supplement.moment || 'À définir', this.config.margin + colWidths.produit + 5, textY, { 
+                         width: colWidths.moment - 10,
+                         align: 'left'
+                    })
+                    .text(supplement.dosage || 'N/A', this.config.margin + colWidths.produit + colWidths.moment + 5, textY, { 
+                         width: colWidths.dose - 10,
+                         align: 'left'
+                    })
+                    .text(supplement.duration || 'En continu', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + 5, textY, { 
+                         width: colWidths.duree - 10,
+                         align: 'left'
+                    })
+                    .text(supplement.comments || supplement.description?.substring(0, 50) || 'Aucun', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + colWidths.duree + 5, textY, { 
+                         width: colWidths.commentaires - 10,
+                         align: 'left'
                     });
-                    doc.y += (supplement.benefits.length * 12) + 10;
-               }
 
-               doc.y += 20;
+               // Draw row border
+               doc.strokeColor(this.config.colors.primary)
+                    .lineWidth(0.5)
+                    .moveTo(this.config.margin, doc.y + dynamicRowHeight)
+                    .lineTo(this.config.pageWidth - this.config.margin, doc.y + dynamicRowHeight)
+                    .stroke();
+
+               doc.y += dynamicRowHeight;
           });
+
+          doc.y += 15;
+
+          // Important note
+          doc.fontSize(this.config.fontSizes.small)
+               .fillColor(this.config.colors.darkGray)
+               .font('Helvetica-Bold')
+               .text('Important : toujours respecter les indications sur l\'emballage de chaque produit.', this.config.margin, doc.y, {
+                    width: this.config.pageWidth - (this.config.margin * 2),
+               });
+
+          doc.y += 20;
      }
 
      /**
-      * Add personalized tips
+      * Add tips and remarks (matching VIGAIA template)
       */
-     private async addPersonalizedTips(doc: InstanceType<typeof PDFDocument>, tips: string[]): Promise<void> {
-          this.addSectionHeader(doc, 'Personalized Health Tips');
+     private async addTipsAndRemarks(doc: InstanceType<typeof PDFDocument>, tips: string[]): Promise<void> {
+          this.addSectionHeader(doc, 'Conseils complémentaires');
 
-          tips.forEach((tip, index) => {
-               // Check if we need a new page
-               if (doc.y > this.config.pageHeight - 100) {
+          tips.forEach((tip) => {
+               // Check if we need a new page - only if we're very close to the bottom
+               if (doc.y > this.config.pageHeight - 80) {
                     doc.addPage();
                     doc.y = this.config.margin;
                }
 
+               const tipY = doc.y;
                doc.fontSize(this.config.fontSizes.body)
                     .fillColor(this.config.colors.text)
-                    .text(`• ${tip}`, this.config.margin, doc.y + (index * 20), {
+                    .font('Helvetica')
+                    .text(`• ${tip}`, this.config.margin, tipY, {
                          width: this.config.pageWidth - (this.config.margin * 2),
                     });
+               // Move to next line with consistent spacing
+               doc.y = tipY + 18;
           });
 
-          doc.y += (tips.length * 20) + 20;
+          doc.y += 25;
      }
 
      /**
-      * Add weekly goals
+      * Add disclaimer (matching VIGAIA template)
       */
-     private async addWeeklyGoals(doc: InstanceType<typeof PDFDocument>, goals: string[]): Promise<void> {
-          this.addSectionHeader(doc, 'Weekly Goals');
+     private async addDisclaimer(doc: InstanceType<typeof PDFDocument>): Promise<void> {
+          // Check if we need a new page - only if we're very close to the bottom
+          if (doc.y > this.config.pageHeight - 120) {
+               doc.addPage();
+               doc.y = this.config.margin;
+          }
 
-          goals.forEach((goal, index) => {
-               // Check if we need a new page
-               if (doc.y > this.config.pageHeight - 100) {
-                    doc.addPage();
-                    doc.y = this.config.margin;
-               }
+          this.addSectionHeader(doc, 'Avertissement');
 
+          const disclaimerText = [
+               'Ce plan nutritionnel ne remplace pas un avis médical.',
+               'En cas de médicaments ou pathologies, consulte ton médecin avant toute modification de ton alimentation ou ajout de compléments.'
+          ];
+
+          disclaimerText.forEach((text) => {
+               const textY = doc.y;
+               const textWidth = this.config.pageWidth - (this.config.margin * 2);
+               const textHeight = doc.heightOfString(text, {
+                    width: textWidth,
+               });
                doc.fontSize(this.config.fontSizes.body)
                     .fillColor(this.config.colors.text)
-                    .text(`• ${goal}`, this.config.margin, doc.y + (index * 20), {
-                         width: this.config.pageWidth - (this.config.margin * 2),
+                    .font('Helvetica')
+                    .text(text, this.config.margin, textY, {
+                         width: textWidth,
                     });
+               // Move to next line with spacing based on actual text height (reduced by half)
+               doc.y = textY + textHeight + 2;
           });
 
-          doc.y += (goals.length * 20) + 20;
+          doc.y += 5;
      }
 
      /**
-      * Add footer
+      * Add footer with VIGAIA branding and social media/linktree link
       */
      private async addFooter(doc: InstanceType<typeof PDFDocument>): Promise<void> {
           const pageRange = doc.bufferedPageRange();
@@ -392,37 +587,85 @@ class PDFGenerator {
           for (let i = startPage; i <= endPage; i++) {
                doc.switchToPage(i);
 
+               const footerY = this.config.pageHeight - 30;
+
+               // Draw footer line
+               doc.strokeColor(this.config.colors.primary)
+                    .lineWidth(0.5)
+                    .moveTo(this.config.margin, footerY - 8)
+                    .lineTo(this.config.pageWidth - this.config.margin, footerY - 8)
+                    .stroke();
+
+               // Single line footer: VIGAIA | www.vigaia.com | linktr.ee/vigaia
+               const linktreeText = 'linktr.ee/vigaia';
+               
+               // VIGAIA branding (left)
+               doc.fontSize(this.config.fontSizes.small)
+                    .fillColor(this.config.colors.primary)
+                    .font('Helvetica-Bold')
+                    .text(this.config.brand.name, this.config.margin, footerY, {
+                         align: 'left',
+                    });
+
+               // Website (center)
+               const centerX = this.config.pageWidth / 2;
                doc.fontSize(this.config.fontSizes.small)
                     .fillColor(this.config.colors.darkGray)
-                    .text('AI Nutritionist - Personalized Nutrition Plans',
-                         this.config.margin,
-                         this.config.pageHeight - 30,
-                         { align: 'center' });
+                    .font('Helvetica')
+                    .text(this.config.brand.website, centerX, footerY, {
+                         align: 'center',
+                    });
+
+               // Linktree link (right) - with icon representation
+               if (this.config.brand.linktree) {
+                    // Draw a simple icon representation (small square/box)
+                    doc.rect(this.config.pageWidth - this.config.margin - 80, footerY + 1, 8, 8)
+                         .fillColor('#2563eb')
+                         .fill();
+                    
+                    // Linktree text
+                    doc.fontSize(this.config.fontSizes.small)
+                         .fillColor('#2563eb')
+                         .font('Helvetica')
+                         .link(
+                              this.config.pageWidth - this.config.margin - 70,
+                              footerY,
+                              70,
+                              12,
+                              this.config.brand.linktree
+                         )
+                         .text(linktreeText, this.config.pageWidth - this.config.margin - 70, footerY, {
+                              align: 'right',
+                              link: this.config.brand.linktree,
+                         });
+               }
           }
      }
 
      /**
-      * Add section header
+      * Add section header (VIGAIA style)
       */
      private addSectionHeader(doc: InstanceType<typeof PDFDocument>, title: string): void {
-          // Check if we need a new page
-          if (doc.y > this.config.pageHeight - 150) {
+          // Check if we need a new page - only if we're very close to the bottom
+          // This prevents creating empty pages
+          if (doc.y > this.config.pageHeight - 100) {
                doc.addPage();
                doc.y = this.config.margin;
           }
 
           doc.fontSize(this.config.fontSizes.subtitle)
                .fillColor(this.config.colors.primary)
+               .font('Helvetica-Bold')
                .text(title, this.config.margin, doc.y);
 
-          // Add underline
+          // Add underline - extend to full width minus margins
           doc.strokeColor(this.config.colors.primary)
-               .lineWidth(1)
+               .lineWidth(1.5)
                .moveTo(this.config.margin, doc.y + 5)
-               .lineTo(this.config.margin + 200, doc.y + 5)
+               .lineTo(this.config.pageWidth - this.config.margin, doc.y + 5)
                .stroke();
 
-          doc.y += 30;
+          doc.y += 25;
      }
 
      /**
@@ -467,7 +710,7 @@ export const pdfGenerator = new PDFGenerator();
 // Export types for external use
 export type { NutritionPlan, PDFConfig };
 
-// Utility function to create a sample nutrition plan
+// Utility function to create a sample nutrition plan (matching VIGAIA template)
 export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionPlan {
      // Calculate daily calories based on age, gender, and goals
      let baseCalories = 2000; // Base for adult
@@ -492,8 +735,32 @@ export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionP
           baseCalories += 300;
      }
 
+     // Determine activity level
+     let activityLevel = 'Modéré';
+     if (userProfile.goals.includes('muscle_gain') || userProfile.goals.includes('sport')) {
+          activityLevel = 'Élevé (4-5 entraînements/semaine)';
+     } else if (userProfile.goals.includes('weight_loss')) {
+          activityLevel = 'Modéré (2-3 entraînements/semaine)';
+     }
+
      return {
-          userProfile,
+          userProfile: {
+               userId: userProfile.userId,
+               age: userProfile.age,
+               gender: userProfile.gender,
+               goals: userProfile.goals,
+               allergies: userProfile.allergies,
+               budget: userProfile.budget,
+               height: undefined, // Can be added if available
+               weight: undefined, // Can be added if available
+               medications: [],
+               activityLevel: activityLevel,
+               shopifyCustomerId: userProfile.shopifyCustomerId,
+               shopifyCustomerName: userProfile.shopifyCustomerName,
+               lastInteraction: userProfile.lastInteraction,
+               createdAt: userProfile.createdAt,
+               updatedAt: userProfile.updatedAt,
+          },
           recommendations: {
                dailyCalories: Math.max(1200, baseCalories), // Minimum 1200 calories
                macronutrients: {
@@ -501,52 +768,44 @@ export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionP
                     carbs: { grams: Math.round(baseCalories * 0.45 / 4), percentage: 45 },
                     fats: { grams: Math.round(baseCalories * 0.30 / 9), percentage: 30 },
                },
+               activityLevel: activityLevel,
                mealPlan: {
                     breakfast: [
-                         'Oatmeal with berries and nuts',
-                         'Greek yogurt with honey',
-                         'Whole grain toast with avocado',
+                         '80 g de flocons d\'avoine',
+                         '250 ml de boisson végétale (amande ou soja)',
+                         '1 banane moyenne',
+                         '1 cuillère à soupe de beurre d\'amande',
+                    ],
+                    morningSnack: [
+                         '1 yaourt végétal (soja)',
+                         '15–20 g de noix ou amandes',
                     ],
                     lunch: [
-                         'Grilled chicken salad with mixed vegetables',
-                         'Quinoa bowl with roasted vegetables',
-                         'Lentil soup with whole grain bread',
+                         '150 g de blanc de poulet ou dinde',
+                         '120 g de riz basmati (poids cuit)',
+                         'Légumes variés (brocolis, carottes, courgettes...)',
+                         '1 cuillère à soupe d\'huile d\'olive',
+                    ],
+                    afternoonSnack: [
+                         '1 fruit (pomme ou orange)',
+                         '1 barre protéinée sans lactose',
                     ],
                     dinner: [
-                         'Baked salmon with sweet potato',
-                         'Turkey and vegetable stir-fry',
-                         'Chickpea curry with brown rice',
+                         '140 g de saumon ou poisson gras',
+                         '150 g de pommes de terre au four',
+                         'Légumes verts (haricots verts, épinards...)',
                     ],
-                    snacks: [
-                         'Apple with almond butter',
-                         'Mixed nuts and dried fruit',
-                         'Vegetable sticks with hummus',
-                    ],
-               },
-               hydration: {
-                    dailyWater: 2.5, // liters
-                    tips: [
-                         'Drink a glass of water upon waking',
-                         'Keep a water bottle with you throughout the day',
-                         'Drink water before each meal',
-                         'Monitor urine color - aim for pale yellow',
+                    eveningSnack: [
+                         '150 g de fromage blanc végétal (soja)',
                     ],
                },
                supplements: [], // Will be populated based on user needs
           },
           personalizedTips: [
-               'Focus on whole, unprocessed foods',
-               'Eat regular meals to maintain stable blood sugar',
-               'Include a variety of colorful vegetables daily',
-               'Limit processed foods and added sugars',
-               'Listen to your body\'s hunger and fullness cues',
-          ],
-          weeklyGoals: [
-               'Try one new healthy recipe this week',
-               'Increase daily vegetable intake by one serving',
-               'Reduce processed food consumption',
-               'Establish a consistent meal schedule',
-               'Track water intake daily',
+               'Boire 1,5 à 2,5 L d\'eau par jour.',
+               'Viser 7–9 heures de sommeil par nuit pour une meilleure récupération.',
+               'Être régulier sur l\'alimentation et l\'entraînement : les résultats viennent avec le temps.',
+               'Adapter les quantités selon la faim, l\'énergie et l\'évolution du poids (± 100–200 kcal si besoin).',
           ],
      };
 }

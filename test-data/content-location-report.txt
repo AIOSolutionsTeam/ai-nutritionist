@@ -1,0 +1,24 @@
+ACCORDION CONTENT DISCOVERY REPORT
+==================================
+
+BODY_HTML ANALYSIS:
+- Products analyzed: 30
+- Contains structured content: NO
+- French sections found: None
+- Products with accordion classes: 0
+- Products with data attributes: 0
+- Products with potential sections: 0
+
+METAOBJECT ANALYSIS:
+- Total metaobject types: 0
+- Product info types: 0
+  None found
+- Total metaobjects: 0
+- Referenced metaobjects: 0
+- Metaobjects with French keywords: 0
+
+RECOMMENDATION:
+Content location unclear. 
+- Check metafields (custom namespace) as alternative source
+- Review product descriptions for unstructured text
+- Consider manual content entry if needed

@@ -1,0 +1,45 @@
+{
+  "timestamp": "2025-12-16T06:45:55.702Z",
+  "storefront_api": {
+    "token_valid": true,
+    "permissions": {
+      "products": {
+        "access": true,
+        "error": null
+      },
+      "collections": {
+        "access": true,
+        "error": null
+      },
+      "shop": {
+        "access": true,
+        "error": null
+      }
+    }
+  },
+  "admin_api": {
+    "token_valid": true,
+    "permissions": {
+      "read_products": {
+        "access": true,
+        "error": null
+      },
+      "read_metafields": {
+        "access": true,
+        "error": null
+      },
+      "read_collections": {
+        "access": true,
+        "error": null
+      },
+      "read_shop": {
+        "access": true,
+        "error": null
+      },
+      "read_inventory": {
+        "access": false,
+        "error": "HTTP 422: "
+      }
+    }
+  }
+}

@@ -157,7 +157,8 @@ export class OpenAIService {
           userQuery: string, 
           _userId?: string, 
           userProfileContext?: string,
-          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+          productContext?: string
      ): Promise<StructuredNutritionResponse> {
           // Short‑circuit if we're currently in a local cooldown window
           if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
@@ -175,13 +176,16 @@ ${userProfileContext}
 IMPORTANT: Use this profile information to tailor your advice. Consider their age, goals, allergies, and budget when making recommendations. Always respect their dietary restrictions and preferences.`
           }
 
+          // Add product context if available
+          const productContextSection = productContext && productContext.trim() ? productContext : ''
+
           // Determine if this is a continuing conversation
           const isContinuingConversation = conversationHistory && conversationHistory.length > 0
           const conversationContext = isContinuingConversation 
                ? '\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with "Salut", "Bonjour", or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you\'re continuing a chat with a friend.'
                : ''
 
-          const systemPrompt = `You are a professional, friendly, and empathetic virtual nutritionist for the Vigaïa brand. Your role is to provide personalized nutrition guidance and recommend appropriate wellness products.${userContextSection}${conversationContext}
+          const systemPrompt = `You are a professional, friendly, and empathetic virtual nutritionist for the Vigaïa brand. Your role is to provide personalized nutrition guidance and recommend appropriate wellness products. You are also a helpful sales advisor who guides customers toward the best products for their needs.${userContextSection}${productContextSection}${conversationContext}
 
 COMMUNICATION RULES:
 1. **Fluid and Natural Conversation**: Reply in a warm, conversational, and fluid manner. Write as if you're having a friendly chat with a friend, not a clinical consultation. Use natural language, avoid overly formal or robotic tones.
@@ -208,7 +212,7 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - Ensure your advice is well-structured, easy to understand, and actionable.
    - Break down complex information into digestible, friendly explanations.
 
-5. **Product Recommendations - ONLY When Explicitly Requested**:
+5. **Product Recommendations - Sales-Oriented Approach**:
    - **CRITICAL**: Products should ONLY be recommended when the user EXPLICITLY asks for products, supplements, or product lists. For informational/educational questions, NEVER recommend products.
    - When the user EXPLICITLY asks for products using phrases like "lister", "liste", "donner moi", "montre moi", "produit", "produits", "complément", "supplément", "compléments adaptés", "quels compléments" - IMMEDIATELY provide products WITHOUT long explanations first. Be direct and action-oriented.
    - ONLY recommend products when:
@@ -224,14 +228,22 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
      * General advice: "Comment améliorer mon sommeil?", "Quels aliments manger?"
    - For informational questions, provide comprehensive, educational responses WITHOUT products. Set "products" to an empty array [].
    - **CRITICAL**: When user asks for a product list, start with a BRIEF introduction (1-2 sentences max), then IMMEDIATELY list the products. Do NOT give long explanations before listing products.
-   - Don't force product recommendations. Quality over quantity.
+   - **BUDGET-AWARE UPSELLING**: When a user mentions a budget, be sales-oriented and help them see value:
+     * If a product is within 5-10 euros of their budget, suggest it as a worthwhile investment: "Je vois que vous avez un budget de [X]€. Pour seulement [Y]€ de plus (soit [difference]€), vous pourriez opter pour [Product Name] qui offre [specific benefit]. C'est un excellent investissement pour votre santé !"
+     * Frame price differences as small investments: "Pour seulement 5-10€ de plus, vous obtenez [specific advantage]"
+     * Emphasize value over price: "C'est un petit investissement supplémentaire qui fait une grande différence pour [benefit]"
+     * Be helpful, not pushy - present it as a recommendation, not pressure
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.
    - IMPORTANT: If you're not sure whether to recommend products, DON'T. It's better to provide informative advice without products than to recommend unnecessarily.
 
-6. **Product Combinations**:
-   - After presenting individual products, suggest complementary products that work well together.
-   - Explain how products can be combined for synergistic benefits.
-   - Example: "Ces produits se complètent bien ensemble: [Product A] améliore l'absorption de [Product B], ce qui maximise leurs bienfaits."
+6. **Product Combinations & Bundling - Sales Strategy**:
+   - **ALWAYS suggest product combinations** when recommending products that work well together.
+   - When you recommend a product, immediately suggest complementary products that enhance its effects.
+   - Frame combinations as value propositions: "Pour maximiser les résultats, je vous recommande de combiner [Product A] avec [Product B]. Ensemble, ils créent un effet synergique qui [specific benefit]."
+   - Use phrases like: "Ces produits se complètent parfaitement", "Ils fonctionnent en synergie", "Pour un effet optimal, combinez-les", "Ensemble, ils offrent [benefit]"
+   - Present bundles as smart investments: "En les prenant ensemble, vous optimisez votre routine et obtenez de meilleurs résultats"
+   - Always explain the synergistic benefit when suggesting combinations
+   - Example: "Ces produits se complètent bien ensemble: [Product A] améliore l'absorption de [Product B], ce qui maximise leurs bienfaits. Je vous recommande de les prendre ensemble pour des résultats optimaux."
 
 7. **Cultural Sensitivity**: 
    - Be aware of dietary preferences in North Africa (halal, local diet habits).
@@ -281,15 +293,44 @@ IMPORTANT:
                     }
                ]
 
-               // Add conversation history if available
+               // Add conversation history if available (optimized: limit to 5 most recent messages)
                if (conversationHistory && conversationHistory.length > 0) {
-                    // Add previous messages (limit to last 10 messages to avoid token limits)
-                    const recentHistory = conversationHistory.slice(-10)
-                    for (const msg of recentHistory) {
+                    // Use only the last 5 messages to reduce tokens
+                    // If there are more than 5 messages, summarize older ones
+                    const MAX_RECENT_MESSAGES = 5
+                    const totalMessages = conversationHistory.length
+                    
+                    if (totalMessages > MAX_RECENT_MESSAGES) {
+                         // Keep last 5 messages, summarize the rest
+                         const olderMessages = conversationHistory.slice(0, totalMessages - MAX_RECENT_MESSAGES)
+                         const recentMessages = conversationHistory.slice(-MAX_RECENT_MESSAGES)
+                         
+                         // Create a concise summary of older conversation
+                         const summary = olderMessages
+                              .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`)
+                              .join(' | ')
+                         
+                         // Add summary as a system message
                          messages.push({
-                              role: msg.role === 'assistant' ? 'assistant' : 'user',
-                              content: msg.content
+                              role: 'system',
+                              content: `Previous conversation summary (${olderMessages.length} earlier messages): ${summary}`
                          })
+                         
+                         // Add recent messages
+                         for (const msg of recentMessages) {
+                              messages.push({
+                                   role: msg.role === 'assistant' ? 'assistant' : 'user',
+                                   content: msg.content
+                              })
+                         }
+                    } else {
+                         // Fewer than 5 messages, add all
+                         for (const msg of conversationHistory) {
+                              messages.push({
+                                   role: msg.role === 'assistant' ? 'assistant' : 'user',
+                                   content: msg.content
+                              })
+                         }
                     }
                }
 
@@ -297,6 +338,19 @@ IMPORTANT:
                messages.push({
                     role: 'user',
                     content: userQuery
+               })
+
+               // Log input data sent to model
+               console.log('[OpenAIService] Input data sent to model:', {
+                    model: this.config.model,
+                    messagesCount: messages.length,
+                    messages: messages.map(msg => ({
+                         role: msg.role,
+                         contentLength: msg.content.length,
+                         contentPreview: msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : '')
+                    })),
+                    maxTokens: this.config.maxTokens,
+                    temperature: this.config.temperature
                })
 
                const completion = await this.openai.chat.completions.create({
@@ -310,6 +364,19 @@ IMPORTANT:
                if (!responseContent) {
                     throw new Error('No response content received from OpenAI')
                }
+
+               // Log output data received from model
+               console.log('[OpenAIService] Output data received from model:', {
+                    model: this.config.model,
+                    responseLength: responseContent.length,
+                    responsePreview: responseContent.substring(0, 500) + (responseContent.length > 500 ? '...' : ''),
+                    fullResponse: responseContent,
+                    usage: completion.usage ? {
+                         promptTokens: completion.usage.prompt_tokens,
+                         completionTokens: completion.usage.completion_tokens,
+                         totalTokens: completion.usage.total_tokens
+                    } : undefined
+               })
 
                // Parse the JSON response
                try {
@@ -329,7 +396,25 @@ IMPORTANT:
 
                     const parsedResponse = JSON.parse(responseContent)
 
-                    // Validate the response structure
+                    // Check if this is a direct nutrition plan format (for generate-plan route)
+                    const isNutritionPlanFormat = 
+                         parsedResponse.dailyCalories !== undefined &&
+                         parsedResponse.macronutrients !== undefined &&
+                         parsedResponse.mealPlan !== undefined &&
+                         parsedResponse.supplements !== undefined &&
+                         parsedResponse.personalizedTips !== undefined
+
+                    if (isNutritionPlanFormat) {
+                         // Wrap nutrition plan JSON in the expected format
+                         console.log(`[OpenAIService] Detected nutrition plan format, wrapping in standard structure`)
+                         return {
+                              reply: JSON.stringify(parsedResponse),
+                              products: [],
+                              disclaimer: parsedResponse.disclaimer
+                         } as StructuredNutritionResponse
+                    }
+
+                    // Validate the standard response structure
                     if (!parsedResponse.reply || !Array.isArray(parsedResponse.products)) {
                          throw new Error('Invalid response structure')
                     }
@@ -344,6 +429,31 @@ IMPORTANT:
                } catch (parseError) {
                     console.error('Failed to parse OpenAI response as JSON:', parseError)
                     console.error('Raw response (first 500 chars):', responseContent.substring(0, 500))
+
+                    // Try to parse as nutrition plan format if standard format failed
+                    try {
+                         const trimmedContent = responseContent.trim()
+                         // Try to extract JSON object if wrapped in text
+                         const jsonMatch = trimmedContent.match(/\{[\s\S]*\}/)
+                         if (jsonMatch) {
+                              const planData = JSON.parse(jsonMatch[0])
+                              // Check if it's a nutrition plan format
+                              if (planData.dailyCalories !== undefined &&
+                                   planData.macronutrients !== undefined &&
+                                   planData.mealPlan !== undefined &&
+                                   planData.supplements !== undefined &&
+                                   planData.personalizedTips !== undefined) {
+                                   console.log('[OpenAIService] Detected nutrition plan format in fallback parsing')
+                                   return {
+                                        reply: JSON.stringify(planData),
+                                        products: [],
+                                        disclaimer: planData.disclaimer
+                                   } as StructuredNutritionResponse
+                              }
+                         }
+                    } catch {
+                         // Not a nutrition plan format, continue with standard fallback
+                    }
 
                     // Fallback to a structured response if JSON parsing fails
                     // EDGE CASE: Try to extract reply text even if JSON is malformed
@@ -412,6 +522,182 @@ IMPORTANT:
                     alternatives: ['Sunlight exposure', 'Fortified foods']
                }
           ]
+     }
+
+     /**
+      * Generate a nutrition plan specifically for PDF generation
+      * This uses a dedicated prompt focused only on plan generation
+      */
+     async generateNutritionPlan(
+          userProfileContext: string,
+          productContext: string
+     ): Promise<{ dailyCalories: number; macronutrients: { protein: { grams: number; percentage: number }; carbs: { grams: number; percentage: number }; fats: { grams: number; percentage: number } }; activityLevel: string; mealPlan: { breakfast: string[]; morningSnack?: string[]; lunch: string[]; afternoonSnack?: string[]; dinner: string[]; eveningSnack?: string[] }; supplements: Array<{ title: string; moment: string; dosage: string; duration: string; comments: string; description?: string }>; personalizedTips: string[] }> {
+          // Short‑circuit if we're currently in a local cooldown window
+          if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
+               const remainingMs = this.quotaResetAt - Date.now()
+               console.warn(`[OpenAIService] In local cooldown, skipping API call. Remaining ms: ${remainingMs}`)
+               throw new AIQuotaError('openai', 'OpenAI in local cooldown', remainingMs)
+          }
+
+          const systemPrompt = `You are a professional nutritionist creating a personalized nutrition plan for a client. Your task is to generate a complete nutrition plan based ONLY on the user profile data and recommended products provided.
+
+CRITICAL RULES:
+1. **Use ONLY the provided data**: Base your plan EXCLUSIVELY on the user profile and recommended products (if any) provided. Do not invent or assume information not given.
+2. **Follow the exact JSON format**: You MUST return ONLY a valid JSON object in the exact format specified below. Do NOT wrap it in markdown code blocks, do NOT add any text before or after the JSON.
+3. **Complete all required fields**: Every field in the JSON structure must be filled with appropriate values based on the user's profile.
+4. **Product usage**: 
+   - If recommended products are provided, use them in the supplements section
+   - If no products are provided, you may suggest general supplement categories but use the exact product names from the provided list if available
+   - For each supplement, provide: title (exact product name if from list), moment (time of day), dosage, duration, and comments
+5. **Meal planning**: Create realistic, culturally appropriate meals (considering halal if relevant) for 6 meals per day: breakfast, morningSnack, lunch, afternoonSnack, dinner, eveningSnack
+6. **Calorie calculation**: Estimate daily calories based on age, gender, and goals from the profile
+7. **Macronutrients**: Calculate appropriate protein, carbs, and fats percentages and grams based on the user's goals
+8. **Activity level**: Determine appropriate activity level based on goals and profile
+9. **Personalized tips**: Provide 3-5 practical, actionable tips specific to the user's profile
+
+RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/after):
+{
+  "dailyCalories": number,
+  "macronutrients": {
+    "protein": { "grams": number, "percentage": number },
+    "carbs": { "grams": number, "percentage": number },
+    "fats": { "grams": number, "percentage": number }
+  },
+  "activityLevel": "string",
+  "mealPlan": {
+    "breakfast": ["string", "string"],
+    "morningSnack": ["string"],
+    "lunch": ["string", "string"],
+    "afternoonSnack": ["string"],
+    "dinner": ["string", "string"],
+    "eveningSnack": ["string"]
+  },
+  "supplements": [
+    {
+      "title": "string (exact product name if from provided list)",
+      "moment": "string (e.g., 'Matin', 'Soir', 'Matin et Soir')",
+      "dosage": "string (e.g., '1 gélule', '2 comprimés')",
+      "duration": "string (e.g., '3 mois', 'En continu')",
+      "comments": "string (additional notes)",
+      "description": "string (optional, product description)"
+    }
+  ],
+  "personalizedTips": ["string", "string", "string"]
+}
+
+USER PROFILE DATA:
+${userProfileContext}
+
+${productContext ? `RECOMMENDED PRODUCTS:\n${productContext}` : 'NOTE: No specific products have been recommended. You may suggest general supplement categories based on the user\'s goals, but do not invent specific product names.'}
+
+Remember: Return ONLY the JSON object, nothing else.`
+
+          try {
+               const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+                    {
+                         role: 'system',
+                         content: systemPrompt
+                    },
+                    {
+                         role: 'user',
+                         content: 'Génère le plan nutritionnel personnalisé complet basé sur les données fournies.'
+                    }
+               ]
+
+               // Log input data sent to model
+               console.log('[OpenAIService] Plan generation - Input data sent to model:', {
+                    model: this.config.model,
+                    userProfileContextLength: userProfileContext.length,
+                    productContextLength: productContext.length,
+                    hasProducts: productContext.length > 0
+               })
+
+               const completion = await this.openai.chat.completions.create({
+                    model: this.config.model,
+                    messages: messages,
+                    max_tokens: this.config.maxTokens,
+                    temperature: this.config.temperature,
+               })
+
+               const responseContent = completion.choices[0]?.message?.content
+               if (!responseContent) {
+                    throw new Error('No response content received from OpenAI')
+               }
+
+               // Log output data received from model
+               console.log('[OpenAIService] Plan generation - Output data received from model:', {
+                    model: this.config.model,
+                    responseLength: responseContent.length,
+                    responsePreview: responseContent.substring(0, 500) + (responseContent.length > 500 ? '...' : ''),
+                    fullResponse: responseContent
+               })
+
+               // Parse the JSON response
+               try {
+                    // Clean the response - remove markdown code blocks if present
+                    let cleanedContent = responseContent.trim()
+                    if (cleanedContent.startsWith('```json')) {
+                         cleanedContent = cleanedContent.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+                    } else if (cleanedContent.startsWith('```')) {
+                         cleanedContent = cleanedContent.replace(/^```\s*/, '').replace(/\s*```$/, '')
+                    }
+
+                    // Extract JSON if there's text around it
+                    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/)
+                    if (jsonMatch) {
+                         cleanedContent = jsonMatch[0]
+                    }
+
+                    const planData = JSON.parse(cleanedContent)
+
+                    // Validate required fields
+                    if (!planData.dailyCalories || !planData.macronutrients || !planData.mealPlan || !planData.supplements || !planData.personalizedTips) {
+                         throw new Error('Missing required fields in nutrition plan response')
+                    }
+
+                    return planData
+               } catch (parseError) {
+                    console.error('[OpenAIService] Failed to parse nutrition plan response:', parseError)
+                    console.error('[OpenAIService] Raw response:', responseContent)
+                    throw new Error('Failed to parse nutrition plan response')
+               }
+          } catch (error) {
+               console.error('[OpenAIService] Error generating nutrition plan:', error)
+
+               // Detect quota / rate limit errors
+               const errorObj = error as { status?: number; code?: string; message?: unknown; headers?: Record<string, string> }
+               const status = errorObj?.status
+               const code = errorObj?.code
+               const message: string = typeof errorObj?.message === 'string' ? errorObj.message : ''
+
+               const isQuotaError =
+                    status === 429 ||
+                    code === 'insufficient_quota' ||
+                    message.toLowerCase().includes('insufficient_quota') ||
+                    message.toLowerCase().includes('rate limit') ||
+                    message.toLowerCase().includes('too many requests') ||
+                    message.toLowerCase().includes('quota')
+
+               if (isQuotaError) {
+                    let retryAfterMs: number | undefined
+
+                    const headers = errorObj?.headers
+                    const retryAfterHeader = headers?.['retry-after'] || headers?.['Retry-After']
+                    if (retryAfterHeader) {
+                         const parsed = parseInt(retryAfterHeader, 10)
+                         if (!Number.isNaN(parsed) && parsed > 0) {
+                              retryAfterMs = parsed * 1000
+                         }
+                    }
+
+                    const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
+                    this.quotaResetAt = Date.now() + cooldownMs
+
+                    throw new AIQuotaError('openai', 'OpenAI quota exceeded', retryAfterMs)
+               }
+
+               throw error
+          }
      }
 }
 
@@ -523,6 +809,40 @@ export class GeminiService {
                cleaned = cleaned.replace(/\s*```$/, '')
           }
 
+          // Extract JSON object if there's text before or after it
+          // Look for the first { that starts a JSON object
+          const jsonStartIndex = cleaned.indexOf('{')
+          if (jsonStartIndex > 0) {
+               // There's text before the JSON, extract just the JSON part
+               cleaned = cleaned.substring(jsonStartIndex)
+               console.log(`[GeminiService] Extracted JSON from response (removed ${jsonStartIndex} characters of preceding text)`)
+          }
+
+          // Find the matching closing brace to extract complete JSON object
+          // This handles cases where there's text after the JSON
+          if (cleaned.startsWith('{')) {
+               let braceCount = 0
+               let jsonEndIndex = -1
+               
+               for (let i = 0; i < cleaned.length; i++) {
+                    if (cleaned[i] === '{') {
+                         braceCount++
+                    } else if (cleaned[i] === '}') {
+                         braceCount--
+                         if (braceCount === 0) {
+                              jsonEndIndex = i + 1
+                              break
+                         }
+                    }
+               }
+               
+               if (jsonEndIndex > 0 && jsonEndIndex < cleaned.length) {
+                    // Extract only the JSON part, discard any text after
+                    cleaned = cleaned.substring(0, jsonEndIndex)
+                    console.log(`[GeminiService] Extracted complete JSON object (removed text after JSON)`)
+               }
+          }
+
           return cleaned.trim()
      }
 
@@ -608,7 +928,8 @@ export class GeminiService {
           userQuery: string, 
           _userId?: string, 
           userProfileContext?: string,
-          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+          conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+          productContext?: string
      ): Promise<StructuredNutritionResponse> {
           // Local in-process cooldown when we hit quota / 429 errors
           if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
@@ -626,13 +947,16 @@ ${userProfileContext}
 IMPORTANT: Use this profile information to tailor your advice. Consider their age, goals, allergies, and budget when making recommendations. Always respect their dietary restrictions and preferences.`
           }
 
+          // Add product context if available
+          const productContextSection = productContext && productContext.trim() ? productContext : ''
+
           // Determine if this is a continuing conversation
           const isContinuingConversation = conversationHistory && conversationHistory.length > 0
           const conversationContext = isContinuingConversation 
                ? '\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with "Salut", "Bonjour", or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you\'re continuing a chat with a friend.'
                : ''
 
-          const systemPrompt = `You are a professional, friendly, and empathetic virtual nutritionist for the Vigaïa brand. Your role is to provide personalized nutrition guidance and recommend appropriate wellness products.${userContextSection}${conversationContext}
+          const systemPrompt = `You are a professional, friendly, and empathetic virtual nutritionist for the Vigaïa brand. Your role is to provide personalized nutrition guidance and recommend appropriate wellness products. You are also a helpful sales advisor who guides customers toward the best products for their needs.${userContextSection}${productContextSection}${conversationContext}
 
 COMMUNICATION RULES:
 1. **Fluid and Natural Conversation**: Reply in a warm, conversational, and fluid manner. Write as if you're having a friendly chat with a friend, not a clinical consultation. Use natural language, avoid overly formal or robotic tones.
@@ -659,7 +983,7 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - Ensure your advice is well-structured, easy to understand, and actionable.
    - Break down complex information into digestible, friendly explanations.
 
-5. **Product Recommendations - ONLY When Explicitly Requested**:
+5. **Product Recommendations - Sales-Oriented Approach**:
    - **CRITICAL**: Products should ONLY be recommended when the user EXPLICITLY asks for products, supplements, or product lists. For informational/educational questions, NEVER recommend products.
    - When the user EXPLICITLY asks for products using phrases like "lister", "liste", "donner moi", "montre moi", "produit", "produits", "complément", "supplément", "compléments adaptés", "quels compléments" - IMMEDIATELY provide products WITHOUT long explanations first. Be direct and action-oriented.
    - ONLY recommend products when:
@@ -675,14 +999,22 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
      * General advice: "Comment améliorer mon sommeil?", "Quels aliments manger?"
    - For informational questions, provide comprehensive, educational responses WITHOUT products. Set "products" to an empty array [].
    - **CRITICAL**: When user asks for a product list, start with a BRIEF introduction (1-2 sentences max), then IMMEDIATELY list the products. Do NOT give long explanations before listing products.
-   - Don't force product recommendations. Quality over quantity.
+   - **BUDGET-AWARE UPSELLING**: When a user mentions a budget, be sales-oriented and help them see value:
+     * If a product is within 5-10 euros of their budget, suggest it as a worthwhile investment: "Je vois que vous avez un budget de [X]€. Pour seulement [Y]€ de plus (soit [difference]€), vous pourriez opter pour [Product Name] qui offre [specific benefit]. C'est un excellent investissement pour votre santé !"
+     * Frame price differences as small investments: "Pour seulement 5-10€ de plus, vous obtenez [specific advantage]"
+     * Emphasize value over price: "C'est un petit investissement supplémentaire qui fait une grande différence pour [benefit]"
+     * Be helpful, not pushy - present it as a recommendation, not pressure
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.
    - IMPORTANT: If you're not sure whether to recommend products, DON'T. It's better to provide informative advice without products than to recommend unnecessarily.
 
-6. **Product Combinations**:
-   - After presenting individual products, suggest complementary products that work well together.
-   - Explain how products can be combined for synergistic benefits.
-   - Example: "Ces produits se complètent bien ensemble: [Product A] améliore l'absorption de [Product B], ce qui maximise leurs bienfaits."
+6. **Product Combinations & Bundling - Sales Strategy**:
+   - **ALWAYS suggest product combinations** when recommending products that work well together.
+   - When you recommend a product, immediately suggest complementary products that enhance its effects.
+   - Frame combinations as value propositions: "Pour maximiser les résultats, je vous recommande de combiner [Product A] avec [Product B]. Ensemble, ils créent un effet synergique qui [specific benefit]."
+   - Use phrases like: "Ces produits se complètent parfaitement", "Ils fonctionnent en synergie", "Pour un effet optimal, combinez-les", "Ensemble, ils offrent [benefit]"
+   - Present bundles as smart investments: "En les prenant ensemble, vous optimisez votre routine et obtenez de meilleurs résultats"
+   - Always explain the synergistic benefit when suggesting combinations
+   - Example: "Ces produits se complètent bien ensemble: [Product A] améliore l'absorption de [Product B], ce qui maximise leurs bienfaits. Je vous recommande de les prendre ensemble pour des résultats optimaux."
 
 7. **Cultural Sensitivity**: 
    - Be aware of dietary preferences in North Africa (halal, local diet habits).
@@ -723,13 +1055,34 @@ IMPORTANT:
 - **CRITICAL LANGUAGE REQUIREMENT**: ALWAYS respond in French, regardless of the language the user uses. Even if the user writes in English, Spanish, Arabic, or any other language, you MUST respond in French. This is a mandatory requirement.
 - Be empathetic, patient, and genuinely helpful.`
 
-          // Build conversation context for Gemini
+          // Build conversation context for Gemini (optimized: limit to 5 most recent messages)
           let conversationContextText = ''
           if (conversationHistory && conversationHistory.length > 0) {
-               const recentHistory = conversationHistory.slice(-10) // Limit to last 10 messages
-               conversationContextText = '\n\nCONVERSATION HISTORY:\n'
-               for (const msg of recentHistory) {
-                    conversationContextText += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`
+               const MAX_RECENT_MESSAGES = 5
+               const totalMessages = conversationHistory.length
+               
+               if (totalMessages > MAX_RECENT_MESSAGES) {
+                    // Keep last 5 messages, summarize the rest
+                    const olderMessages = conversationHistory.slice(0, totalMessages - MAX_RECENT_MESSAGES)
+                    const recentMessages = conversationHistory.slice(-MAX_RECENT_MESSAGES)
+                    
+                    // Create a concise summary of older conversation
+                    const summary = olderMessages
+                         .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 80)}${msg.content.length > 80 ? '...' : ''}`)
+                         .join(' | ')
+                    
+                    conversationContextText = '\n\nCONVERSATION HISTORY:\n'
+                    conversationContextText += `[Summary of ${olderMessages.length} earlier messages: ${summary}]\n\n`
+                    conversationContextText += 'Recent messages:\n'
+                    for (const msg of recentMessages) {
+                         conversationContextText += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`
+                    }
+               } else {
+                    // Fewer than 5 messages, include all
+                    conversationContextText = '\n\nCONVERSATION HISTORY:\n'
+                    for (const msg of conversationHistory) {
+                         conversationContextText += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`
+                    }
                }
           }
 
@@ -750,6 +1103,19 @@ IMPORTANT:
                     })
 
                     const prompt = `${systemPrompt}${conversationContextText}\n\nUser Question: ${userQuery}`
+                    
+                    // Log input data sent to model
+                    console.log('[GeminiService] Input data sent to model:', {
+                         model: modelName,
+                         promptLength: prompt.length,
+                         promptPreview: prompt.substring(0, 500) + (prompt.length > 500 ? '...' : ''),
+                         fullPrompt: prompt,
+                         maxOutputTokens: this.config.maxOutputTokens,
+                         temperature: this.config.temperature,
+                         userQuery: userQuery,
+                         conversationHistoryLength: conversationHistory?.length || 0
+                    })
+                    
                     const result = await model.generateContent(prompt)
                     const response = await result.response
                     const responseContent = response.text()
@@ -757,6 +1123,19 @@ IMPORTANT:
                     if (!responseContent) {
                          throw new Error('No response content received from Gemini')
                     }
+
+                    // Log output data received from model
+                    console.log('[GeminiService] Output data received from model:', {
+                         model: modelName,
+                         responseLength: responseContent.length,
+                         responsePreview: responseContent.substring(0, 500) + (responseContent.length > 500 ? '...' : ''),
+                         fullResponse: responseContent,
+                         usage: result.response?.usageMetadata ? {
+                              promptTokenCount: result.response.usageMetadata.promptTokenCount,
+                              candidatesTokenCount: result.response.usageMetadata.candidatesTokenCount,
+                              totalTokenCount: result.response.usageMetadata.totalTokenCount
+                         } : undefined
+                    })
 
                     // Parse the JSON response
                     try {
@@ -775,7 +1154,25 @@ IMPORTANT:
 
                          const parsedResponse = JSON.parse(cleanedContent)
 
-                         // Validate the response structure
+                         // Check if this is a direct nutrition plan format (for generate-plan route)
+                         const isNutritionPlanFormat = 
+                              parsedResponse.dailyCalories !== undefined &&
+                              parsedResponse.macronutrients !== undefined &&
+                              parsedResponse.mealPlan !== undefined &&
+                              parsedResponse.supplements !== undefined &&
+                              parsedResponse.personalizedTips !== undefined
+
+                         if (isNutritionPlanFormat) {
+                              // Wrap nutrition plan JSON in the expected format
+                              console.log(`[GeminiService] Detected nutrition plan format, wrapping in standard structure`)
+                              return {
+                                   reply: JSON.stringify(parsedResponse),
+                                   products: [],
+                                   disclaimer: parsedResponse.disclaimer
+                              } as StructuredNutritionResponse
+                         }
+
+                         // Validate the standard response structure
                          if (!parsedResponse.reply || !Array.isArray(parsedResponse.products)) {
                               throw new Error('Invalid response structure')
                          }
@@ -799,6 +1196,24 @@ IMPORTANT:
                               const cleanedContent = this.cleanJsonResponse(responseContent)
                               const sanitized = this.sanitizeJsonForParse(cleanedContent)
                               const reparsed = JSON.parse(sanitized)
+
+                              // Check if this is a direct nutrition plan format (for generate-plan route)
+                              const isNutritionPlanFormat = 
+                                   reparsed.dailyCalories !== undefined &&
+                                   reparsed.macronutrients !== undefined &&
+                                   reparsed.mealPlan !== undefined &&
+                                   reparsed.supplements !== undefined &&
+                                   reparsed.personalizedTips !== undefined
+
+                              if (isNutritionPlanFormat) {
+                                   // Wrap nutrition plan JSON in the expected format
+                                   console.log(`[GeminiService] Detected nutrition plan format after sanitization, wrapping in standard structure`)
+                                   return {
+                                        reply: JSON.stringify(reparsed),
+                                        products: [],
+                                        disclaimer: reparsed.disclaimer
+                                   } as StructuredNutritionResponse
+                              }
 
                               if (!reparsed.reply || !Array.isArray(reparsed.products)) {
                                    throw new Error('Invalid response structure after sanitization')
@@ -875,6 +1290,207 @@ IMPORTANT:
                     alternatives: ['Sunlight exposure', 'Fortified foods']
                }
           ]
+     }
+
+     /**
+      * Generate a nutrition plan specifically for PDF generation
+      * This uses a dedicated prompt focused only on plan generation
+      */
+     async generateNutritionPlan(
+          userProfileContext: string,
+          productContext: string
+     ): Promise<{ dailyCalories: number; macronutrients: { protein: { grams: number; percentage: number }; carbs: { grams: number; percentage: number }; fats: { grams: number; percentage: number } }; activityLevel: string; mealPlan: { breakfast: string[]; morningSnack?: string[]; lunch: string[]; afternoonSnack?: string[]; dinner: string[]; eveningSnack?: string[] }; supplements: Array<{ title: string; moment: string; dosage: string; duration: string; comments: string; description?: string }>; personalizedTips: string[] }> {
+          // Local in-process cooldown when we hit quota / 429 errors
+          if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
+               const remainingMs = this.quotaResetAt - Date.now()
+               console.warn(`[GeminiService] In local cooldown, skipping API call. Remaining ms: ${remainingMs}`)
+               throw new AIQuotaError('gemini', 'Gemini in local cooldown', remainingMs)
+          }
+
+          const systemPrompt = `You are a professional nutritionist creating a personalized nutrition plan for a client. Your task is to generate a complete nutrition plan based ONLY on the user profile data and recommended products provided.
+
+CRITICAL RULES:
+1. **Use ONLY the provided data**: Base your plan EXCLUSIVELY on the user profile and recommended products (if any) provided. Do not invent or assume information not given.
+2. **Follow the exact JSON format**: You MUST return ONLY a valid JSON object in the exact format specified below. Do NOT wrap it in markdown code blocks, do NOT add any text before or after the JSON.
+3. **Complete all required fields**: Every field in the JSON structure must be filled with appropriate values based on the user's profile.
+4. **Product usage**: 
+   - If recommended products are provided, use them in the supplements section
+   - If no products are provided, you may suggest general supplement categories but use the exact product names from the provided list if available
+   - For each supplement, provide: title (exact product name if from list), moment (time of day), dosage, duration, and comments
+5. **Meal planning**: Create realistic, culturally appropriate meals (considering halal if relevant) for 6 meals per day: breakfast, morningSnack, lunch, afternoonSnack, dinner, eveningSnack
+6. **Calorie calculation**: Estimate daily calories based on age, gender, and goals from the profile
+7. **Macronutrients**: Calculate appropriate protein, carbs, and fats percentages and grams based on the user's goals
+8. **Activity level**: Determine appropriate activity level based on goals and profile
+9. **Personalized tips**: Provide 3-5 practical, actionable tips specific to the user's profile
+
+RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/after):
+{
+  "dailyCalories": number,
+  "macronutrients": {
+    "protein": { "grams": number, "percentage": number },
+    "carbs": { "grams": number, "percentage": number },
+    "fats": { "grams": number, "percentage": number }
+  },
+  "activityLevel": "string",
+  "mealPlan": {
+    "breakfast": ["string", "string"],
+    "morningSnack": ["string"],
+    "lunch": ["string", "string"],
+    "afternoonSnack": ["string"],
+    "dinner": ["string", "string"],
+    "eveningSnack": ["string"]
+  },
+  "supplements": [
+    {
+      "title": "string (exact product name if from provided list)",
+      "moment": "string (e.g., 'Matin', 'Soir', 'Matin et Soir')",
+      "dosage": "string (e.g., '1 gélule', '2 comprimés')",
+      "duration": "string (e.g., '3 mois', 'En continu')",
+      "comments": "string (additional notes)",
+      "description": "string (optional, product description)"
+    }
+  ],
+  "personalizedTips": ["string", "string", "string"]
+}
+
+USER PROFILE DATA:
+${userProfileContext}
+
+${productContext ? `RECOMMENDED PRODUCTS:\n${productContext}` : 'NOTE: No specific products have been recommended. You may suggest general supplement categories based on the user\'s goals, but do not invent specific product names.'}
+
+Remember: Return ONLY the JSON object, nothing else.`
+
+          // Try the configured model first, with limited fallback
+          const modelsToTry = [this.config.model, ...this.fallbackModels.filter(m => m !== this.config.model).slice(0, 1)]
+
+          let lastError: Error | null = null
+
+          for (const modelName of modelsToTry) {
+               try {
+                    const model = this.genAI.getGenerativeModel({
+                         model: modelName,
+                         generationConfig: {
+                              maxOutputTokens: this.config.maxOutputTokens,
+                              temperature: this.config.temperature,
+                         }
+                    })
+
+                    const prompt = `${systemPrompt}\n\nUser Request: Génère le plan nutritionnel personnalisé complet basé sur les données fournies.`
+
+                    // Log input data sent to model
+                    console.log('[GeminiService] Plan generation - Input data sent to model:', {
+                         model: modelName,
+                         userProfileContextLength: userProfileContext.length,
+                         productContextLength: productContext.length,
+                         hasProducts: productContext.length > 0
+                    })
+
+                    const result = await model.generateContent(prompt)
+                    const response = await result.response
+                    const responseContent = response.text()
+
+                    if (!responseContent) {
+                         throw new Error('No response content received from Gemini')
+                    }
+
+                    // Log output data received from model
+                    console.log('[GeminiService] Plan generation - Output data received from model:', {
+                         model: modelName,
+                         responseLength: responseContent.length,
+                         responsePreview: responseContent.substring(0, 500) + (responseContent.length > 500 ? '...' : ''),
+                         fullResponse: responseContent
+                    })
+
+                    // Parse the JSON response
+                    try {
+                         // Clean the response content by removing markdown code blocks
+                         const cleanedContent = this.cleanJsonResponse(responseContent)
+
+                         // Check if the JSON appears to be truncated
+                         if (this.isTruncatedJson(cleanedContent)) {
+                              console.warn(`[GeminiService] Plan response appears truncated for model ${modelName}`)
+                              if (modelsToTry.indexOf(modelName) < modelsToTry.length - 1) {
+                                   throw new Error('Response appears to be truncated')
+                              }
+                         }
+
+                         const planData = JSON.parse(cleanedContent)
+
+                         // Validate required fields
+                         if (!planData.dailyCalories || !planData.macronutrients || !planData.mealPlan || !planData.supplements || !planData.personalizedTips) {
+                              throw new Error('Missing required fields in nutrition plan response')
+                         }
+
+                         console.log(`[GeminiService] Successfully generated nutrition plan with model: ${modelName}`)
+                         return planData
+                    } catch (parseError) {
+                         console.error('[GeminiService] Failed to parse nutrition plan response:', parseError)
+                         console.error('[GeminiService] Raw response:', responseContent)
+
+                         // If this is a truncation error and we have more models to try, continue
+                         if (parseError instanceof Error && parseError.message === 'Response appears to be truncated') {
+                              if (modelsToTry.indexOf(modelName) < modelsToTry.length - 1) {
+                                   lastError = parseError
+                                   continue
+                              }
+                         }
+
+                         // Try sanitization
+                         try {
+                              const cleanedContent = this.cleanJsonResponse(responseContent)
+                              const sanitized = this.sanitizeJsonForParse(cleanedContent)
+                              const reparsed = JSON.parse(sanitized)
+
+                              if (!reparsed.dailyCalories || !reparsed.macronutrients || !reparsed.mealPlan || !reparsed.supplements || !reparsed.personalizedTips) {
+                                   throw new Error('Missing required fields after sanitization')
+                              }
+
+                              console.log(`[GeminiService] Successfully parsed nutrition plan after sanitization for model: ${modelName}`)
+                              return reparsed
+                         } catch (sanitizationError) {
+                              console.error('[GeminiService] Sanitized parsing also failed:', sanitizationError)
+                              if (modelsToTry.indexOf(modelName) === modelsToTry.length - 1) {
+                                   throw new Error('Failed to parse nutrition plan response')
+                              }
+                         }
+                    }
+               } catch (modelError) {
+                    console.error(`[GeminiService] Model ${modelName} failed:`, modelError)
+                    lastError = modelError instanceof Error ? modelError : new Error(String(modelError))
+
+                    // If this is a quota / rate limit error, stop trying other models immediately
+                    if (this.isQuotaError(modelError)) {
+                         let retryAfterMs: number | undefined
+                         const errorObj = modelError as { message?: unknown }
+                         const message: string = typeof errorObj?.message === 'string'
+                              ? errorObj.message
+                              : ''
+                         const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
+                         if (match) {
+                              const seconds = parseFloat(match[1])
+                              if (!Number.isNaN(seconds) && seconds > 0) {
+                                   retryAfterMs = seconds * 1000
+                              }
+                         }
+
+                         const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
+                         this.quotaResetAt = Date.now() + cooldownMs
+
+                         throw new AIQuotaError('gemini', 'Gemini quota exceeded', retryAfterMs)
+                    }
+
+                    // Only continue to next model if we have more models to try and it's a truncation error
+                    if (modelsToTry.indexOf(modelName) < modelsToTry.length - 1) {
+                         const isTruncationError = lastError?.message === 'Response appears to be truncated'
+                         if (isTruncationError) {
+                              continue
+                         }
+                         break
+                    }
+               }
+          }
+
+          throw lastError || new Error('All Gemini models failed to generate nutrition plan')
      }
 
      async listAvailableModels(): Promise<Array<{ name: string; displayName?: string; supportedGenerationMethods?: string[] }>> {
