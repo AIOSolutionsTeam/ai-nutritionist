@@ -63,6 +63,7 @@ export interface ProductSearchResult {
      discountPercentage?: number; // Discount percentage (e.g., 40 for 40% off)
      isOnSale?: boolean; // Whether the product is currently on sale
      collection?: string; // Primary collection handle (e.g., "energie-et-endurance")
+     handle?: string; // Product handle for HTML extraction (e.g., "vitamine-b12")
      // Structured product data extracted from description
      benefits?: string[];
      targetAudience?: string[];
@@ -459,6 +460,7 @@ interface CachedProductData extends ProductSearchResult {
           };
           contraindications: string[];
      };
+     extractedContent?: ExtractedProductContent; // Extracted HTML sections (bienfaits, pour_qui, mode_emploi, contre_indication)
 }
 
 let cachedProducts: { products: CachedProductData[]; fetchedAt: number | null } = {
@@ -468,6 +470,9 @@ let cachedProducts: { products: CachedProductData[]; fetchedAt: number | null } 
 
 // Cache TTL for products: refresh every 4 hours (reduces API calls significantly)
 const PRODUCT_CACHE_TTL_MS = 1000 * 60 * 60 * 4; // 4 hours
+
+// Mutex to prevent concurrent calls to fetchAllProductsWithParsedData
+let fetchInProgress: Promise<CachedProductData[]> | null = null;
 
 // Cache for generated product context string (regenerated when products are fetched)
 let cachedProductContext: { context: string; maxProducts: number; generatedAt: number | null } = {
@@ -563,25 +568,52 @@ export async function getCollectionMap(forceRefresh: boolean = false): Promise<{
  */
 export async function fetchAllProductsWithParsedData(forceRefresh: boolean = false): Promise<CachedProductData[]> {
      const now = Date.now();
+     const fetchStartTime = Date.now();
+     
+     console.log('[Shopify] ========================================');
+     console.log('[Shopify] FETCH ALL PRODUCTS WITH PARSED DATA');
+     console.log('[Shopify] ========================================');
+     console.log('[Shopify] Force refresh:', forceRefresh);
+     console.log('[Shopify] Cache TTL:', `${PRODUCT_CACHE_TTL_MS / 1000 / 60 / 60} hours`);
      
      // Return cached products if still valid
      if (!forceRefresh && cachedProducts.fetchedAt && now - cachedProducts.fetchedAt < PRODUCT_CACHE_TTL_MS) {
-          console.log(`[Shopify] Using cached products (${cachedProducts.products.length} products, cached ${Math.round((now - cachedProducts.fetchedAt) / 1000 / 60)} minutes ago)`);
+          const cacheAge = Math.round((now - cachedProducts.fetchedAt) / 1000 / 60);
+          console.log(`[Shopify] ✅ Using cached products (${cachedProducts.products.length} products, cached ${cacheAge} minutes ago)`);
+          
+          // Log cache statistics
+          const productsWithExtracted = cachedProducts.products.filter(p => p.extractedContent).length;
+          console.log(`[Shopify] Cached products with extracted content: ${productsWithExtracted}/${cachedProducts.products.length}`);
+          console.log('[Shopify] ========================================');
           return cachedProducts.products;
+     }
+
+     // If a fetch is already in progress, wait for it instead of starting a new one
+     if (fetchInProgress) {
+          console.log('[Shopify] ⏳ Another fetch is already in progress, waiting for it to complete...');
+          return fetchInProgress;
      }
 
      const { shopifyDomain, shopifyToken } = getShopifyConfig();
 
-     try {
-          console.log('[Shopify] Fetching all products with parsed data...');
+     // Create the fetch promise and store it to prevent concurrent calls
+     const fetchPromise = (async () => {
+          try {
+               console.log('[Shopify] 🔄 Starting fresh product fetch...');
+          console.log('[Shopify] Store domain:', shopifyDomain);
           
           // Fetch products in batches (Shopify limit is 250 per query)
           const allProducts: CachedProductData[] = [];
           let hasNextPage = true;
           let cursor: string | null = null;
           const batchSize = 250;
+          let pageCount = 0;
 
+          console.log('[Shopify] Fetching products from Shopify API (batch size: 250)...');
+          
           while (hasNextPage) {
+               pageCount++;
+               console.log(`[Shopify] Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ' (first page)'}...`);
                // Build query with conditional cursor
                const query = cursor
                     ? `
@@ -717,13 +749,14 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                }
 
                const edges = data.data.products.edges || [];
+               console.log(`[Shopify] Page ${pageCount}: Received ${edges.length} products`);
                
                for (const edge of edges) {
                     const product = edge.node;
                     const variant = product.variants.edges[0]?.node;
                     const image = product.images.edges[0]?.node;
-                    const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
-                    const collectionHandles = product.collections?.edges.map((edge) => edge.node.handle) || [];
+                    const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
+                    const collectionHandles = product.collections?.edges.map((edge: { node: { handle: string } }) => edge.node.handle) || [];
                     
                     const price = parseFloat(variant?.price.amount || '0');
                     const compareAtPrice = variant?.compareAtPrice?.amount 
@@ -766,6 +799,8 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
                          contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
                          parsedData: parsedData,
+                         // Store handle for HTML extraction later
+                         handle: product.handle,
                     };
 
                     allProducts.push(cachedProduct);
@@ -774,9 +809,137 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                // Check if there's a next page
                hasNextPage = data.data.products.pageInfo.hasNextPage;
                cursor = data.data.products.pageInfo.endCursor;
+               
+               if (hasNextPage) {
+                    console.log(`[Shopify] More pages available, continuing...`);
+               } else {
+                    console.log(`[Shopify] ✅ Finished fetching all pages. Total products: ${allProducts.length}`);
+               }
           }
+          
+          const fetchDuration = Date.now() - fetchStartTime;
+          console.log(`[Shopify] Product fetch completed in ${(fetchDuration / 1000).toFixed(2)}s`);
+
+          // Extract HTML content in parallel batches after fetching all products
+          const extractionStartTime = Date.now();
+          console.log('[Shopify] ========================================');
+          console.log(`[Shopify] 🔄 Starting parallel HTML extraction for ${allProducts.length} products...`);
+          console.log('[Shopify] Extraction batch size: 10 products');
+          console.log('[Shopify] ========================================');
+          
+          const extractionBatchSize = 10; // Process 10 products at a time
+          const storeDomain = shopifyDomain; // Use the already fetched shopifyDomain from getShopifyConfig() above
+          
+          let totalExtracted = 0;
+          let totalWithBenefits = 0;
+          let totalWithTargetAudience = 0;
+          let extractionErrors = 0;
+          
+          for (let i = 0; i < allProducts.length; i += extractionBatchSize) {
+               const batch = allProducts.slice(i, i + extractionBatchSize);
+               const batchNumber = Math.floor(i / extractionBatchSize) + 1;
+               const totalBatches = Math.ceil(allProducts.length / extractionBatchSize);
+               const batchStartTime = Date.now();
+               
+               console.log(`[Shopify] Processing batch ${batchNumber}/${totalBatches} (products ${i + 1}-${Math.min(i + extractionBatchSize, allProducts.length)})...`);
+               
+               const extractionPromises = batch.map(async (product: CachedProductData) => {
+                    if (!product.handle) {
+                         console.log(`[Shopify] ⚠️  Product "${product.title}" has no handle, skipping HTML extraction`);
+                         return;
+                    }
+                    
+                    try {
+                         const extractedContent = await extractProductContentFromHTML(product.handle, storeDomain);
+                         product.extractedContent = extractedContent;
+                         totalExtracted++;
+                         
+                         let benefitsAdded = 0;
+                         let targetAudienceAdded = 0;
+                         
+                         // Update benefits and targetAudience from extracted content if available
+                         if (extractedContent.bienfaits.found && extractedContent.bienfaits.bullet_points.length > 0) {
+                              const extractedBenefits = extractedContent.bienfaits.bullet_points
+                                   .map(bp => bp.title && bp.description 
+                                        ? `${bp.title}: ${bp.description}` 
+                                        : bp.title || bp.description || '')
+                                   .filter(b => b.length > 0);
+                              
+                              if (extractedBenefits.length > 0) {
+                                   const beforeCount = (product.benefits || []).length;
+                                   product.benefits = [...(product.benefits || []), ...extractedBenefits];
+                                   product.parsedData.benefits = [...product.parsedData.benefits, ...extractedBenefits];
+                                   benefitsAdded = extractedBenefits.length;
+                                   totalWithBenefits++;
+                                   
+                                   console.log(`[Shopify] ✅ "${product.title}": Added ${benefitsAdded} benefits from HTML (total: ${product.benefits.length}, was: ${beforeCount})`);
+                              }
+                         }
+                         
+                         if (extractedContent.pour_qui.found && extractedContent.pour_qui.bullet_points.length > 0) {
+                              const extractedTargetAudience = extractedContent.pour_qui.bullet_points
+                                   .map(bp => bp.title && bp.description 
+                                        ? `${bp.title}: ${bp.description}` 
+                                        : bp.title || bp.description || '')
+                                   .filter(b => b.length > 0);
+                              
+                              if (extractedTargetAudience.length > 0) {
+                                   const beforeCount = (product.targetAudience || []).length;
+                                   product.targetAudience = [...(product.targetAudience || []), ...extractedTargetAudience];
+                                   product.parsedData.targetAudience = [...product.parsedData.targetAudience, ...extractedTargetAudience];
+                                   targetAudienceAdded = extractedTargetAudience.length;
+                                   totalWithTargetAudience++;
+                                   
+                                   console.log(`[Shopify] ✅ "${product.title}": Added ${targetAudienceAdded} target audience items from HTML (total: ${product.targetAudience.length}, was: ${beforeCount})`);
+                              }
+                         }
+                         
+                         // Log section extraction status
+                         const sectionsFound = [
+                              extractedContent.bienfaits.found ? 'bienfaits' : null,
+                              extractedContent.pour_qui.found ? 'pour_qui' : null,
+                              extractedContent.mode_emploi.found ? 'mode_emploi' : null,
+                              extractedContent.contre_indication.found ? 'contre_indication' : null
+                         ].filter(Boolean);
+                         
+                         if (sectionsFound.length > 0) {
+                              console.log(`[Shopify] 📄 "${product.title}": Extracted sections: ${sectionsFound.join(', ')}`);
+                         }
+                    } catch (error) {
+                         extractionErrors++;
+                         console.error(`[Shopify] ❌ Error extracting HTML content for product "${product.title}" (handle: ${product.handle}):`, error);
+                         // Continue with other products even if one fails
+                    }
+               });
+               
+               await Promise.all(extractionPromises);
+               const batchDuration = Date.now() - batchStartTime;
+               console.log(`[Shopify] ✅ Batch ${batchNumber}/${totalBatches} completed in ${(batchDuration / 1000).toFixed(2)}s`);
+               
+               // Add a delay between batches to avoid rate limiting (except for the last batch)
+               if (i + extractionBatchSize < allProducts.length) {
+                    const delayMs = 500; // 500ms delay between batches
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+               }
+          }
+          
+          const extractionDuration = Date.now() - extractionStartTime;
+          console.log('[Shopify] ========================================');
+          console.log(`[Shopify] ✅ Completed parallel HTML extraction`);
+          console.log('[Shopify] ========================================');
+          console.log(`[Shopify] Total duration: ${(extractionDuration / 1000).toFixed(2)}s`);
+          console.log(`[Shopify] Products with extracted content: ${totalExtracted}/${allProducts.length}`);
+          console.log(`[Shopify] Products with benefits from HTML: ${totalWithBenefits}`);
+          console.log(`[Shopify] Products with target audience from HTML: ${totalWithTargetAudience}`);
+          console.log(`[Shopify] Extraction errors: ${extractionErrors}`);
+          console.log('[Shopify] ========================================');
 
           // Update cache
+          const totalDuration = Date.now() - fetchStartTime;
+          console.log('[Shopify] ========================================');
+          console.log('[Shopify] 📦 UPDATING CACHE');
+          console.log('[Shopify] ========================================');
+          
           cachedProducts = {
                products: allProducts,
                fetchedAt: now,
@@ -789,19 +952,31 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                generatedAt: null,
           };
 
-          console.log(`[Shopify] Successfully fetched and cached ${allProducts.length} products with parsed data`);
-          return allProducts;
-     } catch (error) {
-          console.error('[Shopify] Error fetching all products:', error);
-          
-          // Return cached products if available, even if expired
-          if (cachedProducts.products.length > 0) {
-               console.log(`[Shopify] Using expired cache as fallback (${cachedProducts.products.length} products)`);
-               return cachedProducts.products;
+               console.log(`[Shopify] ✅ Successfully cached ${allProducts.length} products`);
+               console.log(`[Shopify] Cache timestamp: ${new Date(now).toISOString()}`);
+               console.log(`[Shopify] Cache will expire in ${PRODUCT_CACHE_TTL_MS / 1000 / 60 / 60} hours`);
+               console.log(`[Shopify] Total operation duration: ${(totalDuration / 1000).toFixed(2)}s`);
+               console.log('[Shopify] ========================================');
+               
+               return allProducts;
+          } catch (error) {
+               console.error('[Shopify] Error fetching all products:', error);
+               
+               // Return cached products if available, even if expired
+               if (cachedProducts.products.length > 0) {
+                    console.log(`[Shopify] Using expired cache as fallback (${cachedProducts.products.length} products)`);
+                    return cachedProducts.products;
+               }
+               
+               throw error;
+          } finally {
+               // Clear the mutex when done
+               fetchInProgress = null;
           }
-          
-          throw error;
-     }
+     })();
+
+     fetchInProgress = fetchPromise;
+     return fetchPromise;
 }
 
 /**
@@ -811,14 +986,34 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
  * @returns string - Formatted product context string
  */
 function generateProductContextFromProducts(products: CachedProductData[], maxProducts: number = 50): string {
+     console.log('[Shopify] ========================================');
+     console.log('[Shopify] GENERATING PRODUCT CONTEXT FOR AI');
+     console.log('[Shopify] ========================================');
+     console.log(`[Shopify] Total products available: ${products.length}`);
+     console.log(`[Shopify] Max products to include: ${maxProducts}`);
+     
      // Limit products to avoid token limits
      const limitedProducts = products.slice(0, maxProducts);
+     console.log(`[Shopify] Products included in context: ${limitedProducts.length}`);
+     
+     let productsWithExtractedContent = 0;
+     let totalExtractedSections = 0;
      
      let context = `\n\nAVAILABLE PRODUCTS IN STORE (use this information for accurate product recommendations and details):\n`;
      context += `Total products available: ${products.length}\n`;
      context += `Showing ${limitedProducts.length} products for context:\n\n`;
 
      for (const product of limitedProducts) {
+          if (product.extractedContent) {
+               productsWithExtractedContent++;
+               const sections = [
+                    product.extractedContent.bienfaits.found,
+                    product.extractedContent.pour_qui.found,
+                    product.extractedContent.mode_emploi.found,
+                    product.extractedContent.contre_indication.found
+               ].filter(Boolean).length;
+               totalExtractedSections += sections;
+          }
           context += `PRODUCT: ${product.title}\n`;
           
           if (product.tags && product.tags.length > 0) {
@@ -859,6 +1054,76 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
                context += `  Contraindications: ${product.parsedData.contraindications.join('; ')}\n`;
           }
           
+          // Add extracted HTML sections if available
+          if (product.extractedContent) {
+               const extracted = product.extractedContent;
+               let sectionsAdded = 0;
+               
+               // Bienfaits (Benefits)
+               if (extracted.bienfaits.found && extracted.bienfaits.bullet_points.length > 0) {
+                    context += `  Extracted Benefits (from HTML):\n`;
+                    extracted.bienfaits.bullet_points.forEach(bp => {
+                         if (bp.title && bp.description) {
+                              context += `    - ${bp.title}: ${bp.description}\n`;
+                         } else if (bp.title) {
+                              context += `    - ${bp.title}\n`;
+                         } else if (bp.description) {
+                              context += `    - ${bp.description}\n`;
+                         }
+                    });
+                    sectionsAdded++;
+               }
+               
+               // Pour qui (Target Audience)
+               if (extracted.pour_qui.found && extracted.pour_qui.bullet_points.length > 0) {
+                    context += `  Extracted Target Audience (from HTML):\n`;
+                    extracted.pour_qui.bullet_points.forEach(bp => {
+                         if (bp.title && bp.description) {
+                              context += `    - ${bp.title}: ${bp.description}\n`;
+                         } else if (bp.title) {
+                              context += `    - ${bp.title}\n`;
+                         } else if (bp.description) {
+                              context += `    - ${bp.description}\n`;
+                         }
+                    });
+                    sectionsAdded++;
+               }
+               
+               // Mode d'emploi (Usage Instructions)
+               if (extracted.mode_emploi.found && extracted.mode_emploi.bullet_points.length > 0) {
+                    context += `  Extracted Usage Instructions (from HTML):\n`;
+                    extracted.mode_emploi.bullet_points.forEach(bp => {
+                         if (bp.title && bp.description) {
+                              context += `    - ${bp.title}: ${bp.description}\n`;
+                         } else if (bp.title) {
+                              context += `    - ${bp.title}\n`;
+                         } else if (bp.description) {
+                              context += `    - ${bp.description}\n`;
+                         }
+                    });
+                    sectionsAdded++;
+               }
+               
+               // Contre-indication (Contraindications)
+               if (extracted.contre_indication.found && extracted.contre_indication.bullet_points.length > 0) {
+                    context += `  Extracted Contraindications (from HTML):\n`;
+                    extracted.contre_indication.bullet_points.forEach(bp => {
+                         if (bp.title && bp.description) {
+                              context += `    - ${bp.title}: ${bp.description}\n`;
+                         } else if (bp.title) {
+                              context += `    - ${bp.title}\n`;
+                         } else if (bp.description) {
+                              context += `    - ${bp.description}\n`;
+                         }
+                    });
+                    sectionsAdded++;
+               }
+               
+               if (sectionsAdded > 0) {
+                    console.log(`[Shopify] 📄 Added ${sectionsAdded} extracted HTML sections for "${product.title}"`);
+               }
+          }
+          
           context += `  Price: ${product.price} ${product.currency}\n`;
           context += `  Available: ${product.available ? 'Yes' : 'No'}\n`;
           
@@ -873,6 +1138,11 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
      context += `- If a product is not in the list, do not recommend it.\n`;
      context += `- Always provide accurate, specific information based on the product context provided.\n`;
 
+     console.log(`[Shopify] Products with extracted HTML content: ${productsWithExtractedContent}/${limitedProducts.length}`);
+     console.log(`[Shopify] Total extracted sections included: ${totalExtractedSections}`);
+     console.log(`[Shopify] Context length: ${context.length} characters`);
+     console.log('[Shopify] ========================================');
+     
      return context;
 }
 
@@ -2086,10 +2356,12 @@ export interface ExtractedProductContent {
 interface CachedExtractedContent {
      content: ExtractedProductContent;
      fetchedAt: number;
+     isRateLimited?: boolean; // Flag to indicate if this was a rate-limited failure
 }
 
 const extractedContentCache = new Map<string, CachedExtractedContent>();
 const EXTRACTED_CONTENT_CACHE_TTL_MS = 1000 * 60 * 60 * 4; // 4 hours
+const RATE_LIMITED_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes for rate-limited failures
 
 /**
  * Extract structured content from Shopify product pages where content is server-side rendered
@@ -2099,6 +2371,50 @@ const EXTRACTED_CONTENT_CACHE_TTL_MS = 1000 * 60 * 60 * 4; // 4 hours
  * @param storeDomain - Shopify store domain (e.g., "www.vigaia.com")
  * @returns Promise<ExtractedProductContent> - Structured content with four sections
  */
+/**
+ * Sleep for a specified number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry a function with exponential backoff
+ */
+interface RateLimitError extends Error {
+     status?: number;
+}
+
+async function retryWithBackoff<T>(
+     fn: () => Promise<T>,
+     maxRetries: number = 3,
+     initialDelayMs: number = 1000
+): Promise<T> {
+     let lastError: Error | null = null;
+     
+     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+               return await fn();
+          } catch (error: unknown) {
+               const rateLimitError = error as RateLimitError;
+               lastError = rateLimitError;
+               
+               // If it's a 429 error and we have retries left, wait and retry
+               if (rateLimitError.status === 429 && attempt < maxRetries) {
+                    const delayMs = initialDelayMs * Math.pow(2, attempt);
+                    console.log(`[Shopify] Rate limited (429), retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries + 1})...`);
+                    await sleep(delayMs);
+                    continue;
+               }
+               
+               // For other errors or if we're out of retries, throw
+               throw error;
+          }
+     }
+     
+     throw lastError || new Error('Retry failed');
+}
+
 export async function extractProductContentFromHTML(
      productHandle: string,
      storeDomain: string
@@ -2108,9 +2424,13 @@ export async function extractProductContentFromHTML(
      const cached = extractedContentCache.get(cacheKey);
      const now = Date.now();
      
-     if (cached && (now - cached.fetchedAt) < EXTRACTED_CONTENT_CACHE_TTL_MS) {
-          console.log(`[Shopify] Using cached extracted content for ${productHandle}`);
-          return cached.content;
+     // Use cache if valid, but use shorter TTL for rate-limited failures
+     if (cached) {
+          const cacheTTL = cached.isRateLimited ? RATE_LIMITED_CACHE_TTL_MS : EXTRACTED_CONTENT_CACHE_TTL_MS;
+          if ((now - cached.fetchedAt) < cacheTTL) {
+               console.log(`[Shopify] Using cached extracted content for ${productHandle}`);
+               return cached.content;
+          }
      }
 
      // Initialize empty result structure
@@ -2146,21 +2466,48 @@ export async function extractProductContentFromHTML(
      };
 
      try {
-          // Fetch HTML from product page
+          // Fetch HTML from product page with retry logic for rate limiting
           const url = `https://${storeDomain}/products/${productHandle}`;
           console.log(`[Shopify] Fetching HTML from ${url}`);
           
-          const response = await fetch(url, {
-               headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+          let response: Response;
+          try {
+               response = await retryWithBackoff(async () => {
+                    const res = await fetch(url, {
+                         headers: {
+                              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                              'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+                         }
+                    });
+                    
+                    // Throw error for 429 to trigger retry
+                    if (res.status === 429) {
+                         const error: RateLimitError = new Error(`Rate limited: ${res.status} ${res.statusText}`);
+                         error.status = 429;
+                         throw error;
+                    }
+                    
+                    return res;
+               }, 3, 1000); // 3 retries, starting with 1 second delay
+          } catch (error: unknown) {
+               const rateLimitError = error as RateLimitError;
+               // If we still get 429 after retries, cache with short TTL
+               if (rateLimitError.status === 429) {
+                    console.error(`[Shopify] Failed to fetch HTML after retries: 429 Too Many Requests`);
+                    extractedContentCache.set(cacheKey, { 
+                         content: result, 
+                         fetchedAt: now,
+                         isRateLimited: true 
+                    });
+                    return result;
                }
-          });
+               throw error;
+          }
 
           if (!response.ok) {
                console.error(`[Shopify] Failed to fetch HTML: ${response.status} ${response.statusText}`);
-               // Cache empty result to avoid repeated failed requests
+               // Cache empty result to avoid repeated failed requests (non-429 errors)
                extractedContentCache.set(cacheKey, { content: result, fetchedAt: now });
                return result;
           }
@@ -2291,8 +2638,12 @@ export async function extractProductContentFromHTML(
                }
           }
 
-          // Cache the result
-          extractedContentCache.set(cacheKey, { content: result, fetchedAt: now });
+          // Cache the successful result
+          extractedContentCache.set(cacheKey, { 
+               content: result, 
+               fetchedAt: now,
+               isRateLimited: false 
+          });
           console.log(`[Shopify] Extracted content for ${productHandle}:`, {
                bienfaits: result.bienfaits.found,
                pour_qui: result.pour_qui.found,
@@ -2303,8 +2654,12 @@ export async function extractProductContentFromHTML(
           return result;
      } catch (error) {
           console.error(`[Shopify] Error extracting product content from HTML for ${productHandle}:`, error);
-          // Cache empty result to avoid repeated failed requests
-          extractedContentCache.set(cacheKey, { content: result, fetchedAt: now });
+          // Cache empty result to avoid repeated failed requests (non-429 errors)
+          extractedContentCache.set(cacheKey, { 
+               content: result, 
+               fetchedAt: now,
+               isRateLimited: false 
+          });
           return result;
      }
 }
@@ -2336,6 +2691,19 @@ function parseBulletPoints(html: string, sectionKey: string): Array<{ title: str
                     });
                }
           }
+
+          // Pattern 1c: bullets where ✦ is inside the <strong> tag, e.g.
+          // <p><strong>✦ Title</strong> : description<br/>...</p>
+          if (bulletPoints.length === 0) {
+               const pattern1c =
+                    /<strong>\s*[✦•]\s*([^<]+)<\/strong>\s*:?\s*([^<]*?)(?=<br\s*\/?>|<\/p>)/gi;
+               while ((match = pattern1c.exec(html)) !== null) {
+                    bulletPoints.push({
+                         title: match[1].trim() || null,
+                         description: match[2].trim() || null
+                    });
+               }
+          }
      } else if (sectionKey === 'pour_qui') {
           // Pattern 2: <p>✦ <strong>Title</strong> description</p>
           const pattern2 = /<p[^>]*>\s*✦\s*<strong>([^<]+)<\/strong>\s+([^<]*?)<\/p>/gi;
@@ -2347,23 +2715,34 @@ function parseBulletPoints(html: string, sectionKey: string): Array<{ title: str
                });
           }
      } else if (sectionKey === 'mode_emploi') {
-          // Pattern 3: <li><strong>Title</strong><br/>description</li> (ordered lists)
-          const pattern3 = /<li[^>]*>\s*<strong>([^<]+)<\/strong>\s*<br\s*\/?>\s*([^<]*?)<\/li>/gi;
+          // General pattern: handle all <li> items, even with nested <strong>, <br/>, etc.
+          // Works for structures like:
+          // <li><strong>Title :</strong><br/>Description ...<br/></li>
+          // and also <li><strong>Conseils ...</strong></li>
+          const liPattern = /<li[^>]*>([\s\S]*?)<\/li>/gi;
           let match;
-          while ((match = pattern3.exec(html)) !== null) {
-               bulletPoints.push({
-                    title: match[1].trim() || null,
-                    description: match[2].trim() || null
-               });
-          }
+          while ((match = liPattern.exec(html)) !== null) {
+               const liHtml = match[1];
 
-          // Also try pattern without <br/>
-          if (bulletPoints.length === 0) {
-               const pattern3b = /<li[^>]*>\s*<strong>([^<]+)<\/strong>\s*:?\s*([^<]*?)<\/li>/gi;
-               while ((match = pattern3b.exec(html)) !== null) {
+               // Extract optional <strong>Title</strong>
+               const strongMatch = liHtml.match(/<strong>([^<]+)<\/strong>/i);
+               const rawTitle = strongMatch ? strongMatch[1] : null;
+               const title = rawTitle ? rawTitle.replace(/:\s*$/, '').trim() : null;
+
+               // Remove the first <strong>...</strong> from the li content to get the description part
+               let descHtml = strongMatch ? liHtml.replace(strongMatch[0], '') : liHtml;
+               // Normalize <br/> to spaces
+               descHtml = descHtml.replace(/<br\s*\/?>/gi, ' ');
+               // Strip remaining HTML tags and clean whitespace
+               const description = descHtml
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+               if (title || description) {
                     bulletPoints.push({
-                         title: match[1].trim() || null,
-                         description: match[2].trim() || null
+                         title: title || null,
+                         description: description || null
                     });
                }
           }
@@ -2406,8 +2785,10 @@ function parseBulletPoints(html: string, sectionKey: string): Array<{ title: str
      }
 
      // Fallback: extract any bullet points with ✦ or • symbols
+     // Also supports multiple bullets inside a single <p> separated by <br/> tags
      if (bulletPoints.length === 0) {
-          const fallbackPattern = /[✦•]\s*(?:<strong>([^<]+)<\/strong>\s*:?\s*)?([^<✦•]+?)(?=[✦•]|<[ph]|$)/gi;
+          const fallbackPattern =
+               /[✦•]\s*(?:<strong>([^<]+)<\/strong>\s*:?\s*)?([^<✦•]+?)(?=[✦•]|<br|<[ph]|$)/gi;
           let match;
           while ((match = fallbackPattern.exec(html)) !== null) {
                const title = match[1] ? match[1].trim() : null;

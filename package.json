@@ -14,6 +14,7 @@
     "generate-pdf": "tsx scripts/test-pdf-standalone.ts",
     "test-html-extraction": "tsx scripts/test-html-extraction.ts",
     "test-html-extraction-multiple": "tsx scripts/test-html-extraction.ts multiple",
+    "save-product-data": "tsx scripts/save-product-extraction-data.ts",
     "create-test-user": "node scripts/create-test-user.js",
     "test-db": "node scripts/test-db-connection.js",
     "update-mock-data": "node scripts/update-mock-data.js"
