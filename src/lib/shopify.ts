@@ -2035,3 +2035,391 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
           return null;
      }
 }
+
+/**
+ * Interface for extracted product content from HTML
+ */
+export interface ExtractedProductContent {
+     bienfaits: {
+          found: boolean;
+          section_name: string | null;
+          html: string | null;
+          text: string | null;
+          bullet_points: Array<{
+               title: string | null;
+               description: string | null;
+          }>;
+     };
+     pour_qui: {
+          found: boolean;
+          section_name: string | null;
+          html: string | null;
+          text: string | null;
+          bullet_points: Array<{
+               title: string | null;
+               description: string | null;
+          }>;
+     };
+     mode_emploi: {
+          found: boolean;
+          section_name: string | null;
+          html: string | null;
+          text: string | null;
+          bullet_points: Array<{
+               title: string | null;
+               description: string | null;
+          }>;
+     };
+     contre_indication: {
+          found: boolean;
+          section_name: string | null;
+          html: string | null;
+          text: string | null;
+          bullet_points: Array<{
+               title: string | null;
+               description: string | null;
+          }>;
+     };
+}
+
+// Cache for extracted product content (4 hour TTL)
+interface CachedExtractedContent {
+     content: ExtractedProductContent;
+     fetchedAt: number;
+}
+
+const extractedContentCache = new Map<string, CachedExtractedContent>();
+const EXTRACTED_CONTENT_CACHE_TTL_MS = 1000 * 60 * 60 * 4; // 4 hours
+
+/**
+ * Extract structured content from Shopify product pages where content is server-side rendered
+ * in CollapsibleTabs components. The content is not available via Shopify APIs but is present in the rendered HTML.
+ * 
+ * @param productHandle - Product handle (e.g., "vitamine-b12")
+ * @param storeDomain - Shopify store domain (e.g., "www.vigaia.com")
+ * @returns Promise<ExtractedProductContent> - Structured content with four sections
+ */
+export async function extractProductContentFromHTML(
+     productHandle: string,
+     storeDomain: string
+): Promise<ExtractedProductContent> {
+     // Check cache first
+     const cacheKey = `${storeDomain}:${productHandle}`;
+     const cached = extractedContentCache.get(cacheKey);
+     const now = Date.now();
+     
+     if (cached && (now - cached.fetchedAt) < EXTRACTED_CONTENT_CACHE_TTL_MS) {
+          console.log(`[Shopify] Using cached extracted content for ${productHandle}`);
+          return cached.content;
+     }
+
+     // Initialize empty result structure
+     const result: ExtractedProductContent = {
+          bienfaits: {
+               found: false,
+               section_name: null,
+               html: null,
+               text: null,
+               bullet_points: []
+          },
+          pour_qui: {
+               found: false,
+               section_name: null,
+               html: null,
+               text: null,
+               bullet_points: []
+          },
+          mode_emploi: {
+               found: false,
+               section_name: null,
+               html: null,
+               text: null,
+               bullet_points: []
+          },
+          contre_indication: {
+               found: false,
+               section_name: null,
+               html: null,
+               text: null,
+               bullet_points: []
+          }
+     };
+
+     try {
+          // Fetch HTML from product page
+          const url = `https://${storeDomain}/products/${productHandle}`;
+          console.log(`[Shopify] Fetching HTML from ${url}`);
+          
+          const response = await fetch(url, {
+               headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+               }
+          });
+
+          if (!response.ok) {
+               console.error(`[Shopify] Failed to fetch HTML: ${response.status} ${response.statusText}`);
+               // Cache empty result to avoid repeated failed requests
+               extractedContentCache.set(cacheKey, { content: result, fetchedAt: now });
+               return result;
+          }
+
+          const html = await response.text();
+
+          // Section name patterns to search for
+          // Note: Handle different apostrophe characters: ' (U+0027), ' (U+2018), ' (U+2019)
+          const sectionPatterns = {
+               bienfaits: ['Bienfaits', 'Bienfait', 'Benefits', 'Benefit'],
+               pour_qui: ['Pour qui', 'Pour qui?', 'Who for', 'Who is it for'],
+               mode_emploi: ['Mode d\'emploi', 'Mode d\'emploi', 'Mode d\'emploi', 'Mode d\u2019emploi', 'How to use', 'Usage'],
+               contre_indication: ['Contre-indication', 'Contre-indications', 'Contraindication', 'Warnings', 'Warning']
+          };
+
+          // Find and extract each section
+          for (const [sectionKey, patterns] of Object.entries(sectionPatterns)) {
+               const section = result[sectionKey as keyof ExtractedProductContent] as typeof result.bienfaits;
+               
+               // Search for collapsible tab trigger with section name
+               let triggerMatch: RegExpMatchArray | null = null;
+               let foundSectionName: string | null = null;
+               
+               for (const pattern of patterns) {
+                    // Escape special regex characters in pattern (except apostrophes which we handle specially)
+                    const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    // Handle apostrophe variations: ' (U+0027), ' (U+2018), ' (U+2019)
+                    // Replace all apostrophe-like characters with a character class that matches any of them
+                    // Includes: ' (U+0027), ' (U+2018), ' (U+2019)
+                    const apostrophePattern = escapedPattern.replace(/'/g, "['''\u2019]");
+                    // Match the trigger title span - be flexible with class attribute order
+                    const triggerRegex = new RegExp(
+                         `<span[^>]*class="[^"]*wt-collapse__trigger__title[^"]*"[^>]*>\\s*${apostrophePattern}\\s*</span>`,
+                         'i'
+                    );
+                    triggerMatch = html.match(triggerRegex);
+                    if (triggerMatch) {
+                         foundSectionName = pattern;
+                         break;
+                    }
+               }
+
+               if (!triggerMatch) {
+                    continue; // Section not found
+               }
+
+               section.found = true;
+               section.section_name = foundSectionName;
+
+               // Find the corresponding collapse target
+               // The target div should be after the trigger, within the same collapse component
+               const triggerIndex = triggerMatch.index!;
+               const htmlAfterTrigger = html.substring(triggerIndex);
+               
+               // Look for the target div that follows this trigger
+               // Try multiple patterns to handle different HTML structures
+               let targetMatch: RegExpMatchArray | null = null;
+               
+               // Pattern 1: Try to find the content div directly (most reliable)
+               const contentDivMatch = htmlAfterTrigger.match(
+                    /<div[^>]*class="[^"]*wt-collapse__target__content[^"]*rte[^"]*"[^>]*>([\s\S]*?)<\/div>/i
+               );
+               if (contentDivMatch) {
+                    targetMatch = ['', contentDivMatch[1]]; // Use content directly
+               }
+               
+               // Pattern 2: Find target div and extract content (non-greedy, handles simple nesting)
+               if (!targetMatch) {
+                    const simpleTargetMatch = htmlAfterTrigger.match(
+                         /<div[^>]*class="[^"]*wt-collapse__target[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<\/div>|$)/i
+                    );
+                    if (simpleTargetMatch) {
+                         targetMatch = simpleTargetMatch;
+                    }
+               }
+               
+               // Pattern 3: Find target div start and extract until next collapse trigger
+               if (!targetMatch) {
+                    const targetStartMatch = htmlAfterTrigger.match(/<div[^>]*class="[^"]*wt-collapse__target[^"]*"[^>]*>/i);
+                    if (targetStartMatch) {
+                         const startPos = targetStartMatch.index! + targetStartMatch[0].length;
+                         const remainingHtml = htmlAfterTrigger.substring(startPos);
+                         
+                         // Find the next wt-collapse__trigger or end of collapse component
+                         const nextTriggerMatch = remainingHtml.match(/<div[^>]*class="[^"]*wt-collapse__trigger/i);
+                         const nextTriggerPos = nextTriggerMatch ? nextTriggerMatch.index! : remainingHtml.length;
+                         
+                         // Extract content up to the next trigger
+                         let extractedContent = remainingHtml.substring(0, nextTriggerPos);
+                         
+                         // Remove trailing closing divs that belong to the next section
+                         extractedContent = extractedContent.replace(/<\/div>\s*<\/div>\s*$/, '');
+                         
+                         if (extractedContent.trim()) {
+                              targetMatch = [targetStartMatch[0], extractedContent];
+                         }
+                    }
+               }
+
+               if (!targetMatch) {
+                    continue; // Could not find target content
+               }
+
+               // Extract content from the target content div
+               const targetContent = targetMatch[1];
+               const contentMatch = targetContent.match(
+                    /<div[^>]*class="[^"]*wt-collapse__target__content[^"]*rte[^"]*"[^>]*>([\s\S]*?)<\/div>/i
+               );
+
+               if (!contentMatch) {
+                    // Fallback: use the entire target content
+                    section.html = targetContent;
+               } else {
+                    section.html = contentMatch[1];
+               }
+
+               // Extract plain text (strip HTML tags)
+               if (section.html) {
+                    section.text = section.html
+                         .replace(/<[^>]+>/g, ' ')
+                         .replace(/\s+/g, ' ')
+                         .trim();
+               }
+
+               // Parse bullet points based on section type
+               if (section.html) {
+                    section.bullet_points = parseBulletPoints(section.html, sectionKey);
+               }
+          }
+
+          // Cache the result
+          extractedContentCache.set(cacheKey, { content: result, fetchedAt: now });
+          console.log(`[Shopify] Extracted content for ${productHandle}:`, {
+               bienfaits: result.bienfaits.found,
+               pour_qui: result.pour_qui.found,
+               mode_emploi: result.mode_emploi.found,
+               contre_indication: result.contre_indication.found
+          });
+
+          return result;
+     } catch (error) {
+          console.error(`[Shopify] Error extracting product content from HTML for ${productHandle}:`, error);
+          // Cache empty result to avoid repeated failed requests
+          extractedContentCache.set(cacheKey, { content: result, fetchedAt: now });
+          return result;
+     }
+}
+
+/**
+ * Parse bullet points from HTML content based on section type
+ */
+function parseBulletPoints(html: string, sectionKey: string): Array<{ title: string | null; description: string | null }> {
+     const bulletPoints: Array<{ title: string | null; description: string | null }> = [];
+
+     if (sectionKey === 'bienfaits') {
+          // Pattern 1: <p>✦ <strong>Title</strong> : description</p>
+          const pattern1 = /<p[^>]*>\s*✦\s*<strong>([^<]+)<\/strong>\s*:\s*([^<]*?)<\/p>/gi;
+          let match;
+          while ((match = pattern1.exec(html)) !== null) {
+               bulletPoints.push({
+                    title: match[1].trim() || null,
+                    description: match[2].trim() || null
+               });
+          }
+
+          // If no matches, try pattern without colon
+          if (bulletPoints.length === 0) {
+               const pattern1b = /<p[^>]*>\s*✦\s*<strong>([^<]+)<\/strong>\s+([^<]*?)<\/p>/gi;
+               while ((match = pattern1b.exec(html)) !== null) {
+                    bulletPoints.push({
+                         title: match[1].trim() || null,
+                         description: match[2].trim() || null
+                    });
+               }
+          }
+     } else if (sectionKey === 'pour_qui') {
+          // Pattern 2: <p>✦ <strong>Title</strong> description</p>
+          const pattern2 = /<p[^>]*>\s*✦\s*<strong>([^<]+)<\/strong>\s+([^<]*?)<\/p>/gi;
+          let match;
+          while ((match = pattern2.exec(html)) !== null) {
+               bulletPoints.push({
+                    title: match[1].trim() || null,
+                    description: match[2].trim() || null
+               });
+          }
+     } else if (sectionKey === 'mode_emploi') {
+          // Pattern 3: <li><strong>Title</strong><br/>description</li> (ordered lists)
+          const pattern3 = /<li[^>]*>\s*<strong>([^<]+)<\/strong>\s*<br\s*\/?>\s*([^<]*?)<\/li>/gi;
+          let match;
+          while ((match = pattern3.exec(html)) !== null) {
+               bulletPoints.push({
+                    title: match[1].trim() || null,
+                    description: match[2].trim() || null
+               });
+          }
+
+          // Also try pattern without <br/>
+          if (bulletPoints.length === 0) {
+               const pattern3b = /<li[^>]*>\s*<strong>([^<]+)<\/strong>\s*:?\s*([^<]*?)<\/li>/gi;
+               while ((match = pattern3b.exec(html)) !== null) {
+                    bulletPoints.push({
+                         title: match[1].trim() || null,
+                         description: match[2].trim() || null
+                    });
+               }
+          }
+     } else if (sectionKey === 'contre_indication') {
+          // Pattern 4: <li>description</li> (simple list items)
+          const pattern4 = /<li[^>]*>([^<]+?)<\/li>/gi;
+          let match;
+          while ((match = pattern4.exec(html)) !== null) {
+               const content = match[1].trim();
+               // Try to extract title if it contains <strong>
+               const strongMatch = content.match(/<strong>([^<]+)<\/strong>\s*:?\s*(.*)/);
+               if (strongMatch) {
+                    bulletPoints.push({
+                         title: strongMatch[1].trim() || null,
+                         description: strongMatch[2].trim() || null
+                    });
+               } else {
+                    bulletPoints.push({
+                         title: null,
+                         description: content || null
+                    });
+               }
+          }
+
+          // Also try <p> tags for contre-indication
+          if (bulletPoints.length === 0) {
+               const pattern4b = /<p[^>]*>([^<]+?)<\/p>/gi;
+               while ((match = pattern4b.exec(html)) !== null) {
+                    const content = match[1].trim();
+                    // Remove bullet symbols
+                    const cleaned = content.replace(/[✦•]\s*/, '').trim();
+                    if (cleaned) {
+                         bulletPoints.push({
+                              title: null,
+                              description: cleaned || null
+                         });
+                    }
+               }
+          }
+     }
+
+     // Fallback: extract any bullet points with ✦ or • symbols
+     if (bulletPoints.length === 0) {
+          const fallbackPattern = /[✦•]\s*(?:<strong>([^<]+)<\/strong>\s*:?\s*)?([^<✦•]+?)(?=[✦•]|<[ph]|$)/gi;
+          let match;
+          while ((match = fallbackPattern.exec(html)) !== null) {
+               const title = match[1] ? match[1].trim() : null;
+               const description = match[2] ? match[2].trim() : null;
+               if (title || description) {
+                    bulletPoints.push({
+                         title: title || null,
+                         description: description || null
+                    });
+               }
+          }
+     }
+
+     return bulletPoints;
+}
