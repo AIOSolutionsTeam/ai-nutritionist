@@ -1,0 +1,694 @@
+{
+  "generatedAt": "2025-12-17T13:32:38.382Z",
+  "summary": {
+    "totalProducts": 24,
+    "productsWithBenefits": 24,
+    "productsWithTargetAudience": 24,
+    "productsWithBoth": 24,
+    "productsWithExtractedContent": 24,
+    "reasonsNoBenefits": {},
+    "reasonsNoTargetAudience": {},
+    "extractionStats": {
+      "bienfaitsFound": 24,
+      "bienfaitsWithBullets": 24,
+      "pourQuiFound": 24,
+      "pourQuiWithBullets": 24,
+      "modeEmploiFound": 24,
+      "contreIndicationFound": 24
+    }
+  },
+  "products": [
+    {
+      "title": "Ashwagandha KSM 66® – Gélules Adaptogènes Premium",
+      "handle": "ashwagandha-ksm-66",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 4
+        }
+      }
+    },
+    {
+      "title": "Vigaia Biotine 2500 mcg – Fortifiant Cheveux, Peau & Ongles",
+      "handle": "biotine-2500-mcg",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 4,
+      "targetAudienceCount": 7,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 4,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 7,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Vigaia Chardon Marie – Détox Foie et Protection Hépatique Naturelle",
+      "handle": "chardon-marie",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 5,
+      "targetAudienceCount": 7,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 7,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 4
+        }
+      }
+    },
+    {
+      "title": "Collagène Complexe de Vigaia – Beauté, Articulations et Vitalité",
+      "handle": "collagne-complexe",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 5,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 6
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Vigaia Collagène Peptides – Beauté et Articulations",
+      "handle": "collagne-peptides",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 5,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Vigaia Glucosamine Complexe – Articulations, Cartilages et Mobilité Naturelle",
+      "handle": "glucosamine-complexe",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 4,
+      "targetAudienceCount": 4,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 4,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 4,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia L-Glutathion – Antioxydant Puissant et Détox Naturelle",
+      "handle": "l-glutathion",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Vigaia Lion’s Mane – Soutien Cognitif & Bien-être Cérébral",
+      "handle": "lions-mane",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 5,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 7
+        }
+      }
+    },
+    {
+      "title": "Vigaia Maca Noire – Vitalité, Énergie et Équilibre Hormonal",
+      "handle": "maca-noire",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 7,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 7,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Magnésium Bisglycinate + B6 – Sérénité, Sommeil et Vitalité Musculaire",
+      "handle": "magnesium-bisglycinate",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Extrait de Moringa – Superaliment Énergisant et Protecteur",
+      "handle": "moringa",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 9,
+      "targetAudienceCount": 5,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 9,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Matcha : Énergie et Bien-être au Quotidien",
+      "handle": "matcha",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 5,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Vigaia Multivitamine – Votre Allié Quotidien pour Énergie et Équilibre",
+      "handle": "multivitamine",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 8,
+      "targetAudienceCount": 5,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 8,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia NMN – Soutien Avancé Anti-Âge et Vitalité Cellulaire",
+      "handle": "nmn",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 7,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 7,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Oméga 3 1000mg – Gélules d’huile de poisson certifiées",
+      "handle": "omega-3",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 5,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Probiotique – Équilibre Digestif et Bien-être Intestinal",
+      "handle": "probiotique",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 4,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 4,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Shilajit – L'Élixir de Montagne pour Votre Vitalité",
+      "handle": "shilajit",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 7,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 7,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 7
+        }
+      }
+    },
+    {
+      "title": "Vigaia Tongkat Ali – Énergie, Force et Bien-être Quotidien",
+      "handle": "tongkat-ali",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 5,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Vitamine B Complexe – Votre Sourc de Vitalité et d'Équilibre Nerveux",
+      "handle": "vitamine-b-complexe",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Vigaia Vitamine B12 – Soutien Essentiel Contre la Fatigue et pour les Fonctions Cérébrales",
+      "handle": "vitamine-b12",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 8,
+      "targetAudienceCount": 5,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 8,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 5,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Vigaia Vitamine C Complexe – Bouclier Antioxydant et Énergie Naturelle",
+      "handle": "vitamine-c-complexe",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 7,
+      "targetAudienceCount": 4,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 7,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 4,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Vitamine D3+K2 – Le Duo Essentiel pour des Os Solides et un Cœur Sain",
+      "handle": "vitamine-d3-k2",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 4,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 4,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 6
+        }
+      }
+    },
+    {
+      "title": "Vigaia Zinc Complexe – Soutien Immunitaire et Beauté Cellulaire",
+      "handle": "zinc-complexe",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 7,
+      "targetAudienceCount": 3,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 7,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 3,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 5
+        }
+      }
+    },
+    {
+      "title": "Pack Énergie Automne",
+      "handle": "pack-energie-automne",
+      "hasBenefits": true,
+      "hasTargetAudience": true,
+      "benefitsCount": 6,
+      "targetAudienceCount": 6,
+      "extractedContentStatus": {
+        "bienfaits": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "pour_qui": {
+          "found": true,
+          "bulletPointsCount": 6,
+          "hasBulletPoints": true
+        },
+        "mode_emploi": {
+          "found": true,
+          "bulletPointsCount": 4
+        },
+        "contre_indication": {
+          "found": true,
+          "bulletPointsCount": 4
+        }
+      }
+    }
+  ]
+}

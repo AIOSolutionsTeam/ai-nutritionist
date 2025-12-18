@@ -546,9 +546,15 @@ CRITICAL RULES:
 2. **Follow the exact JSON format**: You MUST return ONLY a valid JSON object in the exact format specified below. Do NOT wrap it in markdown code blocks, do NOT add any text before or after the JSON.
 3. **Complete all required fields**: Every field in the JSON structure must be filled with appropriate values based on the user's profile.
 4. **Product usage**: 
-   - If recommended products are provided, use them in the supplements section
-   - If no products are provided, you may suggest general supplement categories but use the exact product names from the provided list if available
-   - For each supplement, provide: title (exact product name if from list), moment (time of day), dosage, duration, and comments
+   - If recommended products are provided, you MUST include ALL of them in the supplements section with SHORT and BRIEF information. Do NOT skip or omit any recommended products.
+   - If NO products are provided (productContext is empty), return an EMPTY supplements array: []
+   - NEVER invent or suggest products when no products are provided
+   - For each supplement when products ARE provided:
+     * title: exact product name from the provided list
+     * moment: short time indication (e.g., 'Matin', 'Soir', 'Matin et Soir'). Use line breaks (\n) if multiple times need to be on separate lines.
+     * dosage: SHORT and SIMPLE (e.g., '1 gélule', '2 comprimés') - NOT a paragraph, just a simple line. If needed, use line breaks (\n) for multi-part instructions.
+     * duration: short duration (e.g., '3 mois', 'En continu')
+     * comments: SHORT and BRIEF - MUST include important contraindication information from the product data (e.g., "À prendre à jeun", "Ne pas prendre avec X", "Éviter si..."). Extract key safety/precaution info from contraindications and keep it concise (maximum 8-10 words per line). Use line breaks (\n) to separate multiple important points for better readability in the PDF table.
 5. **Meal planning**: Create realistic, culturally appropriate meals (considering halal if relevant) for 6 meals per day: breakfast, morningSnack, lunch, afternoonSnack, dinner, eveningSnack
 6. **Calorie calculation**: Estimate daily calories based on age, gender, and goals from the profile
 7. **Macronutrients**: Calculate appropriate protein, carbs, and fats percentages and grams based on the user's goals
@@ -588,7 +594,11 @@ RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/a
 USER PROFILE DATA:
 ${userProfileContext}
 
-${productContext ? `RECOMMENDED PRODUCTS:\n${productContext}` : 'NOTE: No specific products have been recommended. You may suggest general supplement categories based on the user\'s goals, but do not invent specific product names.'}
+${productContext ? `RECOMMENDED PRODUCTS:\n${productContext}\n\nCRITICAL: You MUST include ALL of the recommended products listed above in the supplements section. Do NOT skip, omit, or selectively choose which products to include. Every product in the RECOMMENDED PRODUCTS list must appear in the supplements array. 
+
+For the comments field: Extract and include important contraindication information from the product data (e.g., "À prendre à jeun", "Ne pas prendre avec X", "Éviter si..."). This is critical safety information that users need to know. Keep comments SHORT and BRIEF (maximum 8-10 words per line), using line breaks (\n) to separate multiple important points.
+
+For dosage and mode d'emploi, return SHORT and BRIEF answers - simple lines like "Prenez 1 gélule" for dosage, not paragraphs.` : 'NOTE: No products have been recommended for this user. Return an EMPTY supplements array: []. Do NOT suggest or invent any products.'}
 
 Remember: Return ONLY the JSON object, nothing else.`
 
@@ -1314,9 +1324,15 @@ CRITICAL RULES:
 2. **Follow the exact JSON format**: You MUST return ONLY a valid JSON object in the exact format specified below. Do NOT wrap it in markdown code blocks, do NOT add any text before or after the JSON.
 3. **Complete all required fields**: Every field in the JSON structure must be filled with appropriate values based on the user's profile.
 4. **Product usage**: 
-   - If recommended products are provided, use them in the supplements section
-   - If no products are provided, you may suggest general supplement categories but use the exact product names from the provided list if available
-   - For each supplement, provide: title (exact product name if from list), moment (time of day), dosage, duration, and comments
+   - If recommended products are provided, you MUST include ALL of them in the supplements section with SHORT and BRIEF information. Do NOT skip or omit any recommended products.
+   - If NO products are provided (productContext is empty), return an EMPTY supplements array: []
+   - NEVER invent or suggest products when no products are provided
+   - For each supplement when products ARE provided:
+     * title: exact product name from the provided list
+     * moment: short time indication (e.g., 'Matin', 'Soir', 'Matin et Soir'). Use line breaks (\n) if multiple times need to be on separate lines.
+     * dosage: SHORT and SIMPLE (e.g., '1 gélule', '2 comprimés') - NOT a paragraph, just a simple line. If needed, use line breaks (\n) for multi-part instructions.
+     * duration: short duration (e.g., '3 mois', 'En continu')
+     * comments: SHORT and BRIEF - MUST include important contraindication information from the product data (e.g., "À prendre à jeun", "Ne pas prendre avec X", "Éviter si..."). Extract key safety/precaution info from contraindications and keep it concise (maximum 8-10 words per line). Use line breaks (\n) to separate multiple important points for better readability in the PDF table.
 5. **Meal planning**: Create realistic, culturally appropriate meals (considering halal if relevant) for 6 meals per day: breakfast, morningSnack, lunch, afternoonSnack, dinner, eveningSnack
 6. **Calorie calculation**: Estimate daily calories based on age, gender, and goals from the profile
 7. **Macronutrients**: Calculate appropriate protein, carbs, and fats percentages and grams based on the user's goals
@@ -1356,7 +1372,11 @@ RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/a
 USER PROFILE DATA:
 ${userProfileContext}
 
-${productContext ? `RECOMMENDED PRODUCTS:\n${productContext}` : 'NOTE: No specific products have been recommended. You may suggest general supplement categories based on the user\'s goals, but do not invent specific product names.'}
+${productContext ? `RECOMMENDED PRODUCTS:\n${productContext}\n\nCRITICAL: You MUST include ALL of the recommended products listed above in the supplements section. Do NOT skip, omit, or selectively choose which products to include. Every product in the RECOMMENDED PRODUCTS list must appear in the supplements array. 
+
+For the comments field: Extract and include important contraindication information from the product data (e.g., "À prendre à jeun", "Ne pas prendre avec X", "Éviter si..."). This is critical safety information that users need to know. Keep comments SHORT and BRIEF (maximum 8-10 words per line), using line breaks (\n) to separate multiple important points.
+
+For dosage and mode d'emploi, return SHORT and BRIEF answers - simple lines like "Prenez 1 gélule" for dosage, not paragraphs.` : 'NOTE: No products have been recommended for this user. Return an EMPTY supplements array: []. Do NOT suggest or invent any products.'}
 
 Remember: Return ONLY the JSON object, nothing else.`
 
@@ -1516,6 +1536,6 @@ export const openaiService = new OpenAIService({
 export const geminiService = new GeminiService({
      apiKey: process.env.GEMINI_API_KEY || '',
      model: 'gemini-flash-latest',
-     maxOutputTokens: 2500, // Balanced limit: encourages concise responses while preventing truncation with product lists
+     maxOutputTokens: 8000, // Increased to prevent truncation of JSON responses with product lists
      temperature: 0.7
 })

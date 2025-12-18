@@ -53,7 +53,7 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
      };
 
      // Extract Bienfaits section
-     const benefitsMatch = htmlContent.match(/Bienfaits?[^<]*<\/h[12]>([\s\S]*?)(?=<h[12]|Pour qui|Mode d'emploi|Contre-indication|$)/i);
+     const benefitsMatch = htmlContent.match(/Bienfaits?[^<]*<\/h[123]>([\s\S]*?)(?=<h[123]|Pour qui|Mode d'emploi|Contre-indication|$)/i);
      if (benefitsMatch) {
           const benefitsText = benefitsMatch[1];
           
@@ -61,11 +61,23 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
           // Pattern 1: <p>✦ <strong>Title</strong> : description</p> or <p>✦ Title : description</p>
           let benefitsList = benefitsText.match(/<p[^>]*>\s*[•✦]\s*<strong>([^<]+)<\/strong>\s*:?\s*([^<]*?)<\/p>/gi) ||
                             benefitsText.match(/<p[^>]*>\s*[•✦]\s*([^<:]+?)\s*:?\s*([^<]*?)<\/p>/gi);
-          
-          // Pattern 2: Lines starting with • or ✦ (without <p> tags)
+
+          // Pattern 1b: bullets where ✦ is inside <strong>, e.g.
+          // <p><strong>✦ Title</strong> : description<br/>...</p>
           if (!benefitsList || benefitsList.length === 0) {
-               benefitsList = benefitsText.match(/[•✦]\s*<strong>([^<]+)<\/strong>\s*:?\s*([^•✦<]*?)(?=[•✦]|<h|<p|$)/g) ||
-                             benefitsText.match(/[•✦]\s*([^•✦<:]+?)\s*:?\s*([^•✦<]*?)(?=[•✦]|<h|<p|$)/g);
+               const inlineStrongBullets =
+                    benefitsText.match(
+                         /<strong>\s*[•✦]\s*([^<]+)<\/strong>\s*:?\s*([^<]*?)(?=<br\s*\/?>|<\/p>)/gi
+                    );
+               if (inlineStrongBullets && inlineStrongBullets.length > 0) {
+                    benefitsList = inlineStrongBullets;
+               }
+          }
+          
+          // Pattern 2: Lines starting with • or ✦ (without <p> tags), including bullets separated by <br>
+          if (!benefitsList || benefitsList.length === 0) {
+               benefitsList = benefitsText.match(/[•✦]\s*<strong>([^<]+)<\/strong>\s*:?\s*([^•✦<]*?)(?=[•✦]|<h|<p|<br|$)/g) ||
+                             benefitsText.match(/[•✦]\s*([^•✦<:]+?)\s*:?\s*([^•✦<]*?)(?=[•✦]|<h|<p|<br|$)/g);
           }
           
           // Pattern 3: List items <li>✦ content</li>
@@ -82,7 +94,7 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
           if (benefitsList) {
                result.benefits = benefitsList.map(b => {
                     // Remove HTML tags but preserve text structure
-                    let cleaned = b
+                    const cleaned = b
                          // Handle <strong>Title</strong> : description pattern
                          .replace(/<strong>([^<]+)<\/strong>\s*:?\s*/g, '$1: ')
                          // Remove all HTML tags
@@ -100,7 +112,7 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
      }
 
      // Extract Pour qui section
-     const targetAudienceMatch = htmlContent.match(/Pour qui\??[^<]*<\/h[12]>([\s\S]*?)(?=<h[12]|Mode d'emploi|Contre-indication|$)/i);
+     const targetAudienceMatch = htmlContent.match(/Pour qui\??[^<]*<\/h[123]>([\s\S]*?)(?=<h[123]|Mode d'emploi|Contre-indication|$)/i);
      if (targetAudienceMatch) {
           const audienceText = targetAudienceMatch[1];
           
@@ -109,10 +121,10 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
           let audienceList = audienceText.match(/<p[^>]*>\s*[•✦]\s*<strong>([^<]+)<\/strong>\s*([^<]*?)<\/p>/gi) ||
                              audienceText.match(/<p[^>]*>\s*[•✦]\s*([^<]*?)<\/p>/gi);
           
-          // Pattern 2: Lines starting with • or ✦ (without <p> tags)
+          // Pattern 2: Lines starting with • or ✦ (without <p> tags), including bullets separated by <br>
           if (!audienceList || audienceList.length === 0) {
-               audienceList = audienceText.match(/[•✦]\s*<strong>([^<]+)<\/strong>\s*([^•✦<]*?)(?=[•✦]|<h|<p|$)/g) ||
-                             audienceText.match(/[•✦]\s*([^•✦<]*?)(?=[•✦]|<h|<p|$)/g);
+               audienceList = audienceText.match(/[•✦]\s*<strong>([^<]+)<\/strong>\s*([^•✦<]*?)(?=[•✦]|<h|<p|<br|$)/g) ||
+                             audienceText.match(/[•✦]\s*([^•✦<]*?)(?=[•✦]|<h|<p|<br|$)/g);
           }
           
           // Pattern 3: List items <li>✦ content</li>
@@ -129,7 +141,7 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
           if (audienceList) {
                result.targetAudience = audienceList.map(a => {
                     // Remove HTML tags but preserve text structure
-                    let cleaned = a
+                    const cleaned = a
                          // Handle <strong>Title</strong> description pattern
                          .replace(/<strong>([^<]+)<\/strong>\s*/g, '$1 ')
                          // Remove all HTML tags
@@ -146,7 +158,7 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
      }
 
      // Extract Mode d'emploi section
-     const usageMatch = htmlContent.match(/Mode d'emploi[^<]*<\/h[12]>([\s\S]*?)(?=<h[12]|Contre-indication|INGREDIENTS|$)/i);
+     const usageMatch = htmlContent.match(/Mode d'emploi[^<]*<\/h[123]>([\s\S]*?)(?=<h[123]|Contre-indication|INGREDIENTS|$)/i);
      if (usageMatch) {
           const usageText = usageMatch[1];
           
@@ -194,14 +206,26 @@ function parseProductDataFromHTML(htmlContent: string): ParsedProductData {
      }
 
      // Extract Contre-indication section
-     const contraindicationsMatch = htmlContent.match(/Contre-indication[^<]*<\/h[12]>([\s\S]*?)(?=<h[12]|INGREDIENTS|Livraison|$)/i);
+     const contraindicationsMatch = htmlContent.match(/Contre-indication[^<]*<\/h[123]>([\s\S]*?)(?=<h[123]|INGREDIENTS|Livraison|$)/i);
      if (contraindicationsMatch) {
           const contraindicationsText = contraindicationsMatch[1];
-          const contraindicationsList = contraindicationsText.match(/[•✦]\s*([^•✦<]+)/g) ||
-                                     contraindicationsText.split(/<li[^>]*>/i).filter(item => item.trim());
+          
+          // First, try to extract from <p> tags (most common structure)
+          let contraindicationsList: RegExpMatchArray | string[] | null = contraindicationsText.match(/<p[^>]*>([^<]+)<\/p>/gi);
+          
+          // If no <p> tags found, try bullet points
+          if (!contraindicationsList || contraindicationsList.length === 0) {
+               contraindicationsList = contraindicationsText.match(/[•✦]\s*([^•✦<]+)/g);
+               if (!contraindicationsList || contraindicationsList.length === 0) {
+                    contraindicationsList = contraindicationsText.split(/<li[^>]*>/i).filter(item => item.trim());
+               }
+          }
+          
           if (contraindicationsList) {
                result.contraindications = contraindicationsList.map(c => 
-                    c.replace(/[•✦]\s*/g, '')
+                    c.replace(/<p[^>]*>/gi, '')
+                     .replace(/<\/p>/gi, '')
+                     .replace(/[•✦]\s*/g, '')
                      .replace(/<[^>]+>/g, '')
                      .replace(/^[•\-\*]\s*/, '')
                      .trim()
@@ -256,8 +280,8 @@ function parseProductDataFromMetafields(metafields: Metafield[]): ParsedProductD
           if (key.includes('dosage') || key.includes('usage') || key.includes('mode_emploi')) {
                if (typeof value === 'string') {
                     result.usageInstructions.dosage = value;
-               } else if (typeof value === 'object') {
-                    result.usageInstructions = { ...result.usageInstructions, ...value as any };
+               } else if (typeof value === 'object' && value !== null) {
+                    result.usageInstructions = { ...result.usageInstructions, ...value as Partial<typeof result.usageInstructions> };
                }
           }
 

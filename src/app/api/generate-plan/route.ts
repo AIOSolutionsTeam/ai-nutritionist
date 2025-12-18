@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { dbService, IUserProfile } from '../../../lib/db'
 import { pdfGenerator, NutritionPlan } from '../../../lib/pdf'
 import { openaiService, geminiService, AIQuotaError } from '../../../lib/openai'
-import { fetchAllProductsWithParsedData, ProductSearchResult } from '../../../lib/shopify'
+import { fetchAllProductsWithParsedData, ProductSearchResult, generateProductContextForVariantIds } from '../../../lib/shopify'
 
 /**
  * Translate goals from English to French and remove underscores
@@ -56,7 +56,6 @@ Profil utilisateur:
      try {
           // Try Gemini first
           let planData
-          let usedProvider = 'gemini'
           
           try {
                planData = await geminiService.generateNutritionPlan(
@@ -84,7 +83,6 @@ Profil utilisateur:
                               userProfileContext,
                               productContext
                          )
-                         usedProvider = 'openai'
                          console.log('[Generate Plan] Successfully used OpenAI as fallback')
                     } catch (openaiError) {
                          console.error('[Generate Plan] OpenAI fallback also failed:', openaiError)
@@ -92,16 +90,16 @@ Profil utilisateur:
                          if (openaiError instanceof AIQuotaError) {
                               console.warn('[Generate Plan] Both providers in quota error. Using default plan.')
                          }
-                         return createDefaultPlan(userProfile, recommendedProducts)
+                         return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0)
                     }
                } else {
                     // Non-quota error, use default plan
-                    return createDefaultPlan(userProfile, recommendedProducts)
+                    return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0)
                }
           }
 
           // Map supplements to ProductSearchResult format
-          const supplements: Array<ProductSearchResult & { moment?: string; duration?: string; comments?: string }> = []
+          const supplements: Array<ProductSearchResult & { moment?: string; dosage?: string; duration?: string; comments?: string }> = []
           
           if (planData.supplements && Array.isArray(planData.supplements)) {
                for (const supplement of planData.supplements) {
@@ -124,6 +122,7 @@ Profil utilisateur:
                          supplements.push({
                               ...matchingProduct,
                               moment: supplement.moment || 'À définir',
+                              dosage: supplement.dosage || '',
                               duration: supplement.duration || 'En continu',
                               comments: supplement.comments || supplement.description || ''
                          })
@@ -137,6 +136,7 @@ Profil utilisateur:
                               available: false,
                               currency: 'EUR',
                               moment: supplement.moment || 'À définir',
+                              dosage: supplement.dosage || '',
                               duration: supplement.duration || 'En continu',
                               comments: supplement.comments || supplement.description || ''
                          })
@@ -145,7 +145,8 @@ Profil utilisateur:
           }
 
           // If no supplements from AI and we have recommended products, use them
-          if (supplements.length === 0 && recommendedProducts.length > 0) {
+          // But only if we actually have products (not when productContext is empty)
+          if (supplements.length === 0 && recommendedProducts.length > 0 && productContext.length > 0) {
                recommendedProducts.forEach(product => {
                     supplements.push({
                          ...product,
@@ -200,7 +201,7 @@ Profil utilisateur:
      } catch (error) {
           console.error('[Generate Plan] Error generating plan with AI:', error)
           // Fallback to default plan
-          return createDefaultPlan(userProfile, recommendedProducts)
+          return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0)
      }
 }
 
@@ -209,7 +210,8 @@ Profil utilisateur:
  */
 function createDefaultPlan(
      userProfile: IUserProfile,
-     recommendedProducts: ProductSearchResult[]
+     recommendedProducts: ProductSearchResult[],
+     hasProducts: boolean = false
 ): NutritionPlan {
      const translatedGoals = translateGoals(userProfile.goals)
      
@@ -240,14 +242,16 @@ function createDefaultPlan(
           activityLevel = 'Modéré (2-3 entraînements/semaine)'
      }
 
-     // Map recommended products to supplements
+     // Map recommended products to supplements only if we have products
      const supplements: Array<ProductSearchResult & { moment?: string; duration?: string; comments?: string }> = 
-          recommendedProducts.map(product => ({
-               ...product,
-               moment: 'Selon les besoins',
-               duration: 'En continu',
-               comments: product.description || ''
-          }))
+          hasProducts && recommendedProducts.length > 0
+               ? recommendedProducts.map(product => ({
+                    ...product,
+                    moment: 'Selon les besoins',
+                    duration: 'En continu',
+                    comments: product.description || ''
+               }))
+               : []
 
      return {
           userProfile: {
@@ -343,31 +347,39 @@ export async function POST(request: NextRequest) {
                recommendedProducts.push(...body.recommendedProducts)
           }
 
-          // Generate product context only from recommended products (not all products)
+          // Filter out combos - only keep regular products (not combos)
+          const regularProducts = recommendedProducts.filter(product => {
+               const titleLower = product.title.toLowerCase()
+               return !titleLower.includes('combo') && !titleLower.includes('pack') && !titleLower.includes('stack')
+          })
+
+          // Generate product context only from recommended regular products (not combos)
           let productContext = ''
-          if (recommendedProducts.length > 0) {
-               productContext = `\n\nRECOMMENDED PRODUCTS FOR THIS USER (use these products in the nutrition plan):\n`;
-               productContext += `Total recommended products: ${recommendedProducts.length}\n\n`;
-               
-               for (const product of recommendedProducts) {
-                    productContext += `PRODUCT: ${product.title}\n`;
-                    if (product.description) {
-                         productContext += `  Description: ${product.description}\n`;
+          if (regularProducts.length > 0) {
+               // Get variant IDs from regular products
+               const variantIds = regularProducts
+                    .map(p => p.variantId)
+                    .filter(id => id && id.trim() !== '') as string[]
+
+               if (variantIds.length > 0) {
+                    // Generate product context with usage instructions and contraindications
+                    productContext = await generateProductContextForVariantIds(variantIds, {
+                         includeUsageInstructions: true,
+                         includeContraindications: true,
+                    })
+                    
+                    if (productContext) {
+                         productContext = `\n\nRECOMMENDED PRODUCTS FOR THIS USER (use these products in the nutrition plan):\n${productContext}\n\nIMPORTANT: Use these recommended products when creating the supplement plan. These are the products that were specifically recommended for this user based on their profile and goals.\n`
                     }
-                    productContext += `  Price: ${product.price} ${product.currency}\n`;
-                    productContext += `  Available: ${product.available ? 'Yes' : 'No'}\n`;
-                    productContext += '\n';
                }
-               
-               productContext += `IMPORTANT: Use these recommended products when creating the supplement plan. These are the products that were specifically recommended for this user based on their profile and goals.\n`;
-          } else {
-               productContext = `\n\nNote: No specific products have been recommended yet. You can suggest relevant products from your knowledge, but focus primarily on the nutrition plan structure.\n`;
           }
+          
+          // If no products, productContext remains empty string
 
           // Generate plan with AI
           const nutritionPlan = await generatePlanWithAI(
                userProfile,
-               recommendedProducts,
+               regularProducts,
                productContext
           )
 

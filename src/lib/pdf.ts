@@ -2,7 +2,6 @@ import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 import { IUserProfile } from './db';
-import { Product } from '../utils/types';
 
 // PDF generation configuration with VIGAIA brand colors
 interface PDFConfig {
@@ -72,10 +71,14 @@ interface NutritionPlan {
                dinner: string[];
                eveningSnack?: string[];
           };
-          supplements: Array<Product & {
+          supplements: Array<{
+               title: string;
+               description?: string;
+               dosage?: string;
                moment?: string; // Time of day to take
                duration?: string; // Duration of intake
                comments?: string; // Additional comments
+               [key: string]: unknown; // Allow additional fields for compatibility
           }>;
      };
      personalizedTips: string[];
@@ -221,8 +224,6 @@ class PDFGenerator {
       * Add client profile section (matching VIGAIA template)
       */
      private async addClientProfile(doc: InstanceType<typeof PDFDocument>, userProfile: ExtendedUserProfile): Promise<void> {
-          this.addSectionHeader(doc, 'Profil du client');
-
           // Map gender to French
           const genderMap: Record<string, string> = {
                'male': 'Homme',
@@ -245,6 +246,15 @@ class PDFGenerator {
                { label: 'Médicaments et remarques', value: userProfile.medications && userProfile.medications.length > 0 ? userProfile.medications.join(', ') : 'Aucun' },
           ];
 
+          // Calculate minimum space needed for at least one profile item
+          const textWidth = this.config.pageWidth - (this.config.margin * 2);
+          doc.fontSize(this.config.fontSizes.body);
+          const minProfileHeight = profileData.length > 0
+               ? doc.heightOfString(`• ${profileData[0].label} : ${profileData[0].value}`, { width: textWidth }) + 18
+               : 50;
+          
+          this.addSectionHeader(doc, 'Profil du client', minProfileHeight + 20);
+
           profileData.forEach((item) => {
                const currentY = doc.y;
                doc.fontSize(this.config.fontSizes.body)
@@ -264,13 +274,19 @@ class PDFGenerator {
       * Add daily needs summary (matching VIGAIA template)
       */
      private async addDailyNeeds(doc: InstanceType<typeof PDFDocument>, recommendations: NutritionPlan['recommendations']): Promise<void> {
-          this.addSectionHeader(doc, 'Besoins journaliers estimés');
+          // Calculate minimum space needed for at least the first line
+          const textWidth = this.config.pageWidth - (this.config.margin * 2);
+          doc.fontSize(this.config.fontSizes.body);
+          const caloriesText = `• Apport calorique cible : ${recommendations.dailyCalories.toLocaleString('fr-FR')} kcal / jour`;
+          const minContentHeight = doc.heightOfString(caloriesText, { width: textWidth }) + 20;
+          
+          this.addSectionHeader(doc, 'Besoins journaliers estimés', minContentHeight);
 
           // Daily calories
           doc.fontSize(this.config.fontSizes.body)
                .fillColor(this.config.colors.text)
                .font('Helvetica')
-               .text(`• Apport calorique cible : ${recommendations.dailyCalories.toLocaleString('fr-FR')} kcal / jour`, this.config.margin, doc.y);
+               .text(caloriesText, this.config.margin, doc.y);
 
           doc.y += 10;
 
@@ -311,7 +327,21 @@ class PDFGenerator {
       * Add meal plan (matching VIGAIA template with 6 meals)
       */
      private async addMealPlan(doc: InstanceType<typeof PDFDocument>, mealPlan: NutritionPlan['recommendations']['mealPlan']): Promise<void> {
-          this.addSectionHeader(doc, 'Plan de repas sur une journée type');
+          // Calculate minimum space needed: meal name + at least one item
+          const textWidth = this.config.pageWidth - (this.config.margin * 2) - 20;
+          doc.fontSize(this.config.fontSizes.body);
+          
+          // Find first meal with items to estimate space
+          const firstMeal = mealPlan.breakfast.length > 0 ? mealPlan.breakfast[0] 
+               : mealPlan.lunch.length > 0 ? mealPlan.lunch[0]
+               : mealPlan.dinner.length > 0 ? mealPlan.dinner[0]
+               : null;
+          
+          const minContentHeight = firstMeal 
+               ? this.config.fontSizes.body + 10 + doc.heightOfString(`• ${firstMeal}`, { width: textWidth }) + 20
+               : 80;
+          
+          this.addSectionHeader(doc, 'Plan de repas sur une journée type', minContentHeight);
 
           const meals = [
                { name: '1. Petit-déjeuner', items: mealPlan.breakfast },
@@ -323,32 +353,61 @@ class PDFGenerator {
           ];
 
           meals.forEach((meal) => {
-               // Check if we need a new page - only if we're very close to the bottom
-               if (doc.y > this.config.pageHeight - 100) {
-                    doc.addPage();
-                    doc.y = this.config.margin;
-               }
-
                if (meal.items.length > 0) {
+                    const textWidth = this.config.pageWidth - (this.config.margin * 2) - 20;
+                    
+                    // Calculate minimum space needed: meal name + spacing + at least one item
+                    doc.fontSize(this.config.fontSizes.body);
+                    const mealNameHeight = this.config.fontSizes.body + 10; // Name + spacing
+                    // Estimate height for first item (use a sample item or average)
+                    const sampleItemHeight = doc.heightOfString(`• ${meal.items[0]}`, {
+                         width: textWidth,
+                    });
+                    const minSpaceNeeded = mealNameHeight + sampleItemHeight + 20; // + padding
+                    
+                    // Check if there's enough space for meal name + at least one item
+                    // If not, move to new page to avoid orphaned meal names
+                    if (doc.y + minSpaceNeeded > this.config.pageHeight - this.config.margin) {
+                         doc.addPage();
+                         doc.y = this.config.margin;
+                    }
+
+                    const mealNameY = doc.y;
                     doc.fontSize(this.config.fontSizes.body)
                          .fillColor(this.config.colors.primary)
                          .font('Helvetica-Bold')
-                         .text(meal.name, this.config.margin, doc.y);
+                         .text(meal.name, this.config.margin, mealNameY);
 
-                    doc.y += 8;
+                    doc.y += 10;
 
                     meal.items.forEach((item) => {
+                         // Check if we need a new page before rendering this item
+                         if (doc.y > this.config.pageHeight - 80) {
+                              doc.addPage();
+                              doc.y = this.config.margin;
+                         }
+
                          const itemY = doc.y;
+                         
+                         // Calculate the actual height of the text before rendering
+                         doc.fontSize(this.config.fontSizes.body);
+                         const textHeight = doc.heightOfString(`• ${item}`, {
+                              width: textWidth,
+                         });
+                         
+                         // Render the text
                          doc.fontSize(this.config.fontSizes.body)
                               .fillColor(this.config.colors.text)
                               .font('Helvetica')
                               .text(`• ${item}`, this.config.margin + 20, itemY, {
-                                   width: this.config.pageWidth - (this.config.margin * 2) - 20,
+                                   width: textWidth,
                               });
-                         doc.y = itemY + 18;
+                         
+                         // Move to next line with spacing based on actual text height plus padding
+                         doc.y = itemY + textHeight + 6;
                     });
 
-                    doc.y += 5;
+                    doc.y += 10;
                }
           });
 
@@ -360,13 +419,16 @@ class PDFGenerator {
       * Add supplements plan table (matching VIGAIA template)
       */
      private async addSupplementsTable(doc: InstanceType<typeof PDFDocument>, supplements: NutritionPlan['recommendations']['supplements']): Promise<void> {
-          this.addSectionHeader(doc, 'Plan de prise des compléments');
+          // Calculate minimum space needed: table header (25px) + at least one row (20px) or empty message
+          const minContentHeight = supplements.length > 0 ? 60 : 50;
+          
+          this.addSectionHeader(doc, 'Plan de prise des compléments', minContentHeight);
 
           if (supplements.length === 0) {
                doc.fontSize(this.config.fontSizes.body)
                     .fillColor(this.config.colors.darkGray)
                     .font('Helvetica')
-                    .text('Aucun complément spécifique recommandé pour le moment.', this.config.margin, doc.y);
+                    .text('Aucun produit ou complément n\'a été sélectionné pour le moment.', this.config.margin, doc.y);
                doc.y += 20;
                return;
           }
@@ -379,12 +441,14 @@ class PDFGenerator {
 
           // Table header
           const tableTop = doc.y;
+          // Calculate available width: pageWidth (612) - margins (100) - gaps between columns (20)
+          // Total available: 492px
           const colWidths = {
-               produit: 120,
-               moment: 100,
-               dose: 80,
-               duree: 100,
-               commentaires: 192,
+               produit: 130, // Increased significantly to accommodate long product titles
+               moment: 100, // Adequate for "Matin ou Début d'après-midi"
+               dose: 70, // Reduced slightly
+               duree: 75, // Reduced slightly
+               commentaires: 137, // Reduced to accommodate produit column increase
           };
           const minRowHeight = 20;
           const headerHeight = 25;
@@ -431,20 +495,170 @@ class PDFGenerator {
                // Calculate dynamic row height based on content
                doc.fontSize(this.config.fontSizes.small);
                
+               // Helper function to wrap text based on actual width measurement (detects overflow)
+               const wrapTextByWidth = (text: string, maxWidth: number, doc: InstanceType<typeof PDFDocument>): string => {
+                    if (!text) return '';
+                    
+                    // First, preserve any existing line breaks from AI (normalize \r\n to \n)
+                    const processed = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                    
+                    // Split by existing line breaks first
+                    const existingLines = processed.split('\n');
+                    const wrappedLines: string[] = [];
+                    
+                    for (const line of existingLines) {
+                         // If line is empty, keep it
+                         if (!line.trim()) {
+                              wrappedLines.push('');
+                              continue;
+                         }
+                         
+                         // For product titles, prefer breaking at em dashes (—) or hyphens (-)
+                         // Split by em dash or hyphen first, then wrap each segment
+                         const segments = line.split(/([–—\-])/); // Split but keep delimiters
+                         let segmentParts: string[] = [];
+                         
+                         // Reconstruct segments with their delimiters
+                         for (let i = 0; i < segments.length; i++) {
+                              if (segments[i].match(/^[–—\-]$/)) {
+                                   // This is a delimiter, attach to previous segment if exists
+                                   if (segmentParts.length > 0) {
+                                        segmentParts[segmentParts.length - 1] += segments[i];
+                                   } else {
+                                        segmentParts.push(segments[i]);
+                                   }
+                              } else if (segments[i].trim()) {
+                                   segmentParts.push(segments[i]);
+                              }
+                         }
+                         
+                         // If no dashes found, treat entire line as one segment
+                         if (segmentParts.length === 0) {
+                              segmentParts = [line];
+                         }
+                         
+                         let currentLine = '';
+                         
+                         for (let segIdx = 0; segIdx < segmentParts.length; segIdx++) {
+                              const segment = segmentParts[segIdx];
+                              const words = segment.trim().split(/\s+/);
+                              
+                              for (const word of words) {
+                                   if (!word.trim()) continue;
+                                   
+                                   // Check if the word itself is longer than maxWidth
+                                   const wordWidth = doc.widthOfString(word);
+                                   
+                                   if (wordWidth > maxWidth) {
+                                        // Word is too long, break it character by character
+                                        if (currentLine) {
+                                             wrappedLines.push(currentLine.trim());
+                                             currentLine = '';
+                                        }
+                                        
+                                        // Break long word into chunks that fit
+                                        let wordChunk = '';
+                                        for (const char of word) {
+                                             const testChunk = wordChunk + char;
+                                             if (doc.widthOfString(testChunk) > maxWidth && wordChunk) {
+                                                  wrappedLines.push(wordChunk);
+                                                  wordChunk = char;
+                                             } else {
+                                                  wordChunk = testChunk;
+                                             }
+                                        }
+                                        if (wordChunk) {
+                                             currentLine = wordChunk;
+                                        }
+                                   } else {
+                                        // Test if adding this word would overflow
+                                        const testLine = currentLine ? `${currentLine} ${word}` : word;
+                                        const testWidth = doc.widthOfString(testLine);
+                                        
+                                        if (testWidth > maxWidth && currentLine) {
+                                             // Current line is full, start new line with this word
+                                             wrappedLines.push(currentLine.trim());
+                                             currentLine = word;
+                                        } else {
+                                             // Add word to current line
+                                             currentLine = testLine;
+                                        }
+                                   }
+                              }
+                              
+                              // After each segment (except last), prefer breaking if we're close to maxWidth
+                              // This helps break at em dashes naturally
+                              if (segIdx < segmentParts.length - 1 && currentLine) {
+                                   const currentWidth = doc.widthOfString(currentLine);
+                                   // If we're at 80% of max width, break here to leave room
+                                   if (currentWidth > maxWidth * 0.8) {
+                                        wrappedLines.push(currentLine.trim());
+                                        currentLine = '';
+                                   }
+                              }
+                         }
+                         
+                         // Add remaining line
+                         if (currentLine.trim()) {
+                              wrappedLines.push(currentLine.trim());
+                         }
+                    }
+                    
+                    return wrappedLines.join('\n');
+               };
+               
+               // Helper function to format comments as bulleted list with dashes
+               const formatComments = (text: string): string => {
+                    if (!text) return '';
+                    
+                    // Normalize line breaks (handle \r\n, \r, and \n)
+                    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                    
+                    // Split by newlines
+                    const lines = normalized.split('\n')
+                         .map(line => line.trim())
+                         .filter(line => line.length > 0);
+                    
+                    // Format each line as a bullet point with dash and space
+                    return lines.map(line => `- ${line}`).join('\n');
+               };
+               
+               // Get full text values (no truncation) - wrap by actual width measurement
+               // Format comments as bulleted list
+               const rawComments = supplement.comments || supplement.description || 'Aucun';
+               const formattedComments = formatComments(rawComments);
+               const commentsText = wrapTextByWidth(formattedComments, colWidths.commentaires - 10, doc);
+               
+               const dosageText = wrapTextByWidth(
+                    supplement.dosage || '',
+                    colWidths.dose - 10,
+                    doc
+               );
+               const momentText = wrapTextByWidth(
+                    supplement.moment || 'À définir',
+                    colWidths.moment - 10,
+                    doc
+               );
+               const titleText = wrapTextByWidth(
+                    supplement.title || 'N/A',
+                    colWidths.produit - 10,
+                    doc
+               );
+               
                // Calculate height needed for each column
-               const titleHeight = doc.heightOfString(supplement.title || 'N/A', {
+               const titleHeight = doc.heightOfString(titleText, {
                     width: colWidths.produit - 10
                });
-               const momentHeight = doc.heightOfString(supplement.moment || 'À définir', {
+               const momentHeight = doc.heightOfString(momentText, {
                     width: colWidths.moment - 10
                });
-               const dosageHeight = doc.heightOfString(supplement.dosage || 'N/A', {
+               const dosageHeight = dosageText ? doc.heightOfString(dosageText, {
                     width: colWidths.dose - 10
-               });
+               }) : 0;
                const durationHeight = doc.heightOfString(supplement.duration || 'En continu', {
                     width: colWidths.duree - 10
                });
-               const commentsHeight = doc.heightOfString(supplement.comments || supplement.description?.substring(0, 50) || 'Aucun', {
+               const commentsHeight = doc.heightOfString(commentsText, {
                     width: colWidths.commentaires - 10
                });
                
@@ -459,35 +673,32 @@ class PDFGenerator {
                          .fill();
                }
 
-               // Row content - align text vertically in center of row
-               // Calculate center Y position for the row
-               const rowCenterY = doc.y + (dynamicRowHeight / 2);
-               // Approximate text height for small font (around 7-8px)
-               const textHeight = 7;
-               const textY = rowCenterY - (textHeight / 2);
+               // Row content - start from top of row with padding for multi-line text
+               const textStartY = doc.y + 6; // 6px padding from top
                
                doc.fontSize(this.config.fontSizes.small)
                     .fillColor(this.config.colors.text)
                     .font('Helvetica')
-                    .text(supplement.title || 'N/A', this.config.margin + 5, textY, { 
+                    .text(titleText, this.config.margin + 5, textStartY, { 
                          width: colWidths.produit - 10,
                          align: 'left'
                     })
-                    .text(supplement.moment || 'À définir', this.config.margin + colWidths.produit + 5, textY, { 
+                    .text(momentText, this.config.margin + colWidths.produit + 5, textStartY, { 
                          width: colWidths.moment - 10,
                          align: 'left'
                     })
-                    .text(supplement.dosage || 'N/A', this.config.margin + colWidths.produit + colWidths.moment + 5, textY, { 
+                    .text(dosageText, this.config.margin + colWidths.produit + colWidths.moment + 5, textStartY, { 
                          width: colWidths.dose - 10,
                          align: 'left'
                     })
-                    .text(supplement.duration || 'En continu', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + 5, textY, { 
+                    .text(supplement.duration || 'En continu', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + 5, textStartY, { 
                          width: colWidths.duree - 10,
                          align: 'left'
                     })
-                    .text(supplement.comments || supplement.description?.substring(0, 50) || 'Aucun', this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + colWidths.duree + 5, textY, { 
+                    .text(commentsText, this.config.margin + colWidths.produit + colWidths.moment + colWidths.dose + colWidths.duree + 5, textStartY, { 
                          width: colWidths.commentaires - 10,
-                         align: 'left'
+                         align: 'left',
+                         ellipsis: false // Prevent text truncation
                     });
 
                // Draw row border
@@ -517,7 +728,15 @@ class PDFGenerator {
       * Add tips and remarks (matching VIGAIA template)
       */
      private async addTipsAndRemarks(doc: InstanceType<typeof PDFDocument>, tips: string[]): Promise<void> {
-          this.addSectionHeader(doc, 'Conseils complémentaires');
+          // Calculate minimum space needed for at least one tip
+          const textWidth = this.config.pageWidth - (this.config.margin * 2);
+          doc.fontSize(this.config.fontSizes.body);
+          const minTipHeight = tips.length > 0 
+               ? doc.heightOfString(`• ${tips[0]}`, { width: textWidth }) + 8
+               : 50;
+          
+          // Pass minimum content space to ensure header isn't orphaned
+          this.addSectionHeader(doc, 'Conseils complémentaires', minTipHeight + 20);
 
           tips.forEach((tip) => {
                // Check if we need a new page - only if we're very close to the bottom
@@ -527,14 +746,23 @@ class PDFGenerator {
                }
 
                const tipY = doc.y;
+               
+               // Calculate the actual height of the text before rendering
+               doc.fontSize(this.config.fontSizes.body);
+               const textHeight = doc.heightOfString(`• ${tip}`, {
+                    width: textWidth,
+               });
+               
+               // Render the text
                doc.fontSize(this.config.fontSizes.body)
                     .fillColor(this.config.colors.text)
                     .font('Helvetica')
                     .text(`• ${tip}`, this.config.margin, tipY, {
-                         width: this.config.pageWidth - (this.config.margin * 2),
+                         width: textWidth,
                     });
-               // Move to next line with consistent spacing
-               doc.y = tipY + 18;
+               
+               // Move to next line with spacing based on actual text height plus padding
+               doc.y = tipY + textHeight + 8;
           });
 
           doc.y += 25;
@@ -544,18 +772,19 @@ class PDFGenerator {
       * Add disclaimer (matching VIGAIA template)
       */
      private async addDisclaimer(doc: InstanceType<typeof PDFDocument>): Promise<void> {
-          // Check if we need a new page - only if we're very close to the bottom
-          if (doc.y > this.config.pageHeight - 120) {
-               doc.addPage();
-               doc.y = this.config.margin;
-          }
-
-          this.addSectionHeader(doc, 'Avertissement');
-
           const disclaimerText = [
                'Ce plan nutritionnel ne remplace pas un avis médical.',
                'En cas de médicaments ou pathologies, consulte ton médecin avant toute modification de ton alimentation ou ajout de compléments.'
           ];
+          
+          // Calculate minimum space needed for at least one disclaimer line
+          const textWidth = this.config.pageWidth - (this.config.margin * 2);
+          doc.fontSize(this.config.fontSizes.body);
+          const minContentHeight = disclaimerText.length > 0
+               ? doc.heightOfString(disclaimerText[0], { width: textWidth }) + 20
+               : 50;
+          
+          this.addSectionHeader(doc, 'Avertissement', minContentHeight);
 
           disclaimerText.forEach((text) => {
                const textY = doc.y;
@@ -573,82 +802,77 @@ class PDFGenerator {
                doc.y = textY + textHeight + 2;
           });
 
-          doc.y += 5;
+          doc.y += 10;
      }
 
      /**
       * Add footer with VIGAIA branding and social media/linktree link
+      * Footer is positioned at the bottom of the last page, filling remaining space
       */
      private async addFooter(doc: InstanceType<typeof PDFDocument>): Promise<void> {
           const pageRange = doc.bufferedPageRange();
-          const startPage = pageRange.start;
-          const endPage = pageRange.start + pageRange.count - 1;
+          const lastPage = pageRange.start + pageRange.count - 1;
+          
+          // Switch to the last page
+          doc.switchToPage(lastPage);
+          
+          // Position footer at the bottom of the page with proper spacing
+          const footerHeight = 20; // Height needed for footer text
+          const footerY = this.config.pageHeight - this.config.margin - footerHeight;
+          
+          // Draw closing line above footer (with spacing)
+          const lineSpacing = 15; // Space between line and footer
+          const closingLineY = footerY - lineSpacing;
+          
+          doc.strokeColor(this.config.colors.primary)
+               .lineWidth(0.5)
+               .moveTo(this.config.margin, closingLineY)
+               .lineTo(this.config.pageWidth - this.config.margin, closingLineY)
+               .stroke();
 
-          for (let i = startPage; i <= endPage; i++) {
-               doc.switchToPage(i);
+          // Single line footer: VIGAIA (left) | www.vigaia.com (center) | linktr.ee/vigaia (right)
+          const linktreeText = 'linktr.ee/vigaia';
+          
+          // VIGAIA branding (left)
+          doc.fontSize(this.config.fontSizes.small)
+               .fillColor(this.config.colors.primary)
+               .font('Helvetica-Bold')
+               .text(this.config.brand.name, this.config.margin, footerY);
 
-               const footerY = this.config.pageHeight - 30;
+          // Website (center)
+          const availableWidth = this.config.pageWidth - (this.config.margin * 2);
+          doc.fontSize(this.config.fontSizes.small)
+               .fillColor(this.config.colors.darkGray)
+               .font('Helvetica')
+               .text(this.config.brand.website, this.config.margin, footerY, {
+                    width: availableWidth,
+                    align: 'center',
+               });
 
-               // Draw footer line
-               doc.strokeColor(this.config.colors.primary)
-                    .lineWidth(0.5)
-                    .moveTo(this.config.margin, footerY - 8)
-                    .lineTo(this.config.pageWidth - this.config.margin, footerY - 8)
-                    .stroke();
-
-               // Single line footer: VIGAIA | www.vigaia.com | linktr.ee/vigaia
-               const linktreeText = 'linktr.ee/vigaia';
-               
-               // VIGAIA branding (left)
+          // Linktree link (right)
+          if (this.config.brand.linktree) {
                doc.fontSize(this.config.fontSizes.small)
-                    .fillColor(this.config.colors.primary)
-                    .font('Helvetica-Bold')
-                    .text(this.config.brand.name, this.config.margin, footerY, {
-                         align: 'left',
-                    });
-
-               // Website (center)
-               const centerX = this.config.pageWidth / 2;
-               doc.fontSize(this.config.fontSizes.small)
-                    .fillColor(this.config.colors.darkGray)
+                    .fillColor('#2563eb')
                     .font('Helvetica')
-                    .text(this.config.brand.website, centerX, footerY, {
-                         align: 'center',
+                    .text(linktreeText, this.config.margin, footerY, {
+                         width: availableWidth,
+                         align: 'right',
+                         link: this.config.brand.linktree,
                     });
-
-               // Linktree link (right) - with icon representation
-               if (this.config.brand.linktree) {
-                    // Draw a simple icon representation (small square/box)
-                    doc.rect(this.config.pageWidth - this.config.margin - 80, footerY + 1, 8, 8)
-                         .fillColor('#2563eb')
-                         .fill();
-                    
-                    // Linktree text
-                    doc.fontSize(this.config.fontSizes.small)
-                         .fillColor('#2563eb')
-                         .font('Helvetica')
-                         .link(
-                              this.config.pageWidth - this.config.margin - 70,
-                              footerY,
-                              70,
-                              12,
-                              this.config.brand.linktree
-                         )
-                         .text(linktreeText, this.config.pageWidth - this.config.margin - 70, footerY, {
-                              align: 'right',
-                              link: this.config.brand.linktree,
-                         });
-               }
           }
      }
 
      /**
       * Add section header (VIGAIA style)
+      * Ensures header is not left alone at the bottom of a page
       */
-     private addSectionHeader(doc: InstanceType<typeof PDFDocument>, title: string): void {
-          // Check if we need a new page - only if we're very close to the bottom
-          // This prevents creating empty pages
-          if (doc.y > this.config.pageHeight - 100) {
+     private addSectionHeader(doc: InstanceType<typeof PDFDocument>, title: string, minContentSpace: number = 100): void {
+          // Calculate header height (subtitle font + underline + spacing)
+          const headerHeight = this.config.fontSizes.subtitle + 5 + 25;
+          
+          // Check if there's enough space for header + at least some content
+          // If not enough space, move to new page to avoid orphaned headers
+          if (doc.y + headerHeight + minContentSpace > this.config.pageHeight - this.config.margin) {
                doc.addPage();
                doc.y = this.config.margin;
           }

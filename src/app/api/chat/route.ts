@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError } from '../../../lib/openai'
-import { searchProducts, searchProductsByTags, searchProductsByCollection, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS, getCollectionMap, generateProductContext, generateDynamicCombosFromProducts } from '../../../lib/shopify'
+import { searchProducts, searchProductsByTags, searchProductsByCollection, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS, getCollectionMap, generateProductContext, generateDynamicCombosFromProducts, ProductContextOptions, generateProductContextForVariantIds } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 
@@ -696,10 +696,56 @@ function formatUserProfileContext(userProfile: IUserProfile | null): string {
      return contextParts.join('\n')
 }
 
+/**
+ * Decide which parts of the product catalog context we really need to send
+ * to the AI based on the user's current question. This helps reduce token
+ * usage by skipping heavy fields (benefits, usage, contraindications)
+ * unless the user explicitly asks for that level of detail.
+ */
+function buildProductContextOptionsFromMessage(message: string): ProductContextOptions {
+     const lower = message.toLowerCase()
+
+     // Questions about how to take a product (mode d'emploi, dosage, timing, duration)
+     const asksUsage =
+          /\b(mode d'emploi|mode d emploi|comment\s+(?:le|la|les)?\s*prendre|comment\s+utiliser|posologie|dosage)\b/i.test(lower) ||
+          /\b(combien\s+de\s+(?:gélules?|gelules?|capsules?|comprimés?|comprimes?|gouttes?))\b/i.test(lower) ||
+          /\b(à\s+quelle\s+dose|a\s+quelle\s+dose|dose\s+recommandée|dose\s+recommandee)\b/i.test(lower)
+
+     // Questions about duration / how long
+     const asksDuration =
+          /\b(durée\s+de\s+la\s+cure|durée\s+du\s+traitement|pendant\s+combien\s+de\s+temps|combien\s+de\s+temps)\b/i.test(lower)
+
+     // Questions explicitly about contraindications / safety / side effects
+     const asksContraindications =
+          /\b(contre[-\s]?indications?|effets?\s+secondaires?|effets?\s+indésirables?|effets?\s+indesirables?)\b/i.test(lower) ||
+          /\b(interactions?|incompatible|incompatibles|ne\s+pas\s+prendre|à\s+éviter|a\s+eviter)\b/i.test(lower)
+
+     // Questions about benefits
+     const asksBenefits =
+          /\b(bienfaits?|à\s+quoi\s+ça\s+sert|a\s+quoi\s+ca\s+sert|pour\s+quoi\s+sert|what\s+are\s+the\s+benefits?)\b/i.test(lower)
+
+     // Questions about "for whom" / target audience
+     const asksTargetAudience =
+          /\b(pour\s+qui\b|pour\s+qui\s+est|adapté(?:e)?\s+pour|destiné(?:e)?\s+à)\b/i.test(lower)
+
+     const includeUsageInstructions = asksUsage || asksDuration
+     // If we include usage instructions, also include contraindications for safety
+     const includeContraindications = asksContraindications || includeUsageInstructions
+
+     const options: ProductContextOptions = {
+          includeBenefits: asksBenefits,
+          includeTargetAudience: asksTargetAudience,
+          includeUsageInstructions,
+          includeContraindications,
+     }
+
+     return options
+}
+
 export async function POST(request: NextRequest) {
      try {
           // Parse request body with error handling
-          let body: { message?: string; userId?: string; provider?: string; conversationHistory?: unknown }
+          let body: { message?: string; userId?: string; provider?: string; conversationHistory?: unknown; contextVariantIds?: string[] }
           try {
                body = await request.json()
           } catch (parseError) {
@@ -710,7 +756,7 @@ export async function POST(request: NextRequest) {
                )
           }
           
-          const { message, userId, provider = 'gemini', conversationHistory } = body
+          const { message, userId, provider = 'gemini', conversationHistory, contextVariantIds } = body
 
           if (!message) {
                return NextResponse.json(
@@ -874,12 +920,53 @@ export async function POST(request: NextRequest) {
           }
 
           // Fetch product context (uses cache, very fast after first call)
-          // This is now optimized: context is cached and only regenerated when products are refreshed
+          // Base rule:
+          // - Default: only lightweight fields (title, description, price, etc.) for many products
+          // - If user asks a detailed "heavy" question (dosage, duration, contraindications, etc.)
+          //   AND we know which products were previously recommended (contextVariantIds),
+          //   then only include heavy fields for those specific products.
           let productContext: string | undefined
           try {
-               // Use cached context if available (generated automatically when products are fetched)
-               productContext = await generateProductContext(50) // Limit to 50 products to avoid token limits
-               console.log(`[API] Product context ready (${productContext.length} characters, from cache if available)`)
+               const productContextOptions = buildProductContextOptionsFromMessage(messageToProcess)
+               const needsHeavyFields =
+                    !!(
+                         productContextOptions.includeBenefits ||
+                         productContextOptions.includeTargetAudience ||
+                         productContextOptions.includeUsageInstructions ||
+                         productContextOptions.includeContraindications
+                    )
+
+               if (needsHeavyFields && contextVariantIds && contextVariantIds.length > 0) {
+                    // Focused context: only for products that were actually recommended earlier
+                    productContext = await generateProductContextForVariantIds(contextVariantIds, productContextOptions)
+                    console.log(`[API] Product context for variantIds ready (${productContext.length} characters)`, {
+                         variantCount: contextVariantIds.length,
+                         includeBenefits: productContextOptions.includeBenefits ?? false,
+                         includeTargetAudience: productContextOptions.includeTargetAudience ?? false,
+                         includeUsageInstructions: productContextOptions.includeUsageInstructions ?? false,
+                         includeContraindications: productContextOptions.includeContraindications ?? false,
+                    })
+
+                    // If for some reason we couldn't build a focused context, fall back to global context
+                    if (!productContext || productContext.trim().length === 0) {
+                         productContext = await generateProductContext(24, productContextOptions)
+                         console.log('[API] Fallback to global product context after empty focused context')
+                    }
+               } else if (needsHeavyFields) {
+                    // User asks a detailed question but we don't have prior recommended products:
+                    // fall back to global context with heavy fields enabled.
+                    productContext = await generateProductContext(24, productContextOptions)
+                    console.log(`[API] Product context (global, heavy) ready (${productContext.length} characters)`, {
+                         includeBenefits: productContextOptions.includeBenefits ?? false,
+                         includeTargetAudience: productContextOptions.includeTargetAudience ?? false,
+                         includeUsageInstructions: productContextOptions.includeUsageInstructions ?? false,
+                         includeContraindications: productContextOptions.includeContraindications ?? false,
+                    })
+               } else {
+                    // Lightweight default context: titles, descriptions, prices, availability, etc.
+                    productContext = await generateProductContext(24)
+                    console.log(`[API] Product context (global, light) ready (${productContext.length} characters)`)
+               }
           } catch (error) {
                console.error('[API] Error fetching product context (non-fatal, continuing without it):', error)
                // Continue without product context - AI will still work, just without product reference
@@ -894,9 +981,9 @@ export async function POST(request: NextRequest) {
                console.log(`[API] Detected budget mention: ${detectedBudget}€`)
           }
           
-          // Also check user profile for budget
+          // Also check user profile for budget (use the upper bound of their range)
           if (!detectedBudget && userProfile?.budget) {
-               detectedBudget = userProfile.budget
+               detectedBudget = userProfile.budget.max
                console.log(`[API] Using budget from user profile: ${detectedBudget}€`)
           }
 
@@ -1732,6 +1819,69 @@ export async function POST(request: NextRequest) {
                                         console.error('[API] Analytics tracking error for product (non-fatal):', analyticsError)
                                    }
                               })
+
+                              // IMPORTANT: Search for each AI-recommended product individually to ensure they're included
+                              // This ensures products recommended by the AI model are not missed
+                              if (hasExplicitProducts && nutritionResponse.products.length > 0) {
+                                   console.log('[API] Searching for AI-recommended products individually:', nutritionResponse.products.map(p => p.name).join(', '))
+                                   
+                                   const aiRecommendedProductNames = nutritionResponse.products
+                                        .map(p => (p.name || '').trim())
+                                        .filter(name => name.length > 0)
+                                   
+                                   const existingVariantIds = new Set(recommendedProducts.map(p => p.variantId))
+                                   
+                                   for (const productName of aiRecommendedProductNames) {
+                                        try {
+                                             // Search for this specific product by name
+                                             const searchOptions = {
+                                                  useTagRanking: true,
+                                                  onlyOnSale: isSaleRequest,
+                                                  collection: requestedCollection,
+                                             }
+                                             
+                                             const productsForName = await searchProducts(productName, searchOptions)
+                                             
+                                             // Find the best match (exact title match or closest match)
+                                             let bestMatch: ProductSearchResult | null = null
+                                             
+                                             // First, try to find exact or close title match
+                                             const productNameLower = productName.toLowerCase()
+                                             for (const product of productsForName) {
+                                                  const productTitleLower = product.title.toLowerCase()
+                                                  
+                                                  // Check for exact match or if product name is contained in title
+                                                  if (productTitleLower === productNameLower || 
+                                                      productTitleLower.includes(productNameLower) ||
+                                                      productNameLower.includes(productTitleLower.split(' ')[0])) {
+                                                       if (!existingVariantIds.has(product.variantId)) {
+                                                            bestMatch = product
+                                                            break
+                                                       }
+                                                  }
+                                             }
+                                             
+                                             // If no exact match, use the first result that's not already in the list
+                                             if (!bestMatch && productsForName.length > 0) {
+                                                  bestMatch = productsForName.find(p => !existingVariantIds.has(p.variantId)) || null
+                                             }
+                                             
+                                             // Add the best match if found
+                                             if (bestMatch) {
+                                                  recommendedProducts.push(bestMatch)
+                                                  existingVariantIds.add(bestMatch.variantId)
+                                                  console.log(`[API] ✅ Added AI-recommended product: "${productName}" -> "${bestMatch.title}"`)
+                                             } else {
+                                                  console.log(`[API] ⚠️ Could not find match for AI-recommended product: "${productName}"`)
+                                             }
+                                        } catch (error) {
+                                             console.error(`[API] Error searching for AI-recommended product "${productName}":`, error)
+                                             // Continue with other products
+                                        }
+                                   }
+                                   
+                                   console.log(`[API] Final recommendedProducts count after AI product search: ${recommendedProducts.length}`)
+                              }
                          }
                     }
                } catch (productSearchError) {
@@ -1764,6 +1914,52 @@ export async function POST(request: NextRequest) {
                }
           } else {
                console.log('No product search needed - AI response indicates no products required')
+               
+               // Even if main search was skipped, still search for AI-recommended products if they exist
+               if (hasExplicitProducts && nutritionResponse.products.length > 0) {
+                    console.log('[API] Main search skipped, but searching for AI-recommended products:', nutritionResponse.products.map(p => p.name).join(', '))
+                    
+                    const aiRecommendedProductNames = nutritionResponse.products
+                         .map(p => (p.name || '').trim())
+                         .filter(name => name.length > 0)
+                    
+                    const existingVariantIds = new Set(recommendedProducts.map(p => p.variantId))
+                    
+                    for (const productName of aiRecommendedProductNames) {
+                         try {
+                              const productsForName = await searchProducts(productName, { useTagRanking: true })
+                              
+                              // Find the best match
+                              const productNameLower = productName.toLowerCase()
+                              let bestMatch: ProductSearchResult | null = null
+                              
+                              for (const product of productsForName) {
+                                   const productTitleLower = product.title.toLowerCase()
+                                   
+                                   if (productTitleLower === productNameLower || 
+                                       productTitleLower.includes(productNameLower) ||
+                                       productNameLower.includes(productTitleLower.split(' ')[0])) {
+                                        if (!existingVariantIds.has(product.variantId)) {
+                                             bestMatch = product
+                                             break
+                                        }
+                                   }
+                              }
+                              
+                              if (!bestMatch && productsForName.length > 0) {
+                                   bestMatch = productsForName.find(p => !existingVariantIds.has(p.variantId)) || null
+                              }
+                              
+                              if (bestMatch) {
+                                   recommendedProducts.push(bestMatch)
+                                   existingVariantIds.add(bestMatch.variantId)
+                                   console.log(`[API] ✅ Added AI-recommended product (fallback): "${productName}" -> "${bestMatch.title}"`)
+                              }
+                         } catch (error) {
+                              console.error(`[API] Error searching for AI-recommended product "${productName}":`, error)
+                         }
+                    }
+               }
           }
           
           // CRITICAL FIX: Fallback product search when AI mentions supplements but no products were found
@@ -1898,21 +2094,111 @@ export async function POST(request: NextRequest) {
                
                // Score and rank products using structured data for better matching
                if (recommendedProducts.length > 0) {
+                    // Mark AI-recommended products for prioritization
+                    const aiRecommendedProductNames = hasExplicitProducts && nutritionResponse.products.length > 0
+                         ? nutritionResponse.products.map(p => (p.name || '').toLowerCase().trim()).filter(n => n.length > 0)
+                         : []
+                    
+                    // Create a map to track which products are AI-recommended
+                    const aiRecommendedMap = new Map<string, boolean>()
+                    recommendedProducts.forEach(product => {
+                         const productTitleLower = product.title.toLowerCase()
+                         const isAiRecommended = aiRecommendedProductNames.some(aiName => {
+                              // Check if AI-recommended name matches product title
+                              return productTitleLower === aiName || 
+                                     productTitleLower.includes(aiName) ||
+                                     aiName.includes(productTitleLower.split(' ')[0])
+                         })
+                         aiRecommendedMap.set(product.variantId, isAiRecommended)
+                    })
+                    
                     const scoredProducts = scoreProductsWithStructuredData(
                          recommendedProducts,
                          userProfile,
                          goalKeys
                     )
-                    // Remove relevanceScore before returning (it's only for sorting)
-                    recommendedProducts = scoredProducts.map(({ relevanceScore, ...product }) => product)
                     
-                    console.log('[API] Products ranked by structured data matching:', {
-                         topProducts: recommendedProducts.slice(0, 3).map(p => ({
+                    // Sort by: AI-recommended first, then by relevance score (highest first)
+                    // Remove relevanceScore before returning (it's only for sorting)
+                    recommendedProducts = scoredProducts
+                         .sort((a, b) => {
+                              // Prioritize AI-recommended products
+                              const aIsAi = aiRecommendedMap.get(a.variantId) ? 1 : 0
+                              const bIsAi = aiRecommendedMap.get(b.variantId) ? 1 : 0
+                              if (aIsAi !== bIsAi) {
+                                   return bIsAi - aIsAi // AI-recommended first
+                              }
+                              // Then sort by relevance score
+                              return b.relevanceScore - a.relevanceScore
+                         })
+                         .map(({ relevanceScore, ...product }) => product)
+                    
+                    // Helper function to check if product has benefits (from parsed data or extracted HTML)
+                    const hasBenefits = (p: ProductSearchResult): boolean => {
+                         if (p.benefits && p.benefits.length > 0) {
+                              console.log(`[API] ✅ "${p.title}": hasBenefits=true (from parsed data: ${p.benefits.length} items)`);
+                              return true;
+                         }
+                         // Check extracted content if available (for CachedProductData)
+                         interface ProductWithExtractedContent extends ProductSearchResult {
+                              extractedContent?: {
+                                   bienfaits?: {
+                                        found?: boolean;
+                                        bullet_points?: Array<{ title?: string | null; description?: string | null }>;
+                                   };
+                              };
+                         }
+                         const cachedProduct = p as ProductWithExtractedContent;
+                         if (cachedProduct.extractedContent?.bienfaits?.found && 
+                             cachedProduct.extractedContent.bienfaits.bullet_points && 
+                             cachedProduct.extractedContent.bienfaits.bullet_points.length > 0) {
+                              console.log(`[API] ✅ "${p.title}": hasBenefits=true (from extracted HTML: ${cachedProduct.extractedContent.bienfaits.bullet_points.length} items)`);
+                              return true;
+                         }
+                         console.log(`[API] ❌ "${p.title}": hasBenefits=false (no parsed data or extracted content)`);
+                         return false;
+                    };
+                    
+                    // Helper function to check if product has target audience (from parsed data or extracted HTML)
+                    const hasTargetAudience = (p: ProductSearchResult): boolean => {
+                         if (p.targetAudience && p.targetAudience.length > 0) {
+                              console.log(`[API] ✅ "${p.title}": hasTargetAudience=true (from parsed data: ${p.targetAudience.length} items)`);
+                              return true;
+                         }
+                         // Check extracted content if available (for CachedProductData)
+                         interface ProductWithExtractedContent extends ProductSearchResult {
+                              extractedContent?: {
+                                   pour_qui?: {
+                                        found?: boolean;
+                                        bullet_points?: Array<{ title?: string | null; description?: string | null }>;
+                                   };
+                              };
+                         }
+                         const cachedProduct = p as ProductWithExtractedContent;
+                         if (cachedProduct.extractedContent?.pour_qui?.found && 
+                             cachedProduct.extractedContent.pour_qui.bullet_points && 
+                             cachedProduct.extractedContent.pour_qui.bullet_points.length > 0) {
+                              console.log(`[API] ✅ "${p.title}": hasTargetAudience=true (from extracted HTML: ${cachedProduct.extractedContent.pour_qui.bullet_points.length} items)`);
+                              return true;
+                         }
+                         console.log(`[API] ❌ "${p.title}": hasTargetAudience=false (no parsed data or extracted content)`);
+                         return false;
+                    };
+                    
+                    console.log('[API] ========================================');
+                    console.log('[API] PRODUCT RANKING RESULTS');
+                    console.log('[API] ========================================');
+                    const topProducts = recommendedProducts.slice(0, 3).map(p => {
+                         const benefits = hasBenefits(p);
+                         const targetAudience = hasTargetAudience(p);
+                         return {
                               title: p.title,
-                              hasBenefits: !!(p.benefits && p.benefits.length > 0),
-                              hasTargetAudience: !!(p.targetAudience && p.targetAudience.length > 0)
-                         }))
-                    })
+                              hasBenefits: benefits,
+                              hasTargetAudience: targetAudience
+                         };
+                    });
+                    console.log('[API] Top 3 products:', topProducts);
+                    console.log('[API] ========================================');
                }
                
                // EDGE CASE: If filtering removed ALL products, log a warning
