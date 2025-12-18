@@ -113,20 +113,20 @@ const InitialLoadingScreen = () => (
     <div className="flex flex-col items-center justify-center space-y-6 animate-fade-in">
       {/* Animated Logo/Icon */}
       <div className="relative">
-        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-primary/10 flex items-center justify-center">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 relative flex items-center justify-center">
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <div className="w-12 h-12 relative flex items-center justify-center">
             <Image
               src="https://www.vigaia.com/cdn/shop/files/vigaia-high-resolution-logo-transparent_06884d1a-0548-44bc-932e-1cad07cb1f1d.png?crop=center&height=32&v=1758274822&width=32"
               alt="Vigaia AI"
-              width={56}
-              height={56}
-              className="object-contain animate-spin-slow"
+              width={28}
+              height={50}
+              className="object-contain"
             />
           </div>
         </div>
         {/* Pulsing rings */}
-        <div className="absolute inset-0 rounded-full border-2 border-primary/20 animate-ping"></div>
-        <div className="absolute inset-0 rounded-full border-2 border-primary/10 animate-ping" style={{ animationDelay: "0.5s" }}></div>
+        <div className="absolute inset-0 rounded-full border-2 border-primary/50 animate-ping" style={{ animationDuration: "2s", animationDelay: "0s" }}></div>
+        <div className="absolute inset-0 rounded-full border-2 border-primary/35 animate-ping" style={{ animationDelay: "0.7s", animationDuration: "2s" }}></div>
       </div>
       
       {/* Loading Text */}
@@ -578,6 +578,77 @@ interface FullPageChatProps {
   onBack?: () => void;
 }
 
+// Translation helper functions for displaying data in French
+const translateGender = (gender?: string): string => {
+  const genderMap: { [key: string]: string } = {
+    'male': 'Homme',
+    'female': 'Femme',
+    'other': 'Autre',
+    'prefer-not-to-say': 'Préfère ne pas dire'
+  };
+  return gender ? (genderMap[gender] || gender) : 'Non renseigné';
+};
+
+const translateGoals = (goals?: string[]): string => {
+  if (!goals || goals.length === 0) return 'Aucun';
+  
+  const goalMap: { [key: string]: string } = {
+    'weight_loss': 'Perte de poids',
+    'energy': 'Énergie',
+    'wellness': 'Bien-être',
+    'fitness': 'Fitness',
+    'muscle_gain': 'Musculation',
+    'better_sleep': 'Sommeil',
+    'immunity': 'Immunité',
+    'other_goals': 'Autres objectifs'
+  };
+  
+  return goals.map(g => goalMap[g] || g).join(', ');
+};
+
+const translateAllergies = (allergies?: string[]): string => {
+  if (!allergies || allergies.length === 0) return 'Aucune';
+  
+  const allergyMap: { [key: string]: string } = {
+    'lactose': 'Lactose',
+    'gluten': 'Gluten',
+    'halal': 'Halal',
+    'vegetarian': 'Végétarien',
+    'vegan': 'Végétalien',
+    'nuts': 'Sans noix'
+  };
+  
+  return allergies.map(a => allergyMap[a] || a).join(', ');
+};
+
+const formatSummary = (data: OnboardingData): string => {
+  const parts: string[] = [];
+  
+  parts.push(`• Âge: ${data.age || 'Non renseigné'}`);
+  parts.push(`• Sexe: ${translateGender(data.gender)}`);
+  
+  if (data.weight) {
+    parts.push(`• Poids: ${data.weight} kg`);
+  }
+  
+  if (data.height) {
+    parts.push(`• Taille: ${data.height} cm`);
+  }
+  
+  parts.push(`• Objectifs: ${translateGoals(data.goals)}`);
+  parts.push(`• Allergies/Régimes: ${translateAllergies(data.allergies)}`);
+  
+  if (data.budget) {
+    parts.push(`• Budget: ${data.budget.min}-${data.budget.max} ${data.budget.currency}`);
+  } else {
+    parts.push(`• Budget: Non renseigné`);
+  }
+  
+  parts.push(`• Informations supplémentaires: ${data.additionalInfo || 'Aucune'}`);
+  
+  return parts.join('\n');
+};
+
 export default function FullPageChat({ isConsultationStarted, onBack }: FullPageChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
@@ -929,6 +1000,35 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
     return questions[step] || { question: "", progress: "", hasBubbles: false };
   };
+
+  // Trigger background product fetching when chat page loads
+  useEffect(() => {
+    if (!isConsultationStarted) return;
+    
+    console.log('[FullPageChat] ========================================');
+    console.log('[FullPageChat] CHAT PAGE LOADED - STARTING PRODUCT PREFETCH');
+    console.log('[FullPageChat] ========================================');
+    console.log('[FullPageChat] Timestamp:', new Date().toISOString());
+    
+    // Prefetch products in the background (non-blocking)
+    // This will fetch all products and extract HTML content in parallel batches
+    // Results are cached for 3-4 hours
+    fetch('/api/products/prefetch', { method: 'GET' })
+      .then((response) => {
+        console.log('[FullPageChat] ✅ Product prefetch API called successfully');
+        return response.json();
+      })
+      .then((data) => {
+        console.log('[FullPageChat] Prefetch response:', data);
+        console.log('[FullPageChat] Product fetching is running in background...');
+        console.log('[FullPageChat] ========================================');
+      })
+      .catch((error) => {
+        console.error('[FullPageChat] ❌ Error starting product prefetch:', error);
+        console.error('[FullPageChat] ========================================');
+        // Don't show error to user - this is a background operation
+      });
+  }, [isConsultationStarted]);
 
   useEffect(() => {
     if (!isConsultationStarted) return;
@@ -1715,16 +1815,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       if (lowerInput === 'résumé' || lowerInput === 'summary' || lowerInput === 'récapitulatif') {
         const summaryMessage: Message = {
           id: generateMessageId(),
-          text: `📋 Récapitulatif de vos réponses:\n\n` +
-            `• Âge: ${onboardingData.age || 'Non renseigné'}\n` +
-            `• Sexe: ${onboardingData.gender || 'Non renseigné'}\n` +
-            `• Poids: ${onboardingData.weight ? `${onboardingData.weight} kg` : 'Non renseigné'}\n` +
-            `• Taille: ${onboardingData.height ? `${onboardingData.height} cm` : 'Non renseigné'}\n` +
-            `• Objectifs: ${onboardingData.goals && onboardingData.goals.length > 0 ? onboardingData.goals.join(', ') : 'Non renseigné'}\n` +
-            `• Allergies/Régimes: ${onboardingData.allergies && onboardingData.allergies.length > 0 ? onboardingData.allergies.join(', ') : 'Aucune'}\n` +
-            `• Budget: ${onboardingData.budget ? `${onboardingData.budget.min}-${onboardingData.budget.max} ${onboardingData.budget.currency}` : 'Non renseigné'}\n` +
-            `• Informations supplémentaires: ${onboardingData.additionalInfo || 'Aucune'}\n\n` +
-            `Tapez 'retour' pour modifier une réponse précédente.`,
+          text: `📋 Récapitulatif de vos réponses:\n\n${formatSummary(onboardingData)}\n\nTapez 'retour' pour modifier une réponse précédente.`,
           isUser: false,
           timestamp: new Date(),
         };
@@ -1758,16 +1849,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         
         // When additional_info is completed, show summary and save
         if (onboardingStep === 'additional_info' && updatedData.additionalInfo !== undefined) {
-          const summaryText = `📋 Récapitulatif:\n\n` +
-            `• Âge: ${updatedData.age}\n` +
-            `• Sexe: ${updatedData.gender}\n` +
-            `${updatedData.weight ? `• Poids: ${updatedData.weight} kg\n` : ''}` +
-            `${updatedData.height ? `• Taille: ${updatedData.height} cm\n` : ''}` +
-            `• Objectifs: ${(updatedData.goals || []).join(', ') || 'Aucun'}\n` +
-            `• Allergies/Régimes: ${(updatedData.allergies || []).join(', ') || 'Aucune'}\n` +
-            `• Budget: ${updatedData.budget?.min}-${updatedData.budget?.max} ${updatedData.budget?.currency}\n` +
-            `• Informations supplémentaires: ${updatedData.additionalInfo || 'Aucune'}\n\n` +
-            `Enregistrement en cours...`;
+          const summaryText = `📋 Récapitulatif:\n\n${formatSummary(updatedData)}\n\nEnregistrement en cours...`;
           
           const summaryMessage: Message = {
             id: generateMessageId(),
@@ -1815,14 +1897,38 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     });
 
     try {
-      // Build conversation history from existing messages
+      // Build a compact conversation history from existing messages
+      // Only: user message text + assistant reply, plus product titles if any were recommended.
+      const MAX_HISTORY_MESSAGES = 4
       const conversationHistory = messages
         .filter(msg => msg.text && msg.text.trim().length > 0) // Only include non-empty messages
-        .map(msg => ({
-          role: msg.isUser ? 'user' as const : 'assistant' as const,
-          content: msg.text
-        }))
-        .slice(-5) // Limit to last 5 messages to reduce tokens (older messages are summarized)
+        .map(msg => {
+          let content = msg.text
+
+          // For assistant messages, append previously recommended product titles (not full details)
+          if (!msg.isUser && msg.recommendedProducts && msg.recommendedProducts.length > 0) {
+            const titles = msg.recommendedProducts.map(p => p.title).join(', ')
+            content += `\n\nProduits recommandés dans ce message : ${titles}`
+          }
+
+          return {
+            role: msg.isUser ? 'user' as const : 'assistant' as const,
+            content,
+          }
+        })
+        .slice(-MAX_HISTORY_MESSAGES) // Only keep the last few messages to save tokens
+
+      // Collect all recommended product variant IDs from previous messages
+      const contextVariantIds: string[] = []
+      messages.forEach(message => {
+        if (message.recommendedProducts && message.recommendedProducts.length > 0) {
+          message.recommendedProducts.forEach(product => {
+            if (!contextVariantIds.some(id => id === product.variantId)) {
+              contextVariantIds.push(product.variantId)
+            }
+          })
+        }
+      })
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -1832,7 +1938,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         body: JSON.stringify({ 
           message: currentInput, 
           userId,
-          conversationHistory 
+          conversationHistory,
+          contextVariantIds,
         }),
       });
 
@@ -1898,13 +2005,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         productCount: (data.recommendedProducts || []).length,
         ...(userId && { userId }),
       });
-
-      // Track product recommendations for analytics
-      if (data.recommendedProducts && data.recommendedProducts.length > 0) {
-        data.recommendedProducts.forEach((product: ProductSearchResult) => {
-          trackProductRecommended(product.title, product.variantId, product.price);
-        });
-      }
 
       if (data.recommendedProducts && data.recommendedProducts.length > 0) {
         data.recommendedProducts.forEach((product: ProductSearchResult) => {
@@ -2088,7 +2188,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         <div className="max-w-3xl mx-auto w-full flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
             <div className="min-w-0 flex-1">
-              <h3 className="font-serif uppercase tracking-widest text-sm sm:text-base md:text-lg font-light text-foreground truncate">Nutritionniste virtuel</h3>
+              <h3 className="font-serif uppercase tracking-widest text-sm sm:text-base md:text-lg font-light text-foreground truncate">Assistante virtuelle</h3>
               <p className="text-xs text-muted-foreground uppercase tracking-[0.15em] hidden sm:block">En ligne • Prêt à aider</p>
             </div>
           </div>

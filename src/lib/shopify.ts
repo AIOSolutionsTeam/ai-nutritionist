@@ -76,6 +76,22 @@ export interface ProductSearchResult {
      contraindications?: string[];
 }
 
+/**
+ * Options to control how much structured detail is included in the
+ * product context that is sent to the AI. This lets us reduce token
+ * usage by skipping heavy fields unless they are really needed.
+ */
+export interface ProductContextOptions {
+     /** Include parsed benefits information */
+     includeBenefits?: boolean;
+     /** Include parsed target audience information */
+     includeTargetAudience?: boolean;
+     /** Include dosage/timing/duration/tips in the context */
+     includeUsageInstructions?: boolean;
+     /** Include contraindications / safety warnings */
+     includeContraindications?: boolean;
+}
+
 function getShopifyConfig() {
      const shopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
      const shopifyToken = process.env.SHOPIFY_STOREFRONT_TOKEN;
@@ -475,10 +491,11 @@ const PRODUCT_CACHE_TTL_MS = 1000 * 60 * 60 * 4; // 4 hours
 let fetchInProgress: Promise<CachedProductData[]> | null = null;
 
 // Cache for generated product context string (regenerated when products are fetched)
-let cachedProductContext: { context: string; maxProducts: number; generatedAt: number | null } = {
+let cachedProductContext: { context: string; maxProducts: number; generatedAt: number | null; options?: ProductContextOptions | null } = {
      context: '',
      maxProducts: 50,
      generatedAt: null,
+     options: null,
 };
 
 function normalizeTerm(term: string): string {
@@ -615,7 +632,7 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                pageCount++;
                console.log(`[Shopify] Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ' (first page)'}...`);
                // Build query with conditional cursor
-               const query = cursor
+               const query: string = cursor
                     ? `
                          query fetchAllProducts($cursor: String!) {
                               products(first: ${batchSize}, after: $cursor) {
@@ -725,7 +742,7 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          }
                     `;
 
-               const response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
+               const response: Response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
                     method: 'POST',
                     headers: {
                          'Content-Type': 'application/json',
@@ -741,7 +758,10 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                     throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
                }
 
-               const data = await response.json();
+               // The Shopify GraphQL response structure is known but complex; keep it as any but
+               // explicitly disable the lint rule here to avoid polluting the rest of the file.
+               // eslint-disable-next-line @typescript-eslint/no-explicit-any
+               const data: any = await response.json();
 
                if (data.errors) {
                     console.error('GraphQL errors:', data.errors);
@@ -983,14 +1003,29 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
  * Generate a product context string for the AI (internal, generates from products)
  * @param products - Array of products to generate context from
  * @param maxProducts - Maximum number of products to include
+ * @param options - Controls which heavy fields are included to reduce token usage
  * @returns string - Formatted product context string
  */
-function generateProductContextFromProducts(products: CachedProductData[], maxProducts: number = 50): string {
+function generateProductContextFromProducts(
+     products: CachedProductData[],
+     maxProducts: number = 50,
+     options?: ProductContextOptions
+): string {
      console.log('[Shopify] ========================================');
      console.log('[Shopify] GENERATING PRODUCT CONTEXT FOR AI');
      console.log('[Shopify] ========================================');
      console.log(`[Shopify] Total products available: ${products.length}`);
      console.log(`[Shopify] Max products to include: ${maxProducts}`);
+     
+     // Resolve options with sensible defaults.
+     // By default we keep ALL heavy fields disabled to minimize token usage.
+     const resolvedOptions: Required<ProductContextOptions> = {
+          includeBenefits: options?.includeBenefits ?? false,
+          includeTargetAudience: options?.includeTargetAudience ?? false,
+          includeUsageInstructions: options?.includeUsageInstructions ?? false,
+          includeContraindications: options?.includeContraindications ?? false,
+     };
+     console.log('[Shopify] Product context options:', resolvedOptions);
      
      // Limit products to avoid token limits
      const limitedProducts = products.slice(0, maxProducts);
@@ -1016,8 +1051,13 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
           }
           context += `PRODUCT: ${product.title}\n`;
           
-          if (product.tags && product.tags.length > 0) {
-               context += `  Tags: ${product.tags.join(', ')}\n`;
+          // Always include core, lightweight fields in context
+          if (product.variantId) {
+               context += `  VariantId: ${product.variantId}\n`;
+          }
+          
+          if (product.collection) {
+               context += `  Collection: ${product.collection}\n`;
           }
           
           if (product.collections && product.collections.length > 0) {
@@ -1029,28 +1069,28 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
                context += `  Description: ${shortDesc}${product.description.length > 200 ? '...' : ''}\n`;
           }
           
-          // Add parsed structured data
-          if (product.parsedData.benefits.length > 0) {
+          // Add parsed structured data (conditionally, to save tokens)
+          if (resolvedOptions.includeBenefits && product.parsedData.benefits.length > 0) {
                context += `  Benefits: ${product.parsedData.benefits.join('; ')}\n`;
           }
           
-          if (product.parsedData.targetAudience.length > 0) {
+          if (resolvedOptions.includeTargetAudience && product.parsedData.targetAudience.length > 0) {
                context += `  Target Audience: ${product.parsedData.targetAudience.join('; ')}\n`;
           }
           
-          if (product.parsedData.usageInstructions.dosage) {
+          if (resolvedOptions.includeUsageInstructions && product.parsedData.usageInstructions.dosage) {
                context += `  Dosage: ${product.parsedData.usageInstructions.dosage}\n`;
           }
           
-          if (product.parsedData.usageInstructions.timing) {
+          if (resolvedOptions.includeUsageInstructions && product.parsedData.usageInstructions.timing) {
                context += `  Timing: ${product.parsedData.usageInstructions.timing}\n`;
           }
           
-          if (product.parsedData.usageInstructions.duration) {
+          if (resolvedOptions.includeUsageInstructions && product.parsedData.usageInstructions.duration) {
                context += `  Duration: ${product.parsedData.usageInstructions.duration}\n`;
           }
           
-          if (product.parsedData.contraindications.length > 0) {
+          if (resolvedOptions.includeContraindications && product.parsedData.contraindications.length > 0) {
                context += `  Contraindications: ${product.parsedData.contraindications.join('; ')}\n`;
           }
           
@@ -1060,7 +1100,11 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
                let sectionsAdded = 0;
                
                // Bienfaits (Benefits)
-               if (extracted.bienfaits.found && extracted.bienfaits.bullet_points.length > 0) {
+               if (
+                    resolvedOptions.includeBenefits &&
+                    extracted.bienfaits.found &&
+                    extracted.bienfaits.bullet_points.length > 0
+               ) {
                     context += `  Extracted Benefits (from HTML):\n`;
                     extracted.bienfaits.bullet_points.forEach(bp => {
                          if (bp.title && bp.description) {
@@ -1075,7 +1119,11 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
                }
                
                // Pour qui (Target Audience)
-               if (extracted.pour_qui.found && extracted.pour_qui.bullet_points.length > 0) {
+               if (
+                    resolvedOptions.includeTargetAudience &&
+                    extracted.pour_qui.found &&
+                    extracted.pour_qui.bullet_points.length > 0
+               ) {
                     context += `  Extracted Target Audience (from HTML):\n`;
                     extracted.pour_qui.bullet_points.forEach(bp => {
                          if (bp.title && bp.description) {
@@ -1090,7 +1138,11 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
                }
                
                // Mode d'emploi (Usage Instructions)
-               if (extracted.mode_emploi.found && extracted.mode_emploi.bullet_points.length > 0) {
+               if (
+                    resolvedOptions.includeUsageInstructions &&
+                    extracted.mode_emploi.found &&
+                    extracted.mode_emploi.bullet_points.length > 0
+               ) {
                     context += `  Extracted Usage Instructions (from HTML):\n`;
                     extracted.mode_emploi.bullet_points.forEach(bp => {
                          if (bp.title && bp.description) {
@@ -1105,7 +1157,11 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
                }
                
                // Contre-indication (Contraindications)
-               if (extracted.contre_indication.found && extracted.contre_indication.bullet_points.length > 0) {
+               if (
+                    resolvedOptions.includeContraindications &&
+                    extracted.contre_indication.found &&
+                    extracted.contre_indication.bullet_points.length > 0
+               ) {
                     context += `  Extracted Contraindications (from HTML):\n`;
                     extracted.contre_indication.bullet_points.forEach(bp => {
                          if (bp.title && bp.description) {
@@ -1124,7 +1180,11 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
                }
           }
           
+          // Core commercial info (always included)
           context += `  Price: ${product.price} ${product.currency}\n`;
+          if (typeof product.discountPercentage === 'number') {
+               context += `  DiscountPercentage: ${product.discountPercentage}\n`;
+          }
           context += `  Available: ${product.available ? 'Yes' : 'No'}\n`;
           
           context += '\n';
@@ -1153,14 +1213,25 @@ function generateProductContextFromProducts(products: CachedProductData[], maxPr
  * @param maxProducts - Maximum number of products to include (default: 50, to avoid token limits)
  * @returns Promise<string> - Formatted product context string
  */
-export async function generateProductContext(maxProducts: number = 50): Promise<string> {
+export async function generateProductContext(
+     maxProducts: number = 50,
+     options?: ProductContextOptions
+): Promise<string> {
      try {
+          const normalizeOptions = (opts?: ProductContextOptions | null): Required<ProductContextOptions> => ({
+               includeBenefits: opts?.includeBenefits ?? false,
+               includeTargetAudience: opts?.includeTargetAudience ?? false,
+               includeUsageInstructions: opts?.includeUsageInstructions ?? false,
+               includeContraindications: opts?.includeContraindications ?? false,
+          });
+
           // Check if we have a cached context for the same maxProducts
           if (cachedProductContext.context && 
               cachedProductContext.maxProducts === maxProducts && 
               cachedProductContext.generatedAt &&
               cachedProducts.fetchedAt &&
-              cachedProductContext.generatedAt >= cachedProducts.fetchedAt) {
+              cachedProductContext.generatedAt >= cachedProducts.fetchedAt &&
+              JSON.stringify(normalizeOptions(cachedProductContext.options)) === JSON.stringify(normalizeOptions(options))) {
                console.log(`[Shopify] Using cached product context (${cachedProductContext.context.length} characters)`);
                return cachedProductContext.context;
           }
@@ -1169,13 +1240,14 @@ export async function generateProductContext(maxProducts: number = 50): Promise<
           const products = await fetchAllProductsWithParsedData();
           
           // Generate context from products
-          const context = generateProductContextFromProducts(products, maxProducts);
+          const context = generateProductContextFromProducts(products, maxProducts, options);
           
           // Cache the generated context
           cachedProductContext = {
                context,
                maxProducts,
                generatedAt: Date.now(),
+               options,
           };
 
           console.log(`[Shopify] Generated and cached product context (${context.length} characters, ${maxProducts} products)`);
@@ -1190,6 +1262,36 @@ export async function generateProductContext(maxProducts: number = 50): Promise<
           }
           
           return '\n\nNote: Product catalog information is temporarily unavailable. Please provide general advice based on your knowledge.\n';
+     }
+}
+
+/**
+ * Generate a product context string focused ONLY on a specific set of products
+ * identified by their variant IDs. This is used when the chat has already
+ * recommended concrete products and the user then asks detailed questions
+ * (dosage, duration, contraindications, etc.) about those products.
+ */
+export async function generateProductContextForVariantIds(
+     variantIds: string[],
+     options?: ProductContextOptions
+): Promise<string> {
+     if (!variantIds || variantIds.length === 0) {
+          return '';
+     }
+
+     try {
+          const products = await fetchAllProductsWithParsedData();
+          const subset = products.filter(p => variantIds.includes(p.variantId));
+
+          if (subset.length === 0) {
+               console.warn('[Shopify] No products found for requested variant IDs in generateProductContextForVariantIds');
+               return '';
+          }
+
+          return generateProductContextFromProducts(subset, subset.length, options);
+     } catch (error) {
+          console.error('[Shopify] Error generating product context for variant IDs:', error);
+          return '';
      }
 }
 
