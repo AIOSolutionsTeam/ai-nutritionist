@@ -116,6 +116,27 @@ class PDFGenerator {
      }
 
      /**
+      * Get the temp directory path
+      * In Lambda/serverless environments, use /tmp (the only writable directory)
+      * Otherwise, use process.cwd() + '/temp'
+      */
+     private getTempDir(): string {
+          // Check if we're in a Lambda/serverless environment
+          // Lambda sets LAMBDA_TASK_ROOT or AWS_LAMBDA_FUNCTION_NAME
+          // Also check if process.cwd() is /var/task (Lambda's read-only directory)
+          const isLambda = 
+               process.env.LAMBDA_TASK_ROOT !== undefined ||
+               process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined ||
+               process.cwd() === '/var/task';
+          
+          if (isLambda) {
+               return '/tmp';
+          }
+          
+          return path.join(process.cwd(), 'temp');
+     }
+
+     /**
       * Generate a personalized nutrition plan PDF
       */
      async generateNutritionPlanPDF(
@@ -134,10 +155,10 @@ class PDFGenerator {
 
           // Generate unique filename if not provided
           const filename = outputPath || this.generateFilename(nutritionPlan.userProfile.userId);
-          const fullPath = path.join(process.cwd(), 'temp', filename);
+          const tempDir = this.getTempDir();
+          const fullPath = path.join(tempDir, filename);
 
           // Ensure temp directory exists
-          const tempDir = path.dirname(fullPath);
           if (!fs.existsSync(tempDir)) {
                fs.mkdirSync(tempDir, { recursive: true });
           }
@@ -904,7 +925,7 @@ class PDFGenerator {
       * Clean up old PDF files (optional utility method)
       */
      async cleanupOldPDFs(maxAgeHours: number = 24): Promise<void> {
-          const tempDir = path.join(process.cwd(), 'temp');
+          const tempDir = this.getTempDir();
 
           if (!fs.existsSync(tempDir)) {
                return;
@@ -933,6 +954,28 @@ export const pdfGenerator = new PDFGenerator();
 
 // Export types for external use
 export type { NutritionPlan, PDFConfig };
+
+/**
+ * Get the temp directory path
+ * In Lambda/serverless environments, use /tmp (the only writable directory)
+ * Otherwise, use process.cwd() + '/temp'
+ * This utility function can be used outside the PDFGenerator class
+ */
+export function getTempDir(): string {
+     // Check if we're in a Lambda/serverless environment
+     // Lambda sets LAMBDA_TASK_ROOT or AWS_LAMBDA_FUNCTION_NAME
+     // Also check if process.cwd() is /var/task (Lambda's read-only directory)
+     const isLambda = 
+          process.env.LAMBDA_TASK_ROOT !== undefined ||
+          process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined ||
+          process.cwd() === '/var/task';
+     
+     if (isLambda) {
+          return '/tmp';
+     }
+     
+     return path.join(process.cwd(), 'temp');
+}
 
 // Utility function to create a sample nutrition plan (matching VIGAIA template)
 export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionPlan {

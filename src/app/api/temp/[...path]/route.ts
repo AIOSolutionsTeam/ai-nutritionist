@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { getTempDir } from '@/lib/pdf';
 
 export async function GET(
      request: NextRequest,
@@ -9,10 +10,10 @@ export async function GET(
      try {
           const { path: pathArray } = await params;
           const filePath = pathArray.join('/');
-          const fullPath = path.join(process.cwd(), 'temp', filePath);
+          const tempDir = getTempDir();
+          const fullPath = path.join(tempDir, filePath);
 
           // Security check - ensure the file is within the temp directory
-          const tempDir = path.join(process.cwd(), 'temp');
           const resolvedPath = path.resolve(fullPath);
           const resolvedTempDir = path.resolve(tempDir);
 
