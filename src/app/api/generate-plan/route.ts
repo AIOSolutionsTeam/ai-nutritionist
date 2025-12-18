@@ -98,8 +98,16 @@ Profil utilisateur:
                }
           }
 
-          // Map supplements to ProductSearchResult format
-          const supplements: Array<ProductSearchResult & { moment?: string; dosage?: string; duration?: string; comments?: string }> = []
+          // Map supplements to match NutritionPlan format (with index signature)
+          const supplements: Array<{
+               title: string;
+               description?: string;
+               dosage?: string;
+               moment?: string;
+               duration?: string;
+               comments?: string;
+               [key: string]: unknown;
+          }> = []
           
           if (planData.supplements && Array.isArray(planData.supplements)) {
                for (const supplement of planData.supplements) {
@@ -121,6 +129,8 @@ Profil utilisateur:
                     if (matchingProduct) {
                          supplements.push({
                               ...matchingProduct,
+                              title: matchingProduct.title,
+                              description: matchingProduct.description,
                               moment: supplement.moment || 'À définir',
                               dosage: supplement.dosage || '',
                               duration: supplement.duration || 'En continu',
@@ -130,11 +140,7 @@ Profil utilisateur:
                          // Create a placeholder product
                          supplements.push({
                               title: supplement.title,
-                              price: 0,
-                              image: '',
-                              variantId: '',
-                              available: false,
-                              currency: 'EUR',
+                              description: supplement.description,
                               moment: supplement.moment || 'À définir',
                               dosage: supplement.dosage || '',
                               duration: supplement.duration || 'En continu',
@@ -150,6 +156,8 @@ Profil utilisateur:
                recommendedProducts.forEach(product => {
                     supplements.push({
                          ...product,
+                         title: product.title,
+                         description: product.description,
                          moment: 'Selon les besoins',
                          duration: 'En continu',
                          comments: product.description || ''
@@ -243,10 +251,20 @@ function createDefaultPlan(
      }
 
      // Map recommended products to supplements only if we have products
-     const supplements: Array<ProductSearchResult & { moment?: string; duration?: string; comments?: string }> = 
+     const supplements: Array<{
+          title: string;
+          description?: string;
+          dosage?: string;
+          moment?: string;
+          duration?: string;
+          comments?: string;
+          [key: string]: unknown;
+     }> = 
           hasProducts && recommendedProducts.length > 0
                ? recommendedProducts.map(product => ({
                     ...product,
+                    title: product.title,
+                    description: product.description,
                     moment: 'Selon les besoins',
                     duration: 'En continu',
                     comments: product.description || ''
