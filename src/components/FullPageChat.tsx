@@ -2253,7 +2253,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                 message.isUser ? "flex-row-reverse space-x-reverse" : ""
               } ${message.isUser ? "" : "animate-fade-in"}`}
               style={message.isUser ? {} : { 
-                animationDelay: `${index * 0.1}s`
+                animationDelay: `${Math.min(index * 0.03, 0.15)}s`
               }}
             >
               {!message.isUser && <Avatar isUser={false} />}
