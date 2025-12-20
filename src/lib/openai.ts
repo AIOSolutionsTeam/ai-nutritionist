@@ -491,17 +491,33 @@ IMPORTANT:
 
                     // Try to extract a Retry-After header if present
                     const headers = errorObj?.headers
-                    const retryAfterHeader = headers?.['retry-after'] || headers?.['Retry-After']
-                    if (retryAfterHeader) {
-                         const parsed = parseInt(retryAfterHeader, 10)
-                         if (!Number.isNaN(parsed) && parsed > 0) {
-                              retryAfterMs = parsed * 1000
+                    if (headers) {
+                         // Handle Headers object (from fetch API)
+                         if (headers instanceof Headers) {
+                              const retryAfterHeader = headers.get('retry-after') || headers.get('Retry-After')
+                              if (retryAfterHeader) {
+                                   const parsed = parseFloat(retryAfterHeader)
+                                   if (!Number.isNaN(parsed) && parsed > 0) {
+                                        retryAfterMs = parsed * 1000
+                                   }
+                              }
+                         } else if (typeof headers === 'object') {
+                              // Handle plain object
+                              const retryAfterHeader = (headers as Record<string, string>)['retry-after'] || 
+                                                     (headers as Record<string, string>)['Retry-After']
+                              if (retryAfterHeader) {
+                                   const parsed = parseFloat(retryAfterHeader)
+                                   if (!Number.isNaN(parsed) && parsed > 0) {
+                                        retryAfterMs = parsed * 1000
+                                   }
+                              }
                          }
                     }
 
                     const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                     this.quotaResetAt = Date.now() + cooldownMs
 
+                    console.warn(`[OpenAIService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                     throw new AIQuotaError('openai', 'OpenAI quota exceeded', retryAfterMs)
                }
 
@@ -558,7 +574,7 @@ CRITICAL RULES:
 5. **Meal planning**: Create realistic, culturally appropriate meals (considering halal if relevant) for 6 meals per day: breakfast, morningSnack, lunch, afternoonSnack, dinner, eveningSnack
 6. **Calorie calculation**: Estimate daily calories based on age, gender, and goals from the profile
 7. **Macronutrients**: Calculate appropriate protein, carbs, and fats percentages and grams based on the user's goals
-8. **Activity level**: Determine appropriate activity level based on goals and profile
+8. **Activity level**: ONLY include activityLevel in the response if it is explicitly provided in the user profile data. If not provided, set activityLevel to null or omit it from the response.
 9. **Personalized tips**: Provide 3-5 practical, actionable tips specific to the user's profile
 
 RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/after):
@@ -569,7 +585,7 @@ RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/a
     "carbs": { "grams": number, "percentage": number },
     "fats": { "grams": number, "percentage": number }
   },
-  "activityLevel": "string",
+  "activityLevel": "string" | null,
   "mealPlan": {
     "breakfast": ["string", "string"],
     "morningSnack": ["string"],
@@ -692,17 +708,33 @@ Remember: Return ONLY the JSON object, nothing else.`
                     let retryAfterMs: number | undefined
 
                     const headers = errorObj?.headers
-                    const retryAfterHeader = headers?.['retry-after'] || headers?.['Retry-After']
-                    if (retryAfterHeader) {
-                         const parsed = parseInt(retryAfterHeader, 10)
-                         if (!Number.isNaN(parsed) && parsed > 0) {
-                              retryAfterMs = parsed * 1000
+                    if (headers) {
+                         // Handle Headers object (from fetch API)
+                         if (headers instanceof Headers) {
+                              const retryAfterHeader = headers.get('retry-after') || headers.get('Retry-After')
+                              if (retryAfterHeader) {
+                                   const parsed = parseFloat(retryAfterHeader)
+                                   if (!Number.isNaN(parsed) && parsed > 0) {
+                                        retryAfterMs = parsed * 1000
+                                   }
+                              }
+                         } else if (typeof headers === 'object') {
+                              // Handle plain object
+                              const retryAfterHeader = (headers as Record<string, string>)['retry-after'] || 
+                                                     (headers as Record<string, string>)['Retry-After']
+                              if (retryAfterHeader) {
+                                   const parsed = parseFloat(retryAfterHeader)
+                                   if (!Number.isNaN(parsed) && parsed > 0) {
+                                        retryAfterMs = parsed * 1000
+                                   }
+                              }
                          }
                     }
 
                     const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                     this.quotaResetAt = Date.now() + cooldownMs
 
+                    console.warn(`[OpenAIService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                     throw new AIQuotaError('openai', 'OpenAI quota exceeded', retryAfterMs)
                }
 
@@ -1246,26 +1278,104 @@ IMPORTANT:
                     }
                } catch (modelError) {
                     console.error(`Gemini model ${modelName} failed:`, modelError)
+                    // Log full error structure for debugging quota errors
+                    if (modelError && typeof modelError === 'object') {
+                         const errorObj = modelError as Record<string, unknown>
+                         if (errorObj.status === 429 || errorObj.statusText === 'Too Many Requests') {
+                              console.error(`[GeminiService] Quota error details:`, {
+                                   status: errorObj.status,
+                                   statusText: errorObj.statusText,
+                                   errorDetails: errorObj.errorDetails,
+                                   message: errorObj.message,
+                                   headers: errorObj.headers
+                              })
+                         }
+                    }
                     lastError = modelError instanceof Error ? modelError : new Error(String(modelError))
 
                     // If this is a quota / rate limit error, stop trying other models immediately
                     if (this.isQuotaError(modelError)) {
                          let retryAfterMs: number | undefined
-                         const errorObj = modelError as { message?: unknown }
-                         const message: string = typeof errorObj?.message === 'string'
-                              ? errorObj.message
-                              : ''
-                         const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
-                         if (match) {
-                              const seconds = parseFloat(match[1])
-                              if (!Number.isNaN(seconds) && seconds > 0) {
-                                   retryAfterMs = seconds * 1000
+                         const errorObj = modelError as { 
+                              message?: unknown
+                              status?: number
+                              statusText?: string
+                              errorDetails?: Array<Record<string, unknown>>
+                              headers?: Record<string, string>
+                         }
+                         
+                         // Try to extract retry-after from various sources
+                         // 1. Check errorDetails array for RetryInfo with retryDelay
+                         if (errorObj?.errorDetails && Array.isArray(errorObj.errorDetails)) {
+                              for (const detail of errorObj.errorDetails) {
+                                   const detailObj = detail as Record<string, unknown>
+                                   // Check for Google RPC RetryInfo format: { '@type': '...RetryInfo', retryDelay: '23s' }
+                                   const type = detailObj['@type']
+                                   if (type && typeof type === 'string' && type.includes('RetryInfo')) {
+                                        const retryDelay = detailObj.retryDelay
+                                        if (typeof retryDelay === 'string') {
+                                             // Parse formats like "23s", "23.5s", "23 seconds"
+                                             const match = retryDelay.match(/(\d+(?:\.\d+)?)\s*(?:seconds?|s)?/i)
+                                             if (match) {
+                                                  const seconds = parseFloat(match[1])
+                                                  if (!Number.isNaN(seconds) && seconds > 0) {
+                                                       retryAfterMs = seconds * 1000
+                                                       break
+                                                  }
+                                             }
+                                        } else if (typeof retryDelay === 'number' && retryDelay > 0) {
+                                             // If it's already a number, assume it's in seconds
+                                             retryAfterMs = retryDelay * 1000
+                                             break
+                                        }
+                                   }
+                                   // Fallback: check for retryAfterMs or retryAfter fields
+                                   if (!retryAfterMs) {
+                                        if (detailObj.retryAfterMs && typeof detailObj.retryAfterMs === 'number' && detailObj.retryAfterMs > 0) {
+                                             retryAfterMs = detailObj.retryAfterMs
+                                             break
+                                        }
+                                        if (detailObj.retryAfter) {
+                                             const parsed = parseFloat(String(detailObj.retryAfter))
+                                             if (!Number.isNaN(parsed) && parsed > 0) {
+                                                  retryAfterMs = parsed * 1000
+                                                  break
+                                             }
+                                        }
+                                   }
+                              }
+                         }
+                         
+                         // 2. Check headers for Retry-After
+                         if (!retryAfterMs && errorObj?.headers) {
+                              const retryAfterHeader = errorObj.headers['retry-after'] || errorObj.headers['Retry-After']
+                              if (retryAfterHeader) {
+                                   const parsed = parseFloat(retryAfterHeader)
+                                   if (!Number.isNaN(parsed) && parsed > 0) {
+                                        retryAfterMs = parsed * 1000
+                                   }
+                              }
+                         }
+                         
+                         // 3. Try to extract from error message
+                         if (!retryAfterMs) {
+                              const message: string = typeof errorObj?.message === 'string'
+                                   ? errorObj.message
+                                   : ''
+                              const match = message.match(/retry in (\d+(?:\.\d+)?)s/i) || 
+                                          message.match(/retry.*?(\d+(?:\.\d+)?)\s*(?:seconds?|s)/i)
+                              if (match) {
+                                   const seconds = parseFloat(match[1])
+                                   if (!Number.isNaN(seconds) && seconds > 0) {
+                                        retryAfterMs = seconds * 1000
+                                   }
                               }
                          }
 
                          const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                          this.quotaResetAt = Date.now() + cooldownMs
 
+                         console.warn(`[GeminiService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                          throw new AIQuotaError('gemini', 'Gemini quota exceeded', retryAfterMs)
                     }
 
@@ -1336,7 +1446,7 @@ CRITICAL RULES:
 5. **Meal planning**: Create realistic, culturally appropriate meals (considering halal if relevant) for 6 meals per day: breakfast, morningSnack, lunch, afternoonSnack, dinner, eveningSnack
 6. **Calorie calculation**: Estimate daily calories based on age, gender, and goals from the profile
 7. **Macronutrients**: Calculate appropriate protein, carbs, and fats percentages and grams based on the user's goals
-8. **Activity level**: Determine appropriate activity level based on goals and profile
+8. **Activity level**: ONLY include activityLevel in the response if it is explicitly provided in the user profile data. If not provided, set activityLevel to null or omit it from the response.
 9. **Personalized tips**: Provide 3-5 practical, actionable tips specific to the user's profile
 
 RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/after):
@@ -1347,7 +1457,7 @@ RESPONSE FORMAT - Return ONLY this JSON structure (no markdown, no text before/a
     "carbs": { "grams": number, "percentage": number },
     "fats": { "grams": number, "percentage": number }
   },
-  "activityLevel": "string",
+  "activityLevel": "string" | null,
   "mealPlan": {
     "breakfast": ["string", "string"],
     "morningSnack": ["string"],
@@ -1476,26 +1586,104 @@ Remember: Return ONLY the JSON object, nothing else.`
                     }
                } catch (modelError) {
                     console.error(`[GeminiService] Model ${modelName} failed:`, modelError)
+                    // Log full error structure for debugging quota errors
+                    if (modelError && typeof modelError === 'object') {
+                         const errorObj = modelError as Record<string, unknown>
+                         if (errorObj.status === 429 || errorObj.statusText === 'Too Many Requests') {
+                              console.error(`[GeminiService] Quota error details:`, {
+                                   status: errorObj.status,
+                                   statusText: errorObj.statusText,
+                                   errorDetails: errorObj.errorDetails,
+                                   message: errorObj.message,
+                                   headers: errorObj.headers
+                              })
+                         }
+                    }
                     lastError = modelError instanceof Error ? modelError : new Error(String(modelError))
 
                     // If this is a quota / rate limit error, stop trying other models immediately
                     if (this.isQuotaError(modelError)) {
                          let retryAfterMs: number | undefined
-                         const errorObj = modelError as { message?: unknown }
-                         const message: string = typeof errorObj?.message === 'string'
-                              ? errorObj.message
-                              : ''
-                         const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
-                         if (match) {
-                              const seconds = parseFloat(match[1])
-                              if (!Number.isNaN(seconds) && seconds > 0) {
-                                   retryAfterMs = seconds * 1000
+                         const errorObj = modelError as { 
+                              message?: unknown
+                              status?: number
+                              statusText?: string
+                              errorDetails?: Array<Record<string, unknown>>
+                              headers?: Record<string, string>
+                         }
+                         
+                         // Try to extract retry-after from various sources
+                         // 1. Check errorDetails array for RetryInfo with retryDelay
+                         if (errorObj?.errorDetails && Array.isArray(errorObj.errorDetails)) {
+                              for (const detail of errorObj.errorDetails) {
+                                   const detailObj = detail as Record<string, unknown>
+                                   // Check for Google RPC RetryInfo format: { '@type': '...RetryInfo', retryDelay: '23s' }
+                                   const type = detailObj['@type']
+                                   if (type && typeof type === 'string' && type.includes('RetryInfo')) {
+                                        const retryDelay = detailObj.retryDelay
+                                        if (typeof retryDelay === 'string') {
+                                             // Parse formats like "23s", "23.5s", "23 seconds"
+                                             const match = retryDelay.match(/(\d+(?:\.\d+)?)\s*(?:seconds?|s)?/i)
+                                             if (match) {
+                                                  const seconds = parseFloat(match[1])
+                                                  if (!Number.isNaN(seconds) && seconds > 0) {
+                                                       retryAfterMs = seconds * 1000
+                                                       break
+                                                  }
+                                             }
+                                        } else if (typeof retryDelay === 'number' && retryDelay > 0) {
+                                             // If it's already a number, assume it's in seconds
+                                             retryAfterMs = retryDelay * 1000
+                                             break
+                                        }
+                                   }
+                                   // Fallback: check for retryAfterMs or retryAfter fields
+                                   if (!retryAfterMs) {
+                                        if (detailObj.retryAfterMs && typeof detailObj.retryAfterMs === 'number' && detailObj.retryAfterMs > 0) {
+                                             retryAfterMs = detailObj.retryAfterMs
+                                             break
+                                        }
+                                        if (detailObj.retryAfter) {
+                                             const parsed = parseFloat(String(detailObj.retryAfter))
+                                             if (!Number.isNaN(parsed) && parsed > 0) {
+                                                  retryAfterMs = parsed * 1000
+                                                  break
+                                             }
+                                        }
+                                   }
+                              }
+                         }
+                         
+                         // 2. Check headers for Retry-After
+                         if (!retryAfterMs && errorObj?.headers) {
+                              const retryAfterHeader = errorObj.headers['retry-after'] || errorObj.headers['Retry-After']
+                              if (retryAfterHeader) {
+                                   const parsed = parseFloat(retryAfterHeader)
+                                   if (!Number.isNaN(parsed) && parsed > 0) {
+                                        retryAfterMs = parsed * 1000
+                                   }
+                              }
+                         }
+                         
+                         // 3. Try to extract from error message
+                         if (!retryAfterMs) {
+                              const message: string = typeof errorObj?.message === 'string'
+                                   ? errorObj.message
+                                   : ''
+                              const match = message.match(/retry in (\d+(?:\.\d+)?)s/i) || 
+                                          message.match(/retry.*?(\d+(?:\.\d+)?)\s*(?:seconds?|s)/i)
+                              if (match) {
+                                   const seconds = parseFloat(match[1])
+                                   if (!Number.isNaN(seconds) && seconds > 0) {
+                                        retryAfterMs = seconds * 1000
+                                   }
                               }
                          }
 
                          const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                          this.quotaResetAt = Date.now() + cooldownMs
 
+                         console.warn(`[GeminiService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                          throw new AIQuotaError('gemini', 'Gemini quota exceeded', retryAfterMs)
                     }
 
