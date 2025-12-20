@@ -65,6 +65,13 @@ export async function GET(request: NextRequest) {
                     // Update or create profile with Shopify customer info
                     if (existingProfile) {
                          // Update existing profile with Shopify customer info
+                         console.log('🔄 [SHOPIFY API] Updating existing profile with Shopify customer info');
+                         console.log('📋 [SHOPIFY API] Update data:', JSON.stringify({
+                              userId: existingProfile.userId,
+                              shopifyCustomerId: customerInfo.customerId,
+                              shopifyCustomerName: customerInfo.customerName
+                         }, null, 2));
+                         
                          await dbService.updateUserProfile(existingProfile.userId, {
                               shopifyCustomerId: customerInfo.customerId,
                               shopifyCustomerName: customerInfo.customerName
@@ -74,24 +81,32 @@ export async function GET(request: NextRequest) {
                          // Note: Full profile will be created during onboarding
                          // We just store the Shopify customer info for now
                          // The userId will be set to the Shopify customer ID
+                         const profileData = {
+                              userId: `shopify_${customerInfo.customerId}`,
+                              age: 30, // Default, will be updated during onboarding
+                              gender: 'prefer-not-to-say' as const, // Default, will be updated during onboarding
+                              weight: 70, // Default weight
+                              height: 170, // Default height
+                              goals: [],
+                              allergies: [],
+                              budget: {
+                                   min: 0,
+                                   max: 1000,
+                                   currency: 'USD'
+                              },
+                              shopifyCustomerId: customerInfo.customerId,
+                              shopifyCustomerName: customerInfo.customerName
+                         };
+                         
+                         console.log('🆕 [SHOPIFY API] Creating minimal profile for Shopify customer');
+                         console.log('📋 [SHOPIFY API] Profile data prepared:', JSON.stringify(profileData, null, 2));
+                         
                          try {
-                              await dbService.createUserProfile({
-                                   userId: `shopify_${customerInfo.customerId}`,
-                                   age: 30, // Default, will be updated during onboarding
-                                   gender: 'prefer-not-to-say', // Default, will be updated during onboarding
-                                   goals: [],
-                                   allergies: [],
-                                   budget: {
-                                        min: 0,
-                                        max: 1000,
-                                        currency: 'USD'
-                                   },
-                                   shopifyCustomerId: customerInfo.customerId,
-                                   shopifyCustomerName: customerInfo.customerName
-                              });
+                              await dbService.createUserProfile(profileData);
                          } catch (error: unknown) {
                               // If profile creation fails (e.g., duplicate), try to update
                               if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
+                                   console.log('⚠️ [SHOPIFY API] Profile already exists, updating instead');
                                    const profile = await dbService.getUserProfile(`shopify_${customerInfo.customerId}`);
                                    if (profile) {
                                         await dbService.updateUserProfile(profile.userId, {

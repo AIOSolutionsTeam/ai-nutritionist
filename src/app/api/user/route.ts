@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
           const body = await request.json();
 
           // Validate required fields
-          const { userId, age, gender, goals, allergies, budget } = body;
+          const { userId, age, gender, weight, height, goals, allergies, budget } = body;
 
           if (!userId) {
                return NextResponse.json(
@@ -98,6 +98,20 @@ export async function POST(request: NextRequest) {
           if (!gender || !['male', 'female', 'other', 'prefer-not-to-say'].includes(gender)) {
                return NextResponse.json(
                     { error: 'gender must be one of: male, female, other, prefer-not-to-say' },
+                    { status: 400 }
+               );
+          }
+
+          if (!weight || typeof weight !== 'number' || weight < 1 || weight > 500) {
+               return NextResponse.json(
+                    { error: 'weight must be a number between 1 and 500 (kg)' },
+                    { status: 400 }
+               );
+          }
+
+          if (!height || typeof height !== 'number' || height < 50 || height > 250) {
+               return NextResponse.json(
+                    { error: 'height must be a number between 50 and 250 (cm)' },
                     { status: 400 }
                );
           }
@@ -138,6 +152,8 @@ export async function POST(request: NextRequest) {
                userId: string;
                age: number;
                gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+               weight: number;
+               height: number;
                goals: string[];
                allergies: string[];
                budget: { min: number; max: number; currency: string };
@@ -147,6 +163,8 @@ export async function POST(request: NextRequest) {
                userId,
                age,
                gender,
+               weight,
+               height,
                goals: goals || [],
                allergies: allergies || [],
                budget: {
@@ -168,6 +186,9 @@ export async function POST(request: NextRequest) {
 
           if (existingProfile) {
                // Update existing profile
+               console.log('🔄 [API POST] Updating existing profile for userId:', userId);
+               console.log('📋 [API POST] Profile data prepared for update:', JSON.stringify(profileData, null, 2));
+               
                const updatedProfile = await dbService.updateUserProfile(userId, profileData);
 
                if (!updatedProfile) {
@@ -180,6 +201,9 @@ export async function POST(request: NextRequest) {
                userProfile = updatedProfile;
           } else {
                // Create new profile
+               console.log('🆕 [API POST] Creating new profile for userId:', userId);
+               console.log('📋 [API POST] Profile data prepared for creation:', JSON.stringify(profileData, null, 2));
+               
                userProfile = await dbService.createUserProfile(profileData);
           }
 
@@ -319,6 +343,9 @@ export async function PUT(request: NextRequest) {
                };
           }
 
+          console.log('🔄 [API PUT] Updating profile for userId:', userId);
+          console.log('📋 [API PUT] Update data prepared:', JSON.stringify(updateData, null, 2));
+          
           const updatedProfile = await dbService.updateUserProfile(userId, updateData);
 
           if (!updatedProfile) {

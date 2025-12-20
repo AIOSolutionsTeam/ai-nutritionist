@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema, Model } from 'mongoose';
+﻿import mongoose, { Document, Schema, Model } from 'mongoose';
 
 // Persist listener registration across hot reloads to avoid MaxListeners warnings
 const globalWithMongoose = global as typeof globalThis & {
@@ -16,6 +16,8 @@ export interface IUserProfile extends Document {
      userId: string;
      age: number;
      gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+     weight: number; // Weight in kg (required)
+     height: number; // Height in cm (required)
      goals: string[];
      allergies: string[];
      budget: {
@@ -48,6 +50,18 @@ const UserProfileSchema = new Schema<IUserProfile>({
           type: String,
           required: true,
           enum: ['male', 'female', 'other', 'prefer-not-to-say']
+     },
+     weight: {
+          type: Number,
+          required: true,
+          min: 1,
+          max: 500
+     },
+     height: {
+          type: Number,
+          required: true,
+          min: 50,
+          max: 250
      },
      goals: {
           type: [String],
@@ -184,6 +198,8 @@ class DatabaseService {
           userId: string;
           age: number;
           gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+          weight: number;
+          height: number;
           goals: string[];
           allergies: string[];
           budget: {
@@ -199,8 +215,32 @@ class DatabaseService {
                if (mongoose.connection.readyState !== 1) {
                     await this.connect();
                }
+               
+               // Log data being sent to database
+               console.log('📤 [DB CREATE] Data being sent to database:', JSON.stringify(userData, null, 2));
+               
                const userProfile = new UserProfile(userData);
-               return await userProfile.save();
+               const savedProfile = await userProfile.save();
+               
+               // Log data that was saved
+               console.log('✅ [DB CREATE] Data saved to database:', JSON.stringify({
+                    userId: savedProfile.userId,
+                    age: savedProfile.age,
+                    gender: savedProfile.gender,
+                    weight: savedProfile.weight,
+                    height: savedProfile.height,
+                    goals: savedProfile.goals,
+                    allergies: savedProfile.allergies,
+                    budget: savedProfile.budget,
+                    shopifyCustomerId: savedProfile.shopifyCustomerId,
+                    shopifyCustomerName: savedProfile.shopifyCustomerName,
+                    lastInteraction: savedProfile.lastInteraction,
+                    createdAt: savedProfile.createdAt,
+                    updatedAt: savedProfile.updatedAt,
+                    _id: savedProfile._id
+               }, null, 2));
+               
+               return savedProfile;
           } catch (error) {
                console.error('Error creating user profile:', error);
                throw error;
@@ -236,6 +276,8 @@ class DatabaseService {
      public async updateUserProfile(userId: string, updates: Partial<{
           age: number;
           gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+          weight: number;
+          height: number;
           goals: string[];
           allergies: string[];
           budget: {
@@ -251,11 +293,44 @@ class DatabaseService {
                if (mongoose.connection.readyState !== 1) {
                     await this.connect();
                }
-               return await UserProfile.findOneAndUpdate(
+               
+               const updateData = { ...updates, lastInteraction: new Date() };
+               
+               // Log data being sent to database
+               console.log('📤 [DB UPDATE] Data being sent to database:', JSON.stringify({
+                    userId,
+                    updates: updateData
+               }, null, 2));
+               
+               const updatedProfile = await UserProfile.findOneAndUpdate(
                     { userId },
-                    { ...updates, lastInteraction: new Date() },
+                    updateData,
                     { new: true, runValidators: true }
                );
+               
+               // Log data that was saved
+               if (updatedProfile) {
+                    console.log('✅ [DB UPDATE] Data saved to database:', JSON.stringify({
+                         userId: updatedProfile.userId,
+                         age: updatedProfile.age,
+                         gender: updatedProfile.gender,
+                         weight: updatedProfile.weight,
+                         height: updatedProfile.height,
+                         goals: updatedProfile.goals,
+                         allergies: updatedProfile.allergies,
+                         budget: updatedProfile.budget,
+                         shopifyCustomerId: updatedProfile.shopifyCustomerId,
+                         shopifyCustomerName: updatedProfile.shopifyCustomerName,
+                         lastInteraction: updatedProfile.lastInteraction,
+                         createdAt: updatedProfile.createdAt,
+                         updatedAt: updatedProfile.updatedAt,
+                         _id: updatedProfile._id
+                    }, null, 2));
+               } else {
+                    console.log('⚠️ [DB UPDATE] No profile found to update for userId:', userId);
+               }
+               
+               return updatedProfile;
           } catch (error) {
                console.error('Error updating user profile:', error);
                throw error;
@@ -304,10 +379,29 @@ class DatabaseService {
 
      public async updateLastInteraction(userId: string): Promise<void> {
           try {
-               await UserProfile.findOneAndUpdate(
+               const updateData = { lastInteraction: new Date() };
+               
+               // Log data being sent to database
+               console.log('📤 [DB UPDATE] Updating last interaction:', JSON.stringify({
+                    userId,
+                    updateData
+               }, null, 2));
+               
+               const updatedProfile = await UserProfile.findOneAndUpdate(
                     { userId },
-                    { lastInteraction: new Date() }
+                    updateData,
+                    { new: true }
                );
+               
+               // Log data that was saved
+               if (updatedProfile) {
+                    console.log('✅ [DB UPDATE] Last interaction updated:', JSON.stringify({
+                         userId: updatedProfile.userId,
+                         lastInteraction: updatedProfile.lastInteraction
+                    }, null, 2));
+               } else {
+                    console.log('⚠️ [DB UPDATE] No profile found to update last interaction for userId:', userId);
+               }
           } catch (error) {
                console.error('Error updating last interaction:', error);
                throw error;
