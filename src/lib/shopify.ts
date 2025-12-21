@@ -4,6 +4,7 @@
  */
 
 import { extractProductData } from './product-parser';
+import { getColorAxisForHandle } from './color-axis-loader';
 
 // Types for Shopify API responses
 export interface ShopifyProduct {
@@ -64,6 +65,7 @@ export interface ProductSearchResult {
      isOnSale?: boolean; // Whether the product is currently on sale
      collection?: string; // Primary collection handle (e.g., "energie-et-endurance")
      handle?: string; // Product handle for HTML extraction (e.g., "vitamine-b12")
+     colorAxis?: 'Green' | 'Pink' | 'Blue' | 'Yellow'; // Color axis for recommendation logic
      // Structured product data extracted from description
      benefits?: string[];
      targetAudience?: string[];
@@ -799,6 +801,10 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          metafields: [] // Storefront API doesn't return metafields
                     });
 
+                    // Get color axis from handle
+                    const productHandle = product.handle || '';
+                    const colorAxis = productHandle ? getColorAxisForHandle(productHandle) : undefined;
+
                     const cachedProduct: CachedProductData = {
                          title: product.title,
                          price: price,
@@ -813,14 +819,14 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          collections: collections.length > 0 ? collections : undefined,
                          collection: primaryCollection,
                          description: product.description || '',
+                         handle: productHandle || undefined,
+                         colorAxis: colorAxis,
                          // Structured product data
                          benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
                          targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
                          usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
                          contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
                          parsedData: parsedData,
-                         // Store handle for HTML extraction later
-                         handle: product.handle,
                     };
 
                     allProducts.push(cachedProduct);
@@ -1054,6 +1060,10 @@ function generateProductContextFromProducts(
           // Always include core, lightweight fields in context
           if (product.variantId) {
                context += `  VariantId: ${product.variantId}\n`;
+          }
+          
+          if (product.colorAxis) {
+               context += `  ColorAxis: ${product.colorAxis}\n`;
           }
           
           if (product.collection) {
@@ -1435,6 +1445,10 @@ export async function searchProducts(
                     metafields: [] // Storefront API doesn't return metafields
                });
 
+               // Get color axis from handle
+               const productHandle = product.handle || '';
+               const colorAxis = productHandle ? getColorAxisForHandle(productHandle) : undefined;
+
                return {
                     title: product.title,
                     price: price,
@@ -1448,6 +1462,8 @@ export async function searchProducts(
                     tags: product.tags || [],
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
+                    handle: productHandle || undefined,
+                    colorAxis: colorAxis,
                     // Structured product data
                     benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
                     targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
@@ -1662,6 +1678,10 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                     ? collectionHandles[0] 
                     : undefined;
 
+               // Get color axis from handle
+               const productHandle = product.handle || '';
+               const colorAxis = productHandle ? getColorAxisForHandle(productHandle) : undefined;
+
                return {
                     title: product.title,
                     price: price,
@@ -1676,6 +1696,8 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                     description: product.description || '',
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
+                    handle: productHandle || undefined,
+                    colorAxis: colorAxis,
                };
           });
 
@@ -2387,6 +2409,10 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
                ? collectionHandles[0] 
                : undefined;
 
+          // Get color axis from handle
+          const productHandle = product.handle || '';
+          const colorAxis = productHandle ? getColorAxisForHandle(productHandle) : undefined;
+
           return {
                title: product.title,
                price: price,
@@ -2401,6 +2427,8 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
                description: product.description || '',
                collections: collections.length > 0 ? collections : undefined,
                collection: primaryCollection,
+               handle: productHandle || undefined,
+               colorAxis: colorAxis,
           };
      } catch (error) {
           console.error('Error fetching product by variant ID:', error);

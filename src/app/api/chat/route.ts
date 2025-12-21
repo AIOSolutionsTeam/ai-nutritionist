@@ -129,152 +129,6 @@ function generateProductSearchQueries(response: string): string[] {
 }
 
 /**
- * Extract product names explicitly mentioned in the AI response text
- * Handles patterns like:
- * - "(Ashwagandha, Multivitamine et Oméga 3)"
- * - "Cette combinaison (Ashwagandha, Multivitamine et Oméga 3)"
- * - Lists separated by commas, "et", "and", etc.
- */
-function extractExplicitProductNames(response: string): string[] {
-     const productNames: string[] = []
-     const responseLower = response.toLowerCase()
-     
-     // Map French product names to search-friendly English terms
-     const normalizeProductName = (name: string): string => {
-          const normalized = name.trim().toLowerCase()
-          const nameMap: { [key: string]: string } = {
-               'ashwagandha': 'ashwagandha',
-               'multivitamine': 'multivitamin',
-               'multivitamin': 'multivitamin',
-               'oméga 3': 'omega 3',
-               'omega 3': 'omega 3',
-               'oméga-3': 'omega 3',
-               'omega-3': 'omega 3',
-               'oméga3': 'omega 3',
-               'omega3': 'omega 3',
-               'vitamine d': 'vitamin d',
-               'vitamin d': 'vitamin d',
-               'vitamine c': 'vitamin c',
-               'vitamin c': 'vitamin c',
-               'vitamine b': 'vitamin b',
-               'vitamin b': 'vitamin b',
-               'magnésium': 'magnesium',
-               'magnesium': 'magnesium',
-               'fer': 'iron',
-               'iron': 'iron',
-               'zinc': 'zinc',
-               'calcium': 'calcium',
-               'probiotique': 'probiotic',
-               'probiotic': 'probiotic',
-               'collagène': 'collagen',
-               'collagen': 'collagen',
-               'mélatonine': 'melatonin',
-               'melatonin': 'melatonin'
-          }
-          return nameMap[normalized] || normalized
-     }
-     
-     // Pattern 1: Products in parentheses: (Product1, Product2 et Product3)
-     const parenthesesPattern = /\(([^)]+)\)/g
-     let match
-     while ((match = parenthesesPattern.exec(response)) !== null) {
-          const content = match[1]
-          // Split by comma, semicolon, "et", "and", or other separators
-          // Handle patterns like "Product1, Product2 et Product3" or "Product1, Product2, Product3"
-          const products = content.split(/[,;]\s*|\s+et\s+|\s+and\s+/i)
-               .map(p => p.trim())
-               .filter(p => {
-                    // Filter out common French stop words and very short strings
-                    const trimmed = p.toLowerCase()
-                    return p.length > 2 && 
-                           !trimmed.match(/^(pour|de|du|des|le|la|les|un|une|avec|avec|sont|est)$/i) &&
-                           !trimmed.match(/^(€|eur|euros?)$/i) // Filter out currency mentions
-               })
-               .map(normalizeProductName) // Normalize to search-friendly terms
-          
-          if (products.length > 0) {
-               productNames.push(...products)
-          }
-     }
-     
-     // Pattern 2: Products mentioned after "combinaison", "combination", etc.
-     // This handles: "Cette combinaison (Ashwagandha, Multivitamine et Oméga 3)"
-     const combinaisonPattern = /(?:combinaison|combination|combo)\s*[:\-]?\s*\(?([^)]+)\)?/i
-     const combinaisonMatch = response.match(combinaisonPattern)
-     if (combinaisonMatch && combinaisonMatch[1]) {
-          const products = combinaisonMatch[1].split(/[,;]\s*|\s+et\s+|\s+and\s+/i)
-               .map(p => p.trim())
-               .filter(p => {
-                    const trimmed = p.toLowerCase()
-                    return p.length > 2 && 
-                           !trimmed.match(/^(pour|de|du|des|le|la|les|un|une|avec|avec|sont|est)$/i) &&
-                           !trimmed.match(/^(€|eur|euros?)$/i)
-               })
-               .map(normalizeProductName) // Normalize to search-friendly terms
-          
-          if (products.length > 0) {
-               productNames.push(...products)
-          }
-     }
-     
-     // Pattern 3: Direct mentions of common supplement names in the text (as fallback)
-     // Only check if we haven't found products in parentheses or combinaison patterns
-     if (productNames.length === 0) {
-          const supplementMap: { [key: string]: string } = {
-               'ashwagandha': 'ashwagandha',
-               'multivitamine': 'multivitamin',
-               'multivitamin': 'multivitamin',
-               'oméga 3': 'omega 3',
-               'omega 3': 'omega 3',
-               'oméga-3': 'omega 3',
-               'omega-3': 'omega 3',
-               'oméga3': 'omega 3',
-               'omega3': 'omega 3',
-               'vitamine d': 'vitamin d',
-               'vitamin d': 'vitamin d',
-               'vitamine c': 'vitamin c',
-               'vitamin c': 'vitamin c',
-               'vitamine b': 'vitamin b',
-               'vitamin b': 'vitamin b',
-               'magnésium': 'magnesium',
-               'magnesium': 'magnesium',
-               'fer': 'iron',
-               'iron': 'iron',
-               'zinc': 'zinc',
-               'calcium': 'calcium',
-               'probiotique': 'probiotic',
-               'probiotic': 'probiotic',
-               'collagène': 'collagen',
-               'collagen': 'collagen',
-               'mélatonine': 'melatonin',
-               'melatonin': 'melatonin'
-          }
-          
-          // Check for supplement mentions in the response
-          for (const [frenchName, searchTerm] of Object.entries(supplementMap)) {
-               // Check if mentioned as a standalone word (not part of another word)
-               const regex = new RegExp(`\\b${frenchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-               if (regex.test(responseLower)) {
-                    // Check if we already have this product (avoid duplicates)
-                    const alreadyAdded = productNames.some(p => {
-                         const pLower = p.toLowerCase()
-                         return pLower.includes(searchTerm) || searchTerm.includes(pLower) ||
-                                pLower.includes(frenchName) || frenchName.includes(pLower)
-                    })
-                    if (!alreadyAdded) {
-                         productNames.push(searchTerm)
-                    }
-               }
-          }
-     }
-     
-     // Remove duplicates and filter out very short matches
-     const uniqueNames = [...new Set(productNames)].filter(name => name.length > 2)
-     
-     return uniqueNames
-}
-
-/**
  * Generate complementary product search queries
  * For example: if main product is Vitamin D, suggest Magnesium or K2
  */
@@ -1072,7 +926,6 @@ export async function POST(request: NextRequest) {
           //   AND we know which products were previously recommended (contextVariantIds),
           //   then only include heavy fields for those specific products.
           let productContext: string | undefined
-          let productsBeingSent: ProductSearchResult[] = []
           try {
                const productContextOptions = buildProductContextOptionsFromMessage(messageToProcess)
                const needsHeavyFields =
@@ -1085,11 +938,6 @@ export async function POST(request: NextRequest) {
 
                if (needsHeavyFields && contextVariantIds && contextVariantIds.length > 0) {
                     // Focused context: only for products that were actually recommended earlier
-                    // Fetch products to log them
-                    const allProducts = await fetchAllProductsWithParsedData()
-                    productsBeingSent = allProducts.filter(p => contextVariantIds.includes(p.variantId))
-                    console.log('[API] Products being sent to AI (focused by variantIds):', JSON.stringify(productsBeingSent, null, 2))
-                    
                     productContext = await generateProductContextForVariantIds(contextVariantIds, productContextOptions)
                     console.log(`[API] Product context for variantIds ready (${productContext.length} characters)`, {
                          variantCount: contextVariantIds.length,
@@ -1101,16 +949,12 @@ export async function POST(request: NextRequest) {
 
                     // If for some reason we couldn't build a focused context, fall back to global context
                     if (!productContext || productContext.trim().length === 0) {
-                         productsBeingSent = (await fetchAllProductsWithParsedData()).slice(0, 24)
-                         console.log('[API] Products being sent to AI (fallback global):', JSON.stringify(productsBeingSent, null, 2))
                          productContext = await generateProductContext(24, productContextOptions)
                          console.log('[API] Fallback to global product context after empty focused context')
                     }
                } else if (needsHeavyFields) {
                     // User asks a detailed question but we don't have prior recommended products:
                     // fall back to global context with heavy fields enabled.
-                    productsBeingSent = (await fetchAllProductsWithParsedData()).slice(0, 24)
-                    console.log('[API] Products being sent to AI (global, heavy):', JSON.stringify(productsBeingSent, null, 2))
                     productContext = await generateProductContext(24, productContextOptions)
                     console.log(`[API] Product context (global, heavy) ready (${productContext.length} characters)`, {
                          includeBenefits: productContextOptions.includeBenefits ?? false,
@@ -1120,8 +964,6 @@ export async function POST(request: NextRequest) {
                     })
                } else {
                     // Lightweight default context: titles, descriptions, prices, availability, etc.
-                    productsBeingSent = (await fetchAllProductsWithParsedData()).slice(0, 24)
-                    console.log('[API] Products being sent to AI (global, light):', JSON.stringify(productsBeingSent, null, 2))
                     productContext = await generateProductContext(24)
                     console.log(`[API] Product context (global, light) ready (${productContext.length} characters)`)
                }
@@ -1634,9 +1476,67 @@ export async function POST(request: NextRequest) {
 
           if (shouldSearchProducts) {
                try {
+                    // 0) PRIORITY: If AI explicitly recommended products by name, try to match them directly first
+                    if (hasExplicitProducts && nutritionResponse.products.length > 0) {
+                         console.log('[API] AI recommended products by name, attempting direct matching...')
+                         try {
+                              const allProducts = await fetchAllProductsWithParsedData()
+                              const aiProductNames = nutritionResponse.products.map(p => (p.name || '').trim()).filter(name => name.length > 0)
+                              
+                              console.log(`[API] Attempting to match ${aiProductNames.length} AI-recommended products:`, aiProductNames)
+                              
+                              for (const aiProductName of aiProductNames) {
+                                   // Try to find exact or close match
+                                   const match = allProducts.find(product => {
+                                        const productTitleLower = product.title.toLowerCase()
+                                        const aiNameLower = aiProductName.toLowerCase()
+                                        
+                                        // Exact match
+                                        if (productTitleLower === aiNameLower) {
+                                             return true
+                                        }
+                                        
+                                        // Check if AI name is contained in product title (handles partial names)
+                                        if (productTitleLower.includes(aiNameLower) || aiNameLower.includes(productTitleLower)) {
+                                             return true
+                                        }
+                                        
+                                        // Check for key words match (e.g., "Magnésium Bisglycinate" matches "Vigaia Magnésium Bisglycinate + B6")
+                                        const aiKeywords = aiNameLower.split(/\s+/).filter(w => w.length > 3 && !['vigaia', 'pour', 'avec', 'et'].includes(w))
+                                        if (aiKeywords.length > 0) {
+                                             const matchesAllKeywords = aiKeywords.every(keyword => productTitleLower.includes(keyword))
+                                             if (matchesAllKeywords) {
+                                                  return true
+                                             }
+                                        }
+                                        
+                                        return false
+                                   })
+                                   
+                                   if (match && match.available) {
+                                        // Check if already added
+                                        if (!recommendedProducts.some(p => p.variantId === match.variantId)) {
+                                             recommendedProducts.push(match)
+                                             console.log(`[API] ✅ Matched AI product "${aiProductName}" -> "${match.title}" (${match.colorAxis || 'no axis'})`)
+                                        }
+                                   } else {
+                                        console.log(`[API] ⚠️  Could not find match for AI product: "${aiProductName}"`)
+                                   }
+                              }
+                              
+                              if (recommendedProducts.length > 0) {
+                                   console.log(`[API] Successfully matched ${recommendedProducts.length} products from AI recommendations`)
+                              }
+                         } catch (matchError) {
+                              console.error('[API] Error matching AI-recommended products:', matchError)
+                              // Continue with other search methods
+                         }
+                    }
+                    
                     // 1) Goal-based, tag-driven search (preferred when a clear goal is identified)
                     // CRITICAL: Always run goal-based search when goals are detected, even if other conditions suggest otherwise
-                    if (goalKeys.length > 0 && !isSaleRequest && !requestedCollection) {
+                    // Skip if we already found products from AI recommendations
+                    if (goalKeys.length > 0 && !isSaleRequest && !requestedCollection && recommendedProducts.length === 0) {
                          console.log('[API] Attempting goal-based product search using tags for goals:', goalKeys)
                          try {
                               // Track goal-based search attempt
@@ -1764,29 +1664,16 @@ export async function POST(request: NextRequest) {
 
                     // 2) If goal-based tag search didn't find anything, fall back to keyword-based search
                     if (recommendedProducts.length === 0) {
-                         // PRIORITY: Extract explicitly mentioned product names from AI response
-                         // This handles cases where AI mentions products like "(Ashwagandha, Multivitamine et Oméga 3)"
-                         const explicitProductNames = extractExplicitProductNames(nutritionResponse.reply)
-                         let searchQueries: string[] = []
-                         
-                         if (explicitProductNames.length > 0) {
-                              searchQueries = explicitProductNames.slice(0, 5) // Use up to 5 explicitly mentioned products
-                              console.log('[API] Using explicitly mentioned product names as search queries:', searchQueries)
-                         }
-                         
-                         // If no explicit names found, fall back to keyword extraction
-                         if (searchQueries.length === 0) {
-                              // Start with queries derived from the AI reply
-                              searchQueries = generateProductSearchQueries(nutritionResponse.reply)
+                         // Start with queries derived from the AI reply
+                         let searchQueries = generateProductSearchQueries(nutritionResponse.reply)
 
-                              // If none, try deriving from the user's original message
-                              if (searchQueries.length === 0) {
-                                   const userDerived = generateProductSearchQueries(userLower)
-                                   if (userDerived.length > 0) {
-                                        searchQueries = userDerived
-                                   }
-                              }
+                    // If none, try deriving from the user's original message
+                    if (searchQueries.length === 0) {
+                         const userDerived = generateProductSearchQueries(userLower)
+                         if (userDerived.length > 0) {
+                              searchQueries = userDerived
                          }
+                    }
 
                     // If still empty, map common intents to concrete supplement search terms
                     if (searchQueries.length === 0) {
@@ -1902,19 +1789,16 @@ export async function POST(request: NextRequest) {
                                    recommendedProducts = await searchProducts(searchQueries[0], searchOptions)
                                    console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
                                    
-                                   // If we have multiple search queries (especially from explicitly mentioned products),
-                                   // search for all of them to find matching products
-                                   // This ensures we find products matching what the AI actually mentioned
-                                   if (searchQueries.length > 1) {
-                                        const maxProducts = 5 // Limit total products to avoid too many results
-                                        for (let i = 1; i < searchQueries.length && recommendedProducts.length < maxProducts; i++) {
+                                   // If sale request and we don't have enough products, try other queries
+                                   if (isSaleRequest && recommendedProducts.length < 3 && searchQueries.length > 1) {
+                                        for (let i = 1; i < searchQueries.length && recommendedProducts.length < 3; i++) {
                                              try {
                                                   const additionalProducts = await searchProducts(searchQueries[i], searchOptions)
                                                   // Add products that aren't already in the list
                                                   for (const product of additionalProducts) {
                                                        if (!recommendedProducts.some(p => p.variantId === product.variantId)) {
                                                             recommendedProducts.push(product)
-                                                            if (recommendedProducts.length >= maxProducts) break
+                                                            if (recommendedProducts.length >= 3) break
                                                        }
                                                   }
                                                   console.log(`[API] Added products from query "${searchQueries[i]}", total: ${recommendedProducts.length}`)
