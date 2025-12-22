@@ -13,6 +13,8 @@ const mockUserProfile = {
      gender: 'male' as const,
      goals: ['muscle_gain', 'sport'],
      allergies: ['lactose'],
+     height: 180,
+     weight: 70,
      budget: {
           min: 50,
           max: 200,

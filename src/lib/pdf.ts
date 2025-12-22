@@ -262,7 +262,7 @@ class PDFGenerator {
                { label: 'Taille', value: userProfile.height ? `${userProfile.height} cm` : 'Non spécifié' },
                { label: 'Poids', value: userProfile.weight ? `${userProfile.weight} kg` : 'Non spécifié' },
                { label: 'Objectif', value: goalsText },
-               { label: 'Niveau d\'activité', value: userProfile.activityLevel || 'Non spécifié' },
+               ...(userProfile.activityLevel ? [{ label: 'Niveau d\'activité', value: userProfile.activityLevel }] : []),
                { label: 'Allergies ou régime', value: userProfile.allergies.length > 0 ? userProfile.allergies.join(', ') : 'Aucune' },
                { label: 'Médicaments et remarques', value: userProfile.medications && userProfile.medications.length > 0 ? userProfile.medications.join(', ') : 'Aucun' },
           ];
@@ -1002,14 +1002,6 @@ export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionP
           baseCalories += 300;
      }
 
-     // Determine activity level
-     let activityLevel = 'Modéré';
-     if (userProfile.goals.includes('muscle_gain') || userProfile.goals.includes('sport')) {
-          activityLevel = 'Élevé (4-5 entraînements/semaine)';
-     } else if (userProfile.goals.includes('weight_loss')) {
-          activityLevel = 'Modéré (2-3 entraînements/semaine)';
-     }
-
      return {
           userProfile: {
                userId: userProfile.userId,
@@ -1018,10 +1010,10 @@ export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionP
                goals: userProfile.goals,
                allergies: userProfile.allergies,
                budget: userProfile.budget,
-               height: undefined, // Can be added if available
-               weight: undefined, // Can be added if available
+               height: userProfile.height,
+               weight: userProfile.weight,
                medications: [],
-               activityLevel: activityLevel,
+               activityLevel: undefined,
                shopifyCustomerId: userProfile.shopifyCustomerId,
                shopifyCustomerName: userProfile.shopifyCustomerName,
                lastInteraction: userProfile.lastInteraction,
@@ -1035,7 +1027,7 @@ export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionP
                     carbs: { grams: Math.round(baseCalories * 0.45 / 4), percentage: 45 },
                     fats: { grams: Math.round(baseCalories * 0.30 / 9), percentage: 30 },
                },
-               activityLevel: activityLevel,
+               activityLevel: undefined,
                mealPlan: {
                     breakfast: [
                          '80 g de flocons d\'avoine',

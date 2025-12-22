@@ -192,7 +192,7 @@ const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSe
       products.forEach((_, index) => {
         const timer = setTimeout(() => {
           setVisibleCount(prev => Math.max(prev, index + 1));
-        }, index * 220); // 220ms delay between each product (slowed down)
+        }, index * 400); // 400ms delay between each product (slowed down)
         timers.push(timer);
       });
 
@@ -211,13 +211,13 @@ const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSe
         {products.map((product, idx) => (
           <div
             key={idx}
-            className={`transition-all duration-500 ${
+            className={`transition-all duration-700 ${
               idx < visibleCount
                 ? 'opacity-100 translate-y-0'
                 : 'opacity-0 translate-y-4'
             }`}
             style={{
-              transitionDelay: `${idx * 80}ms`,
+              transitionDelay: `${idx * 150}ms`,
             }}
           >
             <ProductCard product={product} />
@@ -243,7 +243,7 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
       combos.forEach((_, index) => {
         const timer = setTimeout(() => {
           setVisibleComboCount(prev => Math.max(prev, index + 1));
-        }, index * 200); // 200ms delay between each combo
+        }, index * 450); // 450ms delay between each combo (slowed down)
         timers.push(timer);
       });
 
@@ -262,13 +262,13 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
         {combos.map((combo, comboIdx) => (
           <div
             key={comboIdx}
-            className={`transition-all duration-500 ${
+            className={`transition-all duration-700 ${
               comboIdx < visibleComboCount
                 ? 'opacity-100 translate-y-0'
                 : 'opacity-0 translate-y-4'
             }`}
             style={{
-              transitionDelay: `${comboIdx * 100}ms`,
+              transitionDelay: `${comboIdx * 180}ms`,
             }}
           >
             <div className="bg-secondary/10 rounded-xl p-4 border border-secondary/20">
@@ -675,6 +675,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [hasAskedActivityLevel, setHasAskedActivityLevel] = useState(false);
+  const [activityLevel, setActivityLevel] = useState<string | null>(null);
+  const [isAskingActivityLevel, setIsAskingActivityLevel] = useState(false);
+  const [activityLevelBubbles, setActivityLevelBubbles] = useState<string[]>([]);
 
   const generateMessageId = (): string => {
     messageIdCounterRef.current += 1;
@@ -2082,7 +2086,44 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     }
   };
 
-  const handleGeneratePlan = async () => {
+  const handleActivityLevelAnswer = async () => {
+    if (activityLevelBubbles.length === 0) return;
+
+    setIsLoading(true);
+
+    const selectedActivityLevel = activityLevelBubbles[0];
+    
+    // Map French activity level to stored value
+    const activityLevelMap: { [key: string]: string } = {
+      "Sédentaire": "Sédentaire",
+      "Léger": "Léger (1-2 entraînements/semaine)",
+      "Modéré": "Modéré (2-3 entraînements/semaine)",
+      "Actif": "Actif (4-5 entraînements/semaine)",
+      "Très actif": "Très actif (6+ entraînements/semaine)",
+    };
+
+    const mappedActivityLevel = activityLevelMap[selectedActivityLevel] || selectedActivityLevel;
+    setActivityLevel(mappedActivityLevel);
+    setHasAskedActivityLevel(true);
+    setIsAskingActivityLevel(false);
+    setActivityLevelBubbles([]);
+
+    // Add user message
+    const userMessage: Message = {
+      id: generateMessageId(),
+      text: selectedActivityLevel,
+      isUser: true,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    setIsLoading(false);
+
+    // Now proceed with plan generation
+    await proceedWithPlanGeneration();
+  };
+
+  const proceedWithPlanGeneration = async () => {
     if (!userId || isGeneratingPlan) return;
 
     setIsGeneratingPlan(true);
@@ -2110,6 +2151,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         body: JSON.stringify({
           userId,
           recommendedProducts: allRecommendedProducts,
+          activityLevel: activityLevel || undefined,
         }),
       });
 
@@ -2172,6 +2214,27 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     }
   };
 
+  const handleGeneratePlan = async () => {
+    if (!userId || isGeneratingPlan) return;
+
+    // Check if we need to ask activity level first
+    if (!hasAskedActivityLevel) {
+      setIsAskingActivityLevel(true);
+      
+      const activityLevelQuestion: Message = {
+        id: generateMessageId(),
+        text: "Quel est votre niveau d'activité physique ?\n\nSélectionnez une option",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, activityLevelQuestion]);
+      return;
+    }
+
+    // If already asked, proceed with plan generation
+    await proceedWithPlanGeneration();
+  };
+
   if (!isConsultationStarted) {
     return null;
   }
@@ -2196,7 +2259,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             {isOnboardingComplete && userId && (
               <button
                 onClick={handleGeneratePlan}
-                disabled={isGeneratingPlan || isLoading}
+                disabled={isGeneratingPlan || isLoading || isAskingActivityLevel}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-primary text-primary-foreground text-xs sm:text-sm font-light uppercase tracking-[0.1em] rounded-full hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-sm hover:shadow-md flex items-center gap-1.5 sm:gap-2"
                 title="Générer un plan nutritionnel personnalisé"
               >
@@ -2331,6 +2394,39 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                       onValidate={processBubbleAnswer}
                       canValidate={!isLoading && (selectedBubbles.length > 0 || customInputs.length > 0)}
                       allowCustomInput={info.allowCustomInput !== false}
+                    />
+                  );
+                }
+                return null;
+              })()}
+
+              {!message.isUser && isAskingActivityLevel && (() => {
+                const isLastMessage = messages[messages.length - 1]?.id === message.id;
+                const activityLevelOptions = ["Sédentaire", "Léger", "Modéré", "Actif", "Très actif"];
+                if (isLastMessage) {
+                  return (
+                    <FloatingBubbles
+                      suggestions={activityLevelOptions}
+                      selected={activityLevelBubbles}
+                      customInputs={[]}
+                      onBubbleClick={(option) => {
+                        // Single selection like gender - replace if already selected
+                        setActivityLevelBubbles((prev) => {
+                          if (prev.includes(option)) {
+                            return prev.filter((s) => s !== option);
+                          }
+                          return [option]; // Single selection
+                        });
+                      }}
+                      onCustomInputAdd={() => {}}
+                      onCustomInputRemove={() => {}}
+                      showCustomInputField={false}
+                      onToggleCustomInput={() => {}}
+                      customInputValue=""
+                      onCustomInputChange={() => {}}
+                      onValidate={handleActivityLevelAnswer}
+                      canValidate={!isLoading && activityLevelBubbles.length > 0}
+                      allowCustomInput={false}
                     />
                   );
                 }

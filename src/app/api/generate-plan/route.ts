@@ -38,7 +38,8 @@ function translateGoals(goals: string[]): string[] {
 async function generatePlanWithAI(
      userProfile: IUserProfile,
      recommendedProducts: ProductSearchResult[],
-     productContext: string
+     productContext: string,
+     activityLevel?: string
 ): Promise<NutritionPlan> {
      const translatedGoals = translateGoals(userProfile.goals)
      const goalsText = translatedGoals.join(', ')
@@ -51,6 +52,7 @@ Profil utilisateur:
 - Objectifs: ${goalsText}
 - Allergies: ${userProfile.allergies.length > 0 ? userProfile.allergies.join(', ') : 'Aucune'}
 - Budget: ${userProfile.budget.min}-${userProfile.budget.max} ${userProfile.budget.currency}
+${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
 `
 
      try {
@@ -173,10 +175,10 @@ Profil utilisateur:
                     goals: translatedGoals, // Use translated goals
                     allergies: userProfile.allergies,
                     budget: userProfile.budget,
-                    height: undefined,
-                    weight: undefined,
+                    height: userProfile.height,
+                    weight: userProfile.weight,
                     medications: [],
-                    activityLevel: planData.activityLevel || 'Modéré',
+                    activityLevel: activityLevel || planData.activityLevel || undefined,
                     shopifyCustomerId: userProfile.shopifyCustomerId,
                     shopifyCustomerName: userProfile.shopifyCustomerName,
                     lastInteraction: userProfile.lastInteraction,
@@ -190,7 +192,7 @@ Profil utilisateur:
                          carbs: { grams: 225, percentage: 45 },
                          fats: { grams: 67, percentage: 30 },
                     },
-                    activityLevel: planData.activityLevel || 'Modéré',
+                    activityLevel: activityLevel || planData.activityLevel || undefined,
                     mealPlan: planData.mealPlan || {
                          breakfast: [],
                          morningSnack: [],
@@ -243,13 +245,6 @@ function createDefaultPlan(
           baseCalories += 300
      }
 
-     let activityLevel = 'Modéré'
-     if (userProfile.goals.includes('muscle_gain') || userProfile.goals.includes('sport')) {
-          activityLevel = 'Élevé (4-5 entraînements/semaine)'
-     } else if (userProfile.goals.includes('weight_loss')) {
-          activityLevel = 'Modéré (2-3 entraînements/semaine)'
-     }
-
      // Map recommended products to supplements only if we have products
      const supplements: Array<{
           title: string;
@@ -279,10 +274,10 @@ function createDefaultPlan(
                goals: translatedGoals,
                allergies: userProfile.allergies,
                budget: userProfile.budget,
-               height: undefined,
-               weight: undefined,
+               height: userProfile.height,
+               weight: userProfile.weight,
                medications: [],
-               activityLevel: activityLevel,
+               activityLevel: undefined,
                shopifyCustomerId: userProfile.shopifyCustomerId,
                shopifyCustomerName: userProfile.shopifyCustomerName,
                lastInteraction: userProfile.lastInteraction,
@@ -296,7 +291,7 @@ function createDefaultPlan(
                     carbs: { grams: Math.round(baseCalories * 0.45 / 4), percentage: 45 },
                     fats: { grams: Math.round(baseCalories * 0.30 / 9), percentage: 30 },
                },
-               activityLevel: activityLevel,
+               activityLevel: undefined,
                mealPlan: {
                     breakfast: [
                          '80 g de flocons d\'avoine',
@@ -341,7 +336,7 @@ function createDefaultPlan(
 export async function POST(request: NextRequest) {
      try {
           const body = await request.json()
-          const { userId } = body
+          const { userId, activityLevel } = body
 
           if (!userId) {
                return NextResponse.json(
@@ -394,11 +389,12 @@ export async function POST(request: NextRequest) {
           
           // If no products, productContext remains empty string
 
-          // Generate plan with AI
+          // Generate plan with AI (pass activity level if provided)
           const nutritionPlan = await generatePlanWithAI(
                userProfile,
                regularProducts,
-               productContext
+               productContext,
+               activityLevel
           )
 
           // Generate PDF

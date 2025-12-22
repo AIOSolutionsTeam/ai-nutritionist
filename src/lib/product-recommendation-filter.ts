@@ -4,7 +4,8 @@
  */
 
 import { ProductSearchResult } from './shopify';
-import { ColorAxis } from './color-axis-loader';
+
+type ColorAxis = 'Green' | 'Pink' | 'Blue' | 'Yellow';
 
 /**
  * Maps user needs to relevant color axes
@@ -231,4 +232,5 @@ export function recommendProductsByQuery(
 
      return filterProductsByColorAxis(products, needs, maxProductsPerAxis);
 }
+
 

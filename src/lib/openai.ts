@@ -236,21 +236,7 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.
    - IMPORTANT: If you're not sure whether to recommend products, DON'T. It's better to provide informative advice without products than to recommend unnecessarily.
 
-6. **Product Recommendations - Color Axis Rules (CRITICAL)**:
-   - Each product has a ColorAxis property (Green, Pink, Blue, or Yellow) that determines its category and use case.
-   - **🟢 Green → Santé & Bien-être**: General health, minerals, deficiencies, balance, sleep, digestion, immunity, joints, heart, nervous system
-   - **🌸 Pink → Beauté & Anti-age**: Skin, hair, nails, collagen, anti-aging, hydration, firmness, elasticity
-   - **🔵 Blue → Sport & Performance**: Energy, stamina, strength, physical performance, athletic, recovery, training
-   - **🟡 Yellow → Super Aliments**: Nutrient-dense foods, overall vitality support, nutritional balance
-   - **RULE 1 - Needs → Axes Mapping**: Analyze the user's stated needs and map them to relevant color axes. Only recommend products from axes that directly match the user's needs.
-   - **RULE 2 - Axis-Based Selection Only**: NEVER recommend products from unrelated axes. If user has sleep problems → recommend Green (e.g., magnesium), NOT Pink (collagen).
-   - **RULE 3 - Minimum One Product per Relevant Axis**: If one axis is relevant → recommend only from that axis. If two or more axes are relevant → recommend at least one product from each relevant axis.
-   - **RULE 4 - Multi-Need Logic**: If user has multiple problems (e.g., hair & skin + sleep + low energy), recommend across all relevant axes (Pink + Green + Blue).
-   - **RULE 5 - Exclusion Rule**: If a product belongs to an axis not triggered by the user's needs, it must NOT be recommended.
-   - **RULE 6 - Availability Constraint**: Only recommend products where Available = true.
-   - When recommending products, always consider the ColorAxis and ensure it matches the user's needs.
-
-7. **Product Combinations & Bundling - Sales Strategy**:
+6. **Product Combinations & Bundling - Sales Strategy**:
    - **ALWAYS suggest product combinations** when recommending products that work well together.
    - When you recommend a product, immediately suggest complementary products that enhance its effects.
    - Frame combinations as value propositions: "Pour maximiser les résultats, je vous recommande de combiner [Product A] avec [Product B]. Ensemble, ils créent un effet synergique qui [specific benefit]."
@@ -259,11 +245,11 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - Always explain the synergistic benefit when suggesting combinations
    - Example: "Ces produits se complètent bien ensemble: [Product A] améliore l'absorption de [Product B], ce qui maximise leurs bienfaits. Je vous recommande de les prendre ensemble pour des résultats optimaux."
 
-8. **Cultural Sensitivity**: 
+7. **Cultural Sensitivity**: 
    - Be aware of dietary preferences in North Africa (halal, local diet habits).
    - Respect cultural and religious dietary restrictions.
 
-9. **Medical Disclaimer**: 
+8. **Medical Disclaimer**: 
    - Never provide medical diagnoses or treat medical conditions.
    - Always include appropriate disclaimers about consulting healthcare professionals when discussing supplements or health concerns.
 
@@ -505,33 +491,17 @@ IMPORTANT:
 
                     // Try to extract a Retry-After header if present
                     const headers = errorObj?.headers
-                    if (headers) {
-                         // Handle Headers object (from fetch API)
-                         if (headers instanceof Headers) {
-                              const retryAfterHeader = headers.get('retry-after') || headers.get('Retry-After')
-                              if (retryAfterHeader) {
-                                   const parsed = parseFloat(retryAfterHeader)
-                                   if (!Number.isNaN(parsed) && parsed > 0) {
-                                        retryAfterMs = parsed * 1000
-                                   }
-                              }
-                         } else if (typeof headers === 'object') {
-                              // Handle plain object
-                              const retryAfterHeader = (headers as Record<string, string>)['retry-after'] || 
-                                                     (headers as Record<string, string>)['Retry-After']
-                              if (retryAfterHeader) {
-                                   const parsed = parseFloat(retryAfterHeader)
-                                   if (!Number.isNaN(parsed) && parsed > 0) {
-                                        retryAfterMs = parsed * 1000
-                                   }
-                              }
+                    const retryAfterHeader = headers?.['retry-after'] || headers?.['Retry-After']
+                    if (retryAfterHeader) {
+                         const parsed = parseInt(retryAfterHeader, 10)
+                         if (!Number.isNaN(parsed) && parsed > 0) {
+                              retryAfterMs = parsed * 1000
                          }
                     }
 
                     const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                     this.quotaResetAt = Date.now() + cooldownMs
 
-                    console.warn(`[OpenAIService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                     throw new AIQuotaError('openai', 'OpenAI quota exceeded', retryAfterMs)
                }
 
@@ -722,33 +692,17 @@ Remember: Return ONLY the JSON object, nothing else.`
                     let retryAfterMs: number | undefined
 
                     const headers = errorObj?.headers
-                    if (headers) {
-                         // Handle Headers object (from fetch API)
-                         if (headers instanceof Headers) {
-                              const retryAfterHeader = headers.get('retry-after') || headers.get('Retry-After')
-                              if (retryAfterHeader) {
-                                   const parsed = parseFloat(retryAfterHeader)
-                                   if (!Number.isNaN(parsed) && parsed > 0) {
-                                        retryAfterMs = parsed * 1000
-                                   }
-                              }
-                         } else if (typeof headers === 'object') {
-                              // Handle plain object
-                              const retryAfterHeader = (headers as Record<string, string>)['retry-after'] || 
-                                                     (headers as Record<string, string>)['Retry-After']
-                              if (retryAfterHeader) {
-                                   const parsed = parseFloat(retryAfterHeader)
-                                   if (!Number.isNaN(parsed) && parsed > 0) {
-                                        retryAfterMs = parsed * 1000
-                                   }
-                              }
+                    const retryAfterHeader = headers?.['retry-after'] || headers?.['Retry-After']
+                    if (retryAfterHeader) {
+                         const parsed = parseInt(retryAfterHeader, 10)
+                         if (!Number.isNaN(parsed) && parsed > 0) {
+                              retryAfterMs = parsed * 1000
                          }
                     }
 
                     const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                     this.quotaResetAt = Date.now() + cooldownMs
 
-                    console.warn(`[OpenAIService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                     throw new AIQuotaError('openai', 'OpenAI quota exceeded', retryAfterMs)
                }
 
@@ -1063,21 +1017,7 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.
    - IMPORTANT: If you're not sure whether to recommend products, DON'T. It's better to provide informative advice without products than to recommend unnecessarily.
 
-6. **Product Recommendations - Color Axis Rules (CRITICAL)**:
-   - Each product has a ColorAxis property (Green, Pink, Blue, or Yellow) that determines its category and use case.
-   - **🟢 Green → Santé & Bien-être**: General health, minerals, deficiencies, balance, sleep, digestion, immunity, joints, heart, nervous system
-   - **🌸 Pink → Beauté & Anti-age**: Skin, hair, nails, collagen, anti-aging, hydration, firmness, elasticity
-   - **🔵 Blue → Sport & Performance**: Energy, stamina, strength, physical performance, athletic, recovery, training
-   - **🟡 Yellow → Super Aliments**: Nutrient-dense foods, overall vitality support, nutritional balance
-   - **RULE 1 - Needs → Axes Mapping**: Analyze the user's stated needs and map them to relevant color axes. Only recommend products from axes that directly match the user's needs.
-   - **RULE 2 - Axis-Based Selection Only**: NEVER recommend products from unrelated axes. If user has sleep problems → recommend Green (e.g., magnesium), NOT Pink (collagen).
-   - **RULE 3 - Minimum One Product per Relevant Axis**: If one axis is relevant → recommend only from that axis. If two or more axes are relevant → recommend at least one product from each relevant axis.
-   - **RULE 4 - Multi-Need Logic**: If user has multiple problems (e.g., hair & skin + sleep + low energy), recommend across all relevant axes (Pink + Green + Blue).
-   - **RULE 5 - Exclusion Rule**: If a product belongs to an axis not triggered by the user's needs, it must NOT be recommended.
-   - **RULE 6 - Availability Constraint**: Only recommend products where Available = true.
-   - When recommending products, always consider the ColorAxis and ensure it matches the user's needs.
-
-7. **Product Combinations & Bundling - Sales Strategy**:
+6. **Product Combinations & Bundling - Sales Strategy**:
    - **ALWAYS suggest product combinations** when recommending products that work well together.
    - When you recommend a product, immediately suggest complementary products that enhance its effects.
    - Frame combinations as value propositions: "Pour maximiser les résultats, je vous recommande de combiner [Product A] avec [Product B]. Ensemble, ils créent un effet synergique qui [specific benefit]."
@@ -1086,11 +1026,11 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - Always explain the synergistic benefit when suggesting combinations
    - Example: "Ces produits se complètent bien ensemble: [Product A] améliore l'absorption de [Product B], ce qui maximise leurs bienfaits. Je vous recommande de les prendre ensemble pour des résultats optimaux."
 
-8. **Cultural Sensitivity**: 
+7. **Cultural Sensitivity**: 
    - Be aware of dietary preferences in North Africa (halal, local diet habits).
    - Respect cultural and religious dietary restrictions.
 
-9. **Medical Disclaimer**: 
+8. **Medical Disclaimer**: 
    - Never provide medical diagnoses or treat medical conditions.
    - Always include appropriate disclaimers about consulting healthcare professionals when discussing supplements or health concerns.
 
@@ -1306,104 +1246,26 @@ IMPORTANT:
                     }
                } catch (modelError) {
                     console.error(`Gemini model ${modelName} failed:`, modelError)
-                    // Log full error structure for debugging quota errors
-                    if (modelError && typeof modelError === 'object') {
-                         const errorObj = modelError as Record<string, unknown>
-                         if (errorObj.status === 429 || errorObj.statusText === 'Too Many Requests') {
-                              console.error(`[GeminiService] Quota error details:`, {
-                                   status: errorObj.status,
-                                   statusText: errorObj.statusText,
-                                   errorDetails: errorObj.errorDetails,
-                                   message: errorObj.message,
-                                   headers: errorObj.headers
-                              })
-                         }
-                    }
                     lastError = modelError instanceof Error ? modelError : new Error(String(modelError))
 
                     // If this is a quota / rate limit error, stop trying other models immediately
                     if (this.isQuotaError(modelError)) {
                          let retryAfterMs: number | undefined
-                         const errorObj = modelError as { 
-                              message?: unknown
-                              status?: number
-                              statusText?: string
-                              errorDetails?: Array<Record<string, unknown>>
-                              headers?: Record<string, string>
-                         }
-                         
-                         // Try to extract retry-after from various sources
-                         // 1. Check errorDetails array for RetryInfo with retryDelay
-                         if (errorObj?.errorDetails && Array.isArray(errorObj.errorDetails)) {
-                              for (const detail of errorObj.errorDetails) {
-                                   const detailObj = detail as Record<string, unknown>
-                                   // Check for Google RPC RetryInfo format: { '@type': '...RetryInfo', retryDelay: '23s' }
-                                   const type = detailObj['@type']
-                                   if (type && typeof type === 'string' && type.includes('RetryInfo')) {
-                                        const retryDelay = detailObj.retryDelay
-                                        if (typeof retryDelay === 'string') {
-                                             // Parse formats like "23s", "23.5s", "23 seconds"
-                                             const match = retryDelay.match(/(\d+(?:\.\d+)?)\s*(?:seconds?|s)?/i)
-                                             if (match) {
-                                                  const seconds = parseFloat(match[1])
-                                                  if (!Number.isNaN(seconds) && seconds > 0) {
-                                                       retryAfterMs = seconds * 1000
-                                                       break
-                                                  }
-                                             }
-                                        } else if (typeof retryDelay === 'number' && retryDelay > 0) {
-                                             // If it's already a number, assume it's in seconds
-                                             retryAfterMs = retryDelay * 1000
-                                             break
-                                        }
-                                   }
-                                   // Fallback: check for retryAfterMs or retryAfter fields
-                                   if (!retryAfterMs) {
-                                        if (detailObj.retryAfterMs && typeof detailObj.retryAfterMs === 'number' && detailObj.retryAfterMs > 0) {
-                                             retryAfterMs = detailObj.retryAfterMs
-                                             break
-                                        }
-                                        if (detailObj.retryAfter) {
-                                             const parsed = parseFloat(String(detailObj.retryAfter))
-                                             if (!Number.isNaN(parsed) && parsed > 0) {
-                                                  retryAfterMs = parsed * 1000
-                                                  break
-                                             }
-                                        }
-                                   }
-                              }
-                         }
-                         
-                         // 2. Check headers for Retry-After
-                         if (!retryAfterMs && errorObj?.headers) {
-                              const retryAfterHeader = errorObj.headers['retry-after'] || errorObj.headers['Retry-After']
-                              if (retryAfterHeader) {
-                                   const parsed = parseFloat(retryAfterHeader)
-                                   if (!Number.isNaN(parsed) && parsed > 0) {
-                                        retryAfterMs = parsed * 1000
-                                   }
-                              }
-                         }
-                         
-                         // 3. Try to extract from error message
-                         if (!retryAfterMs) {
-                              const message: string = typeof errorObj?.message === 'string'
-                                   ? errorObj.message
-                                   : ''
-                              const match = message.match(/retry in (\d+(?:\.\d+)?)s/i) || 
-                                          message.match(/retry.*?(\d+(?:\.\d+)?)\s*(?:seconds?|s)/i)
-                              if (match) {
-                                   const seconds = parseFloat(match[1])
-                                   if (!Number.isNaN(seconds) && seconds > 0) {
-                                        retryAfterMs = seconds * 1000
-                                   }
+                         const errorObj = modelError as { message?: unknown }
+                         const message: string = typeof errorObj?.message === 'string'
+                              ? errorObj.message
+                              : ''
+                         const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
+                         if (match) {
+                              const seconds = parseFloat(match[1])
+                              if (!Number.isNaN(seconds) && seconds > 0) {
+                                   retryAfterMs = seconds * 1000
                               }
                          }
 
                          const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                          this.quotaResetAt = Date.now() + cooldownMs
 
-                         console.warn(`[GeminiService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                          throw new AIQuotaError('gemini', 'Gemini quota exceeded', retryAfterMs)
                     }
 
@@ -1614,104 +1476,26 @@ Remember: Return ONLY the JSON object, nothing else.`
                     }
                } catch (modelError) {
                     console.error(`[GeminiService] Model ${modelName} failed:`, modelError)
-                    // Log full error structure for debugging quota errors
-                    if (modelError && typeof modelError === 'object') {
-                         const errorObj = modelError as Record<string, unknown>
-                         if (errorObj.status === 429 || errorObj.statusText === 'Too Many Requests') {
-                              console.error(`[GeminiService] Quota error details:`, {
-                                   status: errorObj.status,
-                                   statusText: errorObj.statusText,
-                                   errorDetails: errorObj.errorDetails,
-                                   message: errorObj.message,
-                                   headers: errorObj.headers
-                              })
-                         }
-                    }
                     lastError = modelError instanceof Error ? modelError : new Error(String(modelError))
 
                     // If this is a quota / rate limit error, stop trying other models immediately
                     if (this.isQuotaError(modelError)) {
                          let retryAfterMs: number | undefined
-                         const errorObj = modelError as { 
-                              message?: unknown
-                              status?: number
-                              statusText?: string
-                              errorDetails?: Array<Record<string, unknown>>
-                              headers?: Record<string, string>
-                         }
-                         
-                         // Try to extract retry-after from various sources
-                         // 1. Check errorDetails array for RetryInfo with retryDelay
-                         if (errorObj?.errorDetails && Array.isArray(errorObj.errorDetails)) {
-                              for (const detail of errorObj.errorDetails) {
-                                   const detailObj = detail as Record<string, unknown>
-                                   // Check for Google RPC RetryInfo format: { '@type': '...RetryInfo', retryDelay: '23s' }
-                                   const type = detailObj['@type']
-                                   if (type && typeof type === 'string' && type.includes('RetryInfo')) {
-                                        const retryDelay = detailObj.retryDelay
-                                        if (typeof retryDelay === 'string') {
-                                             // Parse formats like "23s", "23.5s", "23 seconds"
-                                             const match = retryDelay.match(/(\d+(?:\.\d+)?)\s*(?:seconds?|s)?/i)
-                                             if (match) {
-                                                  const seconds = parseFloat(match[1])
-                                                  if (!Number.isNaN(seconds) && seconds > 0) {
-                                                       retryAfterMs = seconds * 1000
-                                                       break
-                                                  }
-                                             }
-                                        } else if (typeof retryDelay === 'number' && retryDelay > 0) {
-                                             // If it's already a number, assume it's in seconds
-                                             retryAfterMs = retryDelay * 1000
-                                             break
-                                        }
-                                   }
-                                   // Fallback: check for retryAfterMs or retryAfter fields
-                                   if (!retryAfterMs) {
-                                        if (detailObj.retryAfterMs && typeof detailObj.retryAfterMs === 'number' && detailObj.retryAfterMs > 0) {
-                                             retryAfterMs = detailObj.retryAfterMs
-                                             break
-                                        }
-                                        if (detailObj.retryAfter) {
-                                             const parsed = parseFloat(String(detailObj.retryAfter))
-                                             if (!Number.isNaN(parsed) && parsed > 0) {
-                                                  retryAfterMs = parsed * 1000
-                                                  break
-                                             }
-                                        }
-                                   }
-                              }
-                         }
-                         
-                         // 2. Check headers for Retry-After
-                         if (!retryAfterMs && errorObj?.headers) {
-                              const retryAfterHeader = errorObj.headers['retry-after'] || errorObj.headers['Retry-After']
-                              if (retryAfterHeader) {
-                                   const parsed = parseFloat(retryAfterHeader)
-                                   if (!Number.isNaN(parsed) && parsed > 0) {
-                                        retryAfterMs = parsed * 1000
-                                   }
-                              }
-                         }
-                         
-                         // 3. Try to extract from error message
-                         if (!retryAfterMs) {
-                              const message: string = typeof errorObj?.message === 'string'
-                                   ? errorObj.message
-                                   : ''
-                              const match = message.match(/retry in (\d+(?:\.\d+)?)s/i) || 
-                                          message.match(/retry.*?(\d+(?:\.\d+)?)\s*(?:seconds?|s)/i)
-                              if (match) {
-                                   const seconds = parseFloat(match[1])
-                                   if (!Number.isNaN(seconds) && seconds > 0) {
-                                        retryAfterMs = seconds * 1000
-                                   }
+                         const errorObj = modelError as { message?: unknown }
+                         const message: string = typeof errorObj?.message === 'string'
+                              ? errorObj.message
+                              : ''
+                         const match = message.match(/retry in (\d+(?:\.\d+)?)s/i)
+                         if (match) {
+                              const seconds = parseFloat(match[1])
+                              if (!Number.isNaN(seconds) && seconds > 0) {
+                                   retryAfterMs = seconds * 1000
                               }
                          }
 
                          const cooldownMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : DEFAULT_AI_COOLDOWN_MS
                          this.quotaResetAt = Date.now() + cooldownMs
 
-                         console.warn(`[GeminiService] Quota error detected. retryAfterMs=${retryAfterMs ?? 'unknown'}, cooldownMs=${cooldownMs}`)
                          throw new AIQuotaError('gemini', 'Gemini quota exceeded', retryAfterMs)
                     }
 

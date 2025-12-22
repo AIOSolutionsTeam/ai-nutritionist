@@ -74,6 +74,8 @@ async function testPDFGeneration() {
                     userId: 'test-user-123',
                     age: 32,
                     gender: 'male',
+                    height: 180,
+                    weight: 70,
                     goals: ['muscle_gain', 'sport'],
                     allergies: ['lactose'],
                     budget: {
