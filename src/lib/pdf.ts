@@ -298,7 +298,7 @@ class PDFGenerator {
           // Calculate minimum space needed for at least the first line
           const textWidth = this.config.pageWidth - (this.config.margin * 2);
           doc.fontSize(this.config.fontSizes.body);
-          const caloriesText = `• Apport calorique cible : ${recommendations.dailyCalories.toLocaleString('fr-FR')} kcal / jour`;
+          const caloriesText = `• Apport calorique cible : ${recommendations.dailyCalories.toLocaleString('fr-FR').replace(/\s/g, '\u00A0')} kcal / jour`;
           const minContentHeight = doc.heightOfString(caloriesText, { width: textWidth }) + 20;
           
           this.addSectionHeader(doc, 'Besoins journaliers estimés', minContentHeight);
