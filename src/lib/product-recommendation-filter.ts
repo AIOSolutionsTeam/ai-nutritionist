@@ -111,11 +111,20 @@ export function scoreProductsWithColorAxis(
 ): Array<ProductSearchResult & { colorAxisBoost: number }> {
      const relevantAxes = mapNeedsToColorAxes(userNeeds);
      
-     return products.map(product => {
+     console.log('[ColorAxis] ========================================');
+     console.log('[ColorAxis] COLOR AXIS SCORING STARTED');
+     console.log('[ColorAxis] User needs:', userNeeds);
+     console.log('[ColorAxis] Relevant axes:', Array.from(relevantAxes));
+     console.log('[ColorAxis] Products to score:', products.length);
+     console.log('[ColorAxis] ========================================');
+     
+     const scored = products.map(product => {
           let colorAxisBoost = 0;
+          const scoreBreakdown: string[] = [];
           
           // Must be available
           if (!product.available) {
+               console.log(`[ColorAxis] ❌ "${product.title}": UNAVAILABLE (-1000 points)`);
                return { ...product, colorAxisBoost: -1000 }; // Heavy penalty for unavailable
           }
           
@@ -124,14 +133,16 @@ export function scoreProductsWithColorAxis(
                // Boost if product is in a relevant axis
                if (relevantAxes.has(product.colorAxis)) {
                     colorAxisBoost += 10; // Strong boost for matching axis
+                    scoreBreakdown.push(`+10 (matching axis: ${product.colorAxis})`);
                } else {
                     // Small boost for other axes (allows cross-axis benefits)
                     // Products from other axes can still help indirectly
                     colorAxisBoost += 2;
+                    scoreBreakdown.push(`+2 (other axis: ${product.colorAxis})`);
                }
           } else {
                // No penalty for missing color axis (some products might not have it)
-               colorAxisBoost = 0;
+               scoreBreakdown.push('+0 (no color axis)');
           }
           
           // Additional boost if product benefits match user needs
@@ -147,14 +158,32 @@ export function scoreProductsWithColorAxis(
                if (hasMatchingBenefit) {
                     // Extra boost for products with matching benefits, even from other axes
                     colorAxisBoost += 5;
+                    scoreBreakdown.push('+5 (matching benefits)');
                }
           }
+          
+          console.log(`[ColorAxis] "${product.title}" (${product.colorAxis || 'N/A'}): ${colorAxisBoost} points [${scoreBreakdown.join(', ')}]`);
           
           return {
                ...product,
                colorAxisBoost
           };
      });
+     
+     // Log top 5 products by color axis boost
+     const topByColorAxis = [...scored]
+          .filter(p => p.available)
+          .sort((a, b) => b.colorAxisBoost - a.colorAxisBoost)
+          .slice(0, 5);
+     
+     console.log('[ColorAxis] ========================================');
+     console.log('[ColorAxis] TOP 5 PRODUCTS BY COLOR AXIS BOOST:');
+     topByColorAxis.forEach((p, idx) => {
+          console.log(`[ColorAxis] ${idx + 1}. "${p.title}" (${p.colorAxis || 'N/A'}): ${p.colorAxisBoost} points`);
+     });
+     console.log('[ColorAxis] ========================================');
+     
+     return scored;
 }
 
 /**

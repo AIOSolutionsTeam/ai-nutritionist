@@ -229,8 +229,8 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - For informational questions, provide comprehensive, educational responses WITHOUT products. Set "products" to an empty array [].
    - **CRITICAL**: When user asks for a product list, start with a BRIEF introduction (1-2 sentences max), then IMMEDIATELY list the products. Do NOT give long explanations before listing products.
    - **BUDGET-AWARE UPSELLING**: When a user mentions a budget, be sales-oriented and help them see value:
-     * If a product is within 5-10 euros of their budget, suggest it as a worthwhile investment: "Je vois que vous avez un budget de [X]€. Pour seulement [Y]€ de plus (soit [difference]€), vous pourriez opter pour [Product Name] qui offre [specific benefit]. C'est un excellent investissement pour votre santé !"
-     * Frame price differences as small investments: "Pour seulement 5-10€ de plus, vous obtenez [specific advantage]"
+     * If a product is within 10-15 euros of their budget, suggest it as a worthwhile investment: "Je vois que vous avez un budget de [X]€. Pour seulement [Y]€ de plus (soit [difference]€), vous pourriez opter pour [Product Name] qui offre [specific benefit]. C'est un excellent investissement pour votre santé !"
+     * Frame price differences as small investments: "Pour seulement 10-15€ de plus, vous obtenez [specific advantage]"
      * Emphasize value over price: "C'est un petit investissement supplémentaire qui fait une grande différence pour [benefit]"
      * Be helpful, not pushy - present it as a recommendation, not pressure
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.
@@ -1016,8 +1016,8 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
    - For informational questions, provide comprehensive, educational responses WITHOUT products. Set "products" to an empty array [].
    - **CRITICAL**: When user asks for a product list, start with a BRIEF introduction (1-2 sentences max), then IMMEDIATELY list the products. Do NOT give long explanations before listing products.
    - **BUDGET-AWARE UPSELLING**: When a user mentions a budget, be sales-oriented and help them see value:
-     * If a product is within 5-10 euros of their budget, suggest it as a worthwhile investment: "Je vois que vous avez un budget de [X]€. Pour seulement [Y]€ de plus (soit [difference]€), vous pourriez opter pour [Product Name] qui offre [specific benefit]. C'est un excellent investissement pour votre santé !"
-     * Frame price differences as small investments: "Pour seulement 5-10€ de plus, vous obtenez [specific advantage]"
+     * If a product is within 10-15 euros of their budget, suggest it as a worthwhile investment: "Je vois que vous avez un budget de [X]€. Pour seulement [Y]€ de plus (soit [difference]€), vous pourriez opter pour [Product Name] qui offre [specific benefit]. C'est un excellent investissement pour votre santé !"
+     * Frame price differences as small investments: "Pour seulement 10-15€ de plus, vous obtenez [specific advantage]"
      * Emphasize value over price: "C'est un petit investissement supplémentaire qui fait une grande différence pour [benefit]"
      * Be helpful, not pushy - present it as a recommendation, not pressure
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.

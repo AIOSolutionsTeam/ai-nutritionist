@@ -3,6 +3,7 @@ import { openaiService, geminiService, StructuredNutritionResponse, AIQuotaError
 import { searchProducts, searchProductsByTags, searchProductsByCollection, ProductSearchResult, getRecommendedCombos, getComboProducts, findMatchingCombo, COLLECTION_MAP, PRODUCT_COMBOS, getCollectionMap, generateProductContext, generateDynamicCombosFromProducts, ProductContextOptions, generateProductContextForVariantIds, fetchAllProductsWithParsedData } from '../../../lib/shopify'
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
+import { scoreProductsWithColorAxis } from '../../../lib/product-recommendation-filter'
 
 /**
  * Simple in-memory rate limiter to prevent excessive API calls
@@ -342,27 +343,58 @@ function scoreProductsWithStructuredData(
 ): Array<ProductSearchResult & { relevanceScore: number }> {
      if (!products.length) return []
 
+     console.log('[Scoring] ========================================');
+     console.log('[Scoring] STRUCTURED DATA SCORING STARTED');
+     console.log('[Scoring] Products to score:', products.length);
+     console.log('[Scoring] User goals:', goalKeys);
+     console.log('[Scoring] User profile:', userProfile ? { age: userProfile.age, gender: userProfile.gender } : 'None');
+     console.log('[Scoring] ========================================');
+
+     // First, get color axis boost scores
+     const colorAxisScored = scoreProductsWithColorAxis(products, goalKeys)
+     
+     // Create a map for quick lookup of color axis boosts
+     const colorAxisBoostMap = new Map<string, number>()
+     colorAxisScored.forEach(p => {
+          colorAxisBoostMap.set(p.variantId, p.colorAxisBoost)
+     })
+
      const scored = products.map((product) => {
           let score = 0
+          const scoreBreakdown: string[] = []
+
+          // Add color axis boost (from flexible color axis scoring)
+          const colorAxisBoost = colorAxisBoostMap.get(product.variantId) || 0
+          score += colorAxisBoost
+          if (colorAxisBoost !== 0) {
+               scoreBreakdown.push(`ColorAxis: ${colorAxisBoost > 0 ? '+' : ''}${colorAxisBoost}`)
+          }
 
           // Match target audience with user profile
           if (product.targetAudience && product.targetAudience.length > 0 && userProfile) {
                const audienceLower = product.targetAudience.map(a => a.toLowerCase())
+               let audienceScore = 0
                
                // Age-based matching
                if (userProfile.age) {
                     if (userProfile.age >= 65) {
                          if (audienceLower.some(a => a.includes('senior') || a.includes('âgé'))) {
                               score += 3
+                              audienceScore += 3
+                              scoreBreakdown.push('Age: +3 (senior match)')
                          }
                     } else if (userProfile.age < 30) {
                          if (audienceLower.some(a => a.includes('jeune') || a.includes('adolescent'))) {
                               score += 3
+                              audienceScore += 3
+                              scoreBreakdown.push('Age: +3 (young match)')
                          }
                     }
                     // Adult matching (most products)
                     if (audienceLower.some(a => a.includes('adulte'))) {
                          score += 1
+                         audienceScore += 1
+                         scoreBreakdown.push('Age: +1 (adult match)')
                     }
                }
 
@@ -372,10 +404,14 @@ function scoreProductsWithStructuredData(
                     if (genderLower === 'female' || genderLower === 'femme') {
                          if (audienceLower.some(a => a.includes('femme') || a.includes('women') || a.includes('féminin'))) {
                               score += 3
+                              audienceScore += 3
+                              scoreBreakdown.push('Gender: +3 (female match)')
                          }
                     } else if (genderLower === 'male' || genderLower === 'homme') {
                          if (audienceLower.some(a => a.includes('homme') || a.includes('men') || a.includes('masculin'))) {
                               score += 3
+                              audienceScore += 3
+                              scoreBreakdown.push('Gender: +3 (male match)')
                          }
                     }
                }
@@ -392,6 +428,7 @@ function scoreProductsWithStructuredData(
                                 (goalLower.includes('beaute') && (aLower.includes('peau') || aLower.includes('beauté')))
                     })) {
                          score += 2
+                         scoreBreakdown.push(`Audience-Goal: +2 (${goal})`)
                     }
                })
           }
@@ -410,14 +447,29 @@ function scoreProductsWithStructuredData(
                                 (goalLower.includes('sommeil') && (b.includes('sommeil') || b.includes('relaxation')))
                     })) {
                          score += 2
+                         scoreBreakdown.push(`Benefits-Goal: +2 (${goal})`)
                     }
                })
           }
 
           // Boost score if product has structured data (more complete information)
-          if (product.benefits && product.benefits.length > 0) score += 1
-          if (product.targetAudience && product.targetAudience.length > 0) score += 1
-          if (product.usageInstructions && product.usageInstructions.dosage) score += 1
+          if (product.benefits && product.benefits.length > 0) {
+               score += 1
+               scoreBreakdown.push('Data: +1 (has benefits)')
+          }
+          if (product.targetAudience && product.targetAudience.length > 0) {
+               score += 1
+               scoreBreakdown.push('Data: +1 (has target audience)')
+          }
+          if (product.usageInstructions && product.usageInstructions.dosage) {
+               score += 1
+               scoreBreakdown.push('Data: +1 (has usage instructions)')
+          }
+
+          console.log(`[Scoring] "${product.title}" (${product.colorAxis || 'N/A'}): TOTAL = ${score} points`);
+          if (scoreBreakdown.length > 0) {
+               console.log(`[Scoring]   Breakdown: ${scoreBreakdown.join(', ')}`);
+          }
 
           return {
                ...product,
@@ -426,7 +478,18 @@ function scoreProductsWithStructuredData(
      })
 
      // Sort by relevance score (highest first)
-     return scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
+     const sorted = scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
+     
+     // Log top 10 products with full breakdown
+     console.log('[Scoring] ========================================');
+     console.log('[Scoring] TOP 10 PRODUCTS BY TOTAL SCORE:');
+     sorted.slice(0, 10).forEach((p, idx) => {
+          const colorAxisBoost = colorAxisBoostMap.get(p.variantId) || 0;
+          console.log(`[Scoring] ${idx + 1}. "${p.title}" (${p.colorAxis || 'N/A'}): ${p.relevanceScore} points (ColorAxis: ${colorAxisBoost > 0 ? '+' : ''}${colorAxisBoost})`);
+     });
+     console.log('[Scoring] ========================================');
+     
+     return sorted
 }
 
 function applyUserProfileFiltersToProducts(
@@ -2043,11 +2106,36 @@ export async function POST(request: NextRequest) {
                
                // Score and rank products using structured data for better matching
                if (recommendedProducts.length > 0) {
+                    console.log('[API] ========================================');
+                    console.log('[API] STARTING PRODUCT SCORING');
+                    console.log('[API] Products before scoring:', recommendedProducts.length);
+                    console.log('[API] ========================================');
+                    
                     const scoredProducts = scoreProductsWithStructuredData(
                          recommendedProducts,
                          userProfile,
                          goalKeys
                     )
+                    
+                    // Log final displayed products with their scores
+                    const topDisplayed = scoredProducts.slice(0, 6); // Top 6 that will be displayed
+                    console.log('[API] ========================================');
+                    console.log('[API] FINAL DISPLAYED PRODUCTS (Top 6):');
+                    topDisplayed.forEach((p, idx) => {
+                         console.log(`[API] ${idx + 1}. "${p.title}"`);
+                         console.log(`[API]    Score: ${p.relevanceScore} points`);
+                         console.log(`[API]    Color Axis: ${p.colorAxis || 'N/A'}`);
+                         console.log(`[API]    Price: ${p.price} ${p.currency}`);
+                         console.log(`[API]    Available: ${p.available}`);
+                         if (p.benefits && p.benefits.length > 0) {
+                              console.log(`[API]    Benefits: ${p.benefits.length} items`);
+                         }
+                         if (p.targetAudience && p.targetAudience.length > 0) {
+                              console.log(`[API]    Target Audience: ${p.targetAudience.length} items`);
+                         }
+                    });
+                    console.log('[API] ========================================');
+                    
                     // Remove relevanceScore before returning (it's only for sorting)
                     recommendedProducts = scoredProducts.map(({ relevanceScore, ...product }) => product)
                     
