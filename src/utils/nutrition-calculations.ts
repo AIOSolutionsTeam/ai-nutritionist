@@ -66,21 +66,28 @@ export function determineActivityLevel(goals: string[]): ActivityLevel {
 }
 
 /**
- * Calculate protein requirements based on bodyweight
- * Base: 1.6 g/kg (baseline)
- * Active: 2.0 g/kg (for active people with muscle_gain or sport goals)
+ * Calculate protein requirements based on bodyweight and activity level
+ * Base: 1.6 g/kg (baseline for sedentary to moderate activity)
+ * Very Active: 2.0 g/kg (for those training 4+ days per week)
  */
 export function calculateProteinGrams(
      weight: number, // in kg
-     goals: string[]
+     goals: string[],
+     activityLevel?: ActivityLevel
 ): number {
      // Base protein requirement
      let proteinPerKg = 1.6;
      
-     // Adjust for active people
-     if (goals.includes('muscle_gain') || goals.includes('sport')) {
-          // Active people need more protein
+     // Adjust based on activity level (preferred) or goals (fallback)
+     if (activityLevel === 'very_active') {
+          // Those training 4+ days per week need more protein
           proteinPerKg = 2.0;
+     } else if (!activityLevel) {
+          // Fallback to goals-based estimation if activity level not provided
+          if (goals.includes('muscle_gain') || goals.includes('sport')) {
+               // Active people need more protein
+               proteinPerKg = 2.0;
+          }
      }
      
      return weight * proteinPerKg;
@@ -143,8 +150,8 @@ export function calculateMacronutrients(
      goals: string[],
      activityLevel?: ActivityLevel
 ): MacronutrientResult {
-     // Calculate protein based on bodyweight
-     const proteinGrams = calculateProteinGrams(weight, goals);
+     // Calculate protein based on bodyweight and activity level
+     const proteinGrams = calculateProteinGrams(weight, goals, activityLevel);
      const proteinCalories = proteinGrams * 4; // 4 calories per gram of protein
      
      // Calculate carbs based on bodyweight and activity level
