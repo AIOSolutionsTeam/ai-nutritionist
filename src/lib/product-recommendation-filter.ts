@@ -98,13 +98,76 @@ export function mapNeedsToColorAxes(userNeeds: string[]): Set<ColorAxis> {
 }
 
 /**
- * Filters and recommends products based on color axis rules
+ * Scores products with color axis as a boost factor (not a hard filter)
+ * This allows products from other axes if they have matching benefits
+ * 
+ * @param products - All available products
+ * @param userNeeds - Array of user needs/problems
+ * @returns Products with color axis boost scores
+ */
+export function scoreProductsWithColorAxis(
+     products: ProductSearchResult[],
+     userNeeds: string[]
+): Array<ProductSearchResult & { colorAxisBoost: number }> {
+     const relevantAxes = mapNeedsToColorAxes(userNeeds);
+     
+     return products.map(product => {
+          let colorAxisBoost = 0;
+          
+          // Must be available
+          if (!product.available) {
+               return { ...product, colorAxisBoost: -1000 }; // Heavy penalty for unavailable
+          }
+          
+          // If product has a color axis
+          if (product.colorAxis) {
+               // Boost if product is in a relevant axis
+               if (relevantAxes.has(product.colorAxis)) {
+                    colorAxisBoost += 10; // Strong boost for matching axis
+               } else {
+                    // Small boost for other axes (allows cross-axis benefits)
+                    // Products from other axes can still help indirectly
+                    colorAxisBoost += 2;
+               }
+          } else {
+               // No penalty for missing color axis (some products might not have it)
+               colorAxisBoost = 0;
+          }
+          
+          // Additional boost if product benefits match user needs
+          if (product.benefits && product.benefits.length > 0 && userNeeds.length > 0) {
+               const needsLower = userNeeds.map(n => n.toLowerCase());
+               const benefitsLower = product.benefits.map(b => b.toLowerCase());
+               
+               // Check if any benefit mentions any user need
+               const hasMatchingBenefit = needsLower.some(need => 
+                    benefitsLower.some(benefit => benefit.includes(need))
+               );
+               
+               if (hasMatchingBenefit) {
+                    // Extra boost for products with matching benefits, even from other axes
+                    colorAxisBoost += 5;
+               }
+          }
+          
+          return {
+               ...product,
+               colorAxisBoost
+          };
+     });
+}
+
+/**
+ * Filters and recommends products based on color axis rules (STRICT MODE)
  * 
  * Rules:
  * 1. Only recommend products from axes that match user needs
  * 2. Recommend at least one product per relevant axis
  * 3. Only include available products
  * 4. Never recommend from unrelated axes
+ * 
+ * ⚠️ WARNING: This is very restrictive and may miss products that help indirectly
+ * Consider using scoreProductsWithColorAxis() instead for better results
  * 
  * @param products - All available products
  * @param userNeeds - Array of user needs/problems
@@ -180,18 +243,18 @@ export function filterProductsByColorAxis(
 }
 
 /**
- * Analyzes user query to extract needs and applies color axis filtering
- * This is a convenience function that combines need extraction and filtering
+ * Analyzes user query to extract needs and applies color axis scoring (FLEXIBLE MODE)
+ * This allows products from other axes if they have matching benefits
  * 
  * @param products - All available products
  * @param userQuery - User's query/message
- * @param maxProductsPerAxis - Maximum products to return per axis (default: 2)
- * @returns Filtered and recommended products
+ * @param limit - Maximum number of products to return (default: 6)
+ * @returns Scored and ranked products (best matches first)
  */
 export function recommendProductsByQuery(
      products: ProductSearchResult[],
      userQuery: string,
-     maxProductsPerAxis: number = 2
+     limit: number = 6
 ): ProductSearchResult[] {
      // Extract needs from user query
      // This is a simple extraction - you might want to enhance this with NLP
@@ -230,7 +293,18 @@ export function recommendProductsByQuery(
           }
      }
 
-     return filterProductsByColorAxis(products, needs, maxProductsPerAxis);
+     // Use flexible scoring instead of strict filtering
+     const scoredProducts = scoreProductsWithColorAxis(products, needs);
+     
+     // Sort by color axis boost (highest first), then filter out unavailable
+     const sorted = scoredProducts
+          .filter(p => p.available) // Only available products
+          .sort((a, b) => b.colorAxisBoost - a.colorAxisBoost)
+          .slice(0, limit);
+     
+     // Remove the boost score before returning (colorAxisBoost is used in sort above)
+     // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     return sorted.map(({ colorAxisBoost, ...product }) => product);
 }
 
 
