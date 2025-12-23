@@ -6,6 +6,8 @@
 import { extractProductData } from './product-parser';
 import { getColorAxisForHandle } from './color-axis-loader';
 
+type ColorAxis = 'Green' | 'Pink' | 'Blue' | 'Yellow';
+
 // Types for Shopify API responses
 export interface ShopifyProduct {
      id: string;
@@ -75,6 +77,7 @@ export interface ProductSearchResult {
           tips?: string[];
      };
      contraindications?: string[];
+     colorAxis?: ColorAxis; // Color axis from CSV mapping (Green, Pink, Blue, Yellow)
 }
 
 /**
@@ -800,6 +803,9 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          metafields: [] // Storefront API doesn't return metafields
                     });
 
+                    // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
+                    const colorAxis = getColorAxisForHandle(product.handle);
+
                     const cachedProduct: CachedProductData = {
                          title: product.title,
                          price: price,
@@ -822,6 +828,7 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          parsedData: parsedData,
                          // Store handle for HTML extraction later
                          handle: product.handle,
+                         colorAxis: colorAxis,
                     };
 
                     allProducts.push(cachedProduct);
@@ -1444,6 +1451,9 @@ export async function searchProducts(
                     metafields: [] // Storefront API doesn't return metafields
                });
 
+               // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
+               const colorAxis = getColorAxisForHandle(product.handle);
+
                return {
                     title: product.title,
                     price: price,
@@ -1457,11 +1467,13 @@ export async function searchProducts(
                     tags: product.tags || [],
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
+                    handle: product.handle,
                     // Structured product data
                     benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
                     targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
                     usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
                     contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
+                    colorAxis: colorAxis,
                };
           });
 
@@ -1671,6 +1683,9 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                     ? collectionHandles[0] 
                     : undefined;
 
+               // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
+               const colorAxis = getColorAxisForHandle(product.handle);
+
                return {
                     title: product.title,
                     price: price,
@@ -1685,6 +1700,8 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                     description: product.description || '',
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
+                    handle: product.handle,
+                    colorAxis: colorAxis,
                };
           });
 
