@@ -3,6 +3,7 @@ import { dbService, IUserProfile } from '../../../lib/db'
 import { pdfGenerator, NutritionPlan } from '../../../lib/pdf'
 import { openaiService, geminiService, AIQuotaError } from '../../../lib/openai'
 import { fetchAllProductsWithParsedData, ProductSearchResult, generateProductContextForVariantIds } from '../../../lib/shopify'
+import { calculateNutritionPlan, ActivityLevel } from '../../../utils/nutrition-calculations'
 
 /**
  * Translate goals from English to French and remove underscores
@@ -30,6 +31,79 @@ function translateGoals(goals: string[]): string[] {
           const normalizedGoal = goal.toLowerCase().trim()
           return goalTranslations[normalizedGoal] || goal.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
      })
+}
+
+/**
+ * Map French activity level to English ActivityLevel for calculations
+ */
+function mapActivityLevelToEnglish(frenchActivityLevel?: string): ActivityLevel | undefined {
+     if (!frenchActivityLevel) return undefined;
+     
+     const activityMap: Record<string, ActivityLevel> = {
+          'Sédentaire': 'sedentary',
+          'Léger (1-2 entraînements/semaine)': 'light',
+          'Léger': 'light',
+          'Modéré (2-3 entraînements/semaine)': 'moderate',
+          'Modéré': 'moderate',
+          'Actif (4-5 entraînements/semaine)': 'very_active',
+          'Actif': 'very_active',
+          'Très actif (6+ entraînements/semaine)': 'very_active',
+          'Très actif': 'very_active',
+     };
+     
+     return activityMap[frenchActivityLevel] || undefined;
+}
+
+/**
+ * Calculate nutrition values using actual user data (height, weight, activityLevel)
+ * instead of AI estimates
+ */
+function calculateNutritionValues(
+     userProfile: IUserProfile,
+     activityLevel?: string
+): {
+     dailyCalories: number;
+     macronutrients: {
+          protein: { grams: number; percentage: number };
+          carbs: { grams: number; percentage: number };
+          fats: { grams: number; percentage: number };
+     };
+     activityLevel: ActivityLevel | undefined;
+} {
+     // Validate required data
+     if (!userProfile.height || !userProfile.weight) {
+          // Fallback to default if height/weight missing
+          return {
+               dailyCalories: 2000,
+               macronutrients: {
+                    protein: { grams: 125, percentage: 25 },
+                    carbs: { grams: 225, percentage: 45 },
+                    fats: { grams: 67, percentage: 30 },
+               },
+               activityLevel: undefined,
+          };
+     }
+
+     // Map French activity level to English
+     const mappedActivityLevel = mapActivityLevelToEnglish(activityLevel);
+     
+     // Use the actual calculation function
+     // This already handles fat percentage correctly (25% for weight loss, 30% otherwise)
+     const nutritionPlan = calculateNutritionPlan(
+          userProfile.weight,
+          userProfile.height,
+          userProfile.age,
+          userProfile.gender,
+          userProfile.goals,
+          mappedActivityLevel // Pass the mapped activity level
+     );
+
+     // Return the calculated values directly (calculateMacronutrients already handles fat 25-35%)
+     return {
+          dailyCalories: nutritionPlan.dailyCalories,
+          macronutrients: nutritionPlan.macronutrients,
+          activityLevel: nutritionPlan.activityLevel,
+     };
 }
 
 /**
@@ -76,7 +150,7 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
                     if (openaiService.isInCooldown()) {
                          const remaining = openaiService.getCooldownRemainingMs()
                          console.warn(`[Generate Plan] OpenAI also in cooldown (${Math.ceil(remaining / 1000)}s remaining). Using default plan.`)
-                         return createDefaultPlan(userProfile, recommendedProducts)
+                         return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0, activityLevel)
                     }
                     
                     // Try OpenAI as fallback
@@ -92,11 +166,11 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
                          if (openaiError instanceof AIQuotaError) {
                               console.warn('[Generate Plan] Both providers in quota error. Using default plan.')
                          }
-                         return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0)
+                         return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0, activityLevel)
                     }
                } else {
                     // Non-quota error, use default plan
-                    return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0)
+                    return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0, activityLevel)
                }
           }
 
@@ -167,6 +241,21 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
                })
           }
 
+          // Calculate nutrition values using actual user data (height, weight, activityLevel)
+          // This overrides AI estimates with scientific calculations
+          const calculatedNutrition = calculateNutritionValues(userProfile, activityLevel);
+          
+          // Map activity level back to French for display
+          const activityLevelMap: Record<ActivityLevel, string> = {
+               'sedentary': 'Sédentaire',
+               'light': 'Léger (1-2 entraînements/semaine)',
+               'moderate': 'Modéré (2-3 entraînements/semaine)',
+               'very_active': 'Très actif (6+ entraînements/semaine)',
+          };
+          const displayActivityLevel = calculatedNutrition.activityLevel 
+               ? activityLevelMap[calculatedNutrition.activityLevel] 
+               : (activityLevel || planData.activityLevel || undefined);
+
           return {
                userProfile: {
                     userId: userProfile.userId,
@@ -178,7 +267,7 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
                     height: userProfile.height,
                     weight: userProfile.weight,
                     medications: [],
-                    activityLevel: activityLevel || planData.activityLevel || undefined,
+                    activityLevel: displayActivityLevel,
                     shopifyCustomerId: userProfile.shopifyCustomerId,
                     shopifyCustomerName: userProfile.shopifyCustomerName,
                     lastInteraction: userProfile.lastInteraction,
@@ -186,13 +275,10 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
                     updatedAt: userProfile.updatedAt,
                },
                recommendations: {
-                    dailyCalories: planData.dailyCalories || 2000,
-                    macronutrients: planData.macronutrients || {
-                         protein: { grams: 125, percentage: 25 },
-                         carbs: { grams: 225, percentage: 45 },
-                         fats: { grams: 67, percentage: 30 },
-                    },
-                    activityLevel: activityLevel || planData.activityLevel || undefined,
+                    // Use calculated values instead of AI estimates
+                    dailyCalories: calculatedNutrition.dailyCalories,
+                    macronutrients: calculatedNutrition.macronutrients,
+                    activityLevel: displayActivityLevel,
                     mealPlan: planData.mealPlan || {
                          breakfast: [],
                          morningSnack: [],
@@ -211,7 +297,7 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
      } catch (error) {
           console.error('[Generate Plan] Error generating plan with AI:', error)
           // Fallback to default plan
-          return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0)
+          return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0, activityLevel)
      }
 }
 
@@ -221,29 +307,24 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
 function createDefaultPlan(
      userProfile: IUserProfile,
      recommendedProducts: ProductSearchResult[],
-     hasProducts: boolean = false
+     hasProducts: boolean = false,
+     activityLevel?: string
 ): NutritionPlan {
      const translatedGoals = translateGoals(userProfile.goals)
      
-     // Calculate daily calories
-     let baseCalories = 2000
-     if (userProfile.gender === 'male') {
-          baseCalories += 200
-     } else if (userProfile.gender === 'female') {
-          baseCalories -= 200
-     }
-
-     if (userProfile.age < 30) {
-          baseCalories += 100
-     } else if (userProfile.age > 50) {
-          baseCalories -= 100
-     }
-
-     if (userProfile.goals.includes('weight_loss')) {
-          baseCalories -= 300
-     } else if (userProfile.goals.includes('muscle_gain')) {
-          baseCalories += 300
-     }
+     // Calculate nutrition values using actual user data
+     const calculatedNutrition = calculateNutritionValues(userProfile, activityLevel);
+     
+     // Map activity level back to French for display
+     const activityLevelMap: Record<ActivityLevel, string> = {
+          'sedentary': 'Sédentaire',
+          'light': 'Léger (1-2 entraînements/semaine)',
+          'moderate': 'Modéré (2-3 entraînements/semaine)',
+          'very_active': 'Très actif (6+ entraînements/semaine)',
+     };
+     const displayActivityLevel = calculatedNutrition.activityLevel 
+          ? activityLevelMap[calculatedNutrition.activityLevel] 
+          : activityLevel;
 
      // Map recommended products to supplements only if we have products
      const supplements: Array<{
@@ -277,7 +358,7 @@ function createDefaultPlan(
                height: userProfile.height,
                weight: userProfile.weight,
                medications: [],
-               activityLevel: undefined,
+               activityLevel: displayActivityLevel,
                shopifyCustomerId: userProfile.shopifyCustomerId,
                shopifyCustomerName: userProfile.shopifyCustomerName,
                lastInteraction: userProfile.lastInteraction,
@@ -285,13 +366,9 @@ function createDefaultPlan(
                updatedAt: userProfile.updatedAt,
           },
           recommendations: {
-               dailyCalories: Math.max(1200, baseCalories),
-               macronutrients: {
-                    protein: { grams: Math.round(baseCalories * 0.25 / 4), percentage: 25 },
-                    carbs: { grams: Math.round(baseCalories * 0.45 / 4), percentage: 45 },
-                    fats: { grams: Math.round(baseCalories * 0.30 / 9), percentage: 30 },
-               },
-               activityLevel: undefined,
+               dailyCalories: calculatedNutrition.dailyCalories,
+               macronutrients: calculatedNutrition.macronutrients,
+               activityLevel: displayActivityLevel,
                mealPlan: {
                     breakfast: [
                          '80 g de flocons d\'avoine',
