@@ -6,22 +6,6 @@
 import { extractProductData } from './product-parser';
 import { getColorAxisForHandle } from './color-axis-loader';
 
-/**
- * Safely get color axis for a product handle
- * Uses the color-axis-loader to map product handles to their color axes from CSV
- */
-function safeGetColorAxis(handle: string): 'Green' | 'Pink' | 'Blue' | 'Yellow' | undefined {
-     if (!handle) {
-          return undefined;
-     }
-     try {
-          return getColorAxisForHandle(handle);
-     } catch (error) {
-          console.warn(`[Shopify] Error getting color axis for handle "${handle}":`, error);
-          return undefined;
-     }
-}
-
 // Types for Shopify API responses
 export interface ShopifyProduct {
      id: string;
@@ -81,7 +65,6 @@ export interface ProductSearchResult {
      isOnSale?: boolean; // Whether the product is currently on sale
      collection?: string; // Primary collection handle (e.g., "energie-et-endurance")
      handle?: string; // Product handle for HTML extraction (e.g., "vitamine-b12")
-     colorAxis?: 'Green' | 'Pink' | 'Blue' | 'Yellow'; // Color axis for recommendation logic
      // Structured product data extracted from description
      benefits?: string[];
      targetAudience?: string[];
@@ -817,10 +800,6 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          metafields: [] // Storefront API doesn't return metafields
                     });
 
-                    // Get color axis from handle (optional)
-                    const productHandle = product.handle || '';
-                    const colorAxis = safeGetColorAxis(productHandle);
-
                     const cachedProduct: CachedProductData = {
                          title: product.title,
                          price: price,
@@ -835,14 +814,14 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          collections: collections.length > 0 ? collections : undefined,
                          collection: primaryCollection,
                          description: product.description || '',
-                         handle: productHandle || undefined,
-                         colorAxis: colorAxis,
                          // Structured product data
                          benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
                          targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
                          usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
                          contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
                          parsedData: parsedData,
+                         // Store handle for HTML extraction later
+                         handle: product.handle,
                     };
 
                     allProducts.push(cachedProduct);
@@ -1059,15 +1038,6 @@ function generateProductContextFromProducts(
      let context = `\n\nAVAILABLE PRODUCTS IN STORE (use this information for accurate product recommendations and details):\n`;
      context += `Total products available: ${products.length}\n`;
      context += `Showing ${limitedProducts.length} products for context:\n\n`;
-     
-     // Add Color Axis System explanation
-     context += `COLOR AXIS SYSTEM (CRITICAL for product recommendations):\n`;
-     context += `Each product has a ColorAxis property that categorizes it based on its primary use case:\n`;
-     context += `  🟢 Green → Santé & Bien-être: General health, minerals, deficiencies, balance, sleep, digestion, immunity, joints, heart, nervous system\n`;
-     context += `  🌸 Pink → Beauté & Anti-age: Skin, hair, nails, collagen, anti-aging, hydration, firmness, elasticity\n`;
-     context += `  🔵 Blue → Sport & Performance: Energy, stamina, strength, physical performance, athletic, recovery, training\n`;
-     context += `  🟡 Yellow → Super Aliments: Nutrient-dense foods, overall vitality support, nutritional balance\n`;
-     context += `IMPORTANT: When recommending products, match the ColorAxis to the user's needs. Only recommend products from axes that match the user's stated problems or goals.\n\n`;
 
      for (const product of limitedProducts) {
           if (product.extractedContent) {
@@ -1087,11 +1057,12 @@ function generateProductContextFromProducts(
                context += `  VariantId: ${product.variantId}\n`;
           }
           
-          if (product.colorAxis) {
-               const colorEmoji = product.colorAxis === 'Green' ? '🟢' : 
-                                  product.colorAxis === 'Pink' ? '🌸' : 
-                                  product.colorAxis === 'Blue' ? '🔵' : '🟡';
-               context += `  ColorAxis: ${colorEmoji} ${product.colorAxis} (${product.colorAxis === 'Green' ? 'Santé & Bien-être' : product.colorAxis === 'Pink' ? 'Beauté & Anti-age' : product.colorAxis === 'Blue' ? 'Sport & Performance' : 'Super Aliments'})\n`;
+          // Add color axis information from CSV if available
+          if (product.handle) {
+               const colorAxis = getColorAxisForHandle(product.handle);
+               if (colorAxis) {
+                    context += `  Color Axis: ${colorAxis}\n`;
+               }
           }
           
           if (product.collection) {
@@ -1473,10 +1444,6 @@ export async function searchProducts(
                     metafields: [] // Storefront API doesn't return metafields
                });
 
-               // Get color axis from handle (optional)
-               const productHandle = product.handle || '';
-               const colorAxis = safeGetColorAxis(productHandle);
-
                return {
                     title: product.title,
                     price: price,
@@ -1490,8 +1457,6 @@ export async function searchProducts(
                     tags: product.tags || [],
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
-                    handle: productHandle || undefined,
-                    colorAxis: colorAxis,
                     // Structured product data
                     benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
                     targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
@@ -1706,10 +1671,6 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                     ? collectionHandles[0] 
                     : undefined;
 
-               // Get color axis from handle (optional)
-               const productHandle = product.handle || '';
-               const colorAxis = safeGetColorAxis(productHandle);
-
                return {
                     title: product.title,
                     price: price,
@@ -1724,8 +1685,6 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                     description: product.description || '',
                     collections: collections.length > 0 ? collections : undefined,
                     collection: primaryCollection,
-                    handle: productHandle || undefined,
-                    colorAxis: colorAxis,
                };
           });
 
@@ -2437,10 +2396,6 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
                ? collectionHandles[0] 
                : undefined;
 
-          // Get color axis from handle (optional)
-          const productHandle = product.handle || '';
-          const colorAxis = safeGetColorAxis(productHandle);
-
           return {
                title: product.title,
                price: price,
@@ -2455,8 +2410,6 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
                description: product.description || '',
                collections: collections.length > 0 ? collections : undefined,
                collection: primaryCollection,
-               handle: productHandle || undefined,
-               colorAxis: colorAxis,
           };
      } catch (error) {
           console.error('Error fetching product by variant ID:', error);
