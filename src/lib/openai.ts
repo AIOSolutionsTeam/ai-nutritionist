@@ -235,6 +235,12 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
      * Be helpful, not pushy - present it as a recommendation, not pressure
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.
    - IMPORTANT: If you're not sure whether to recommend products, DON'T. It's better to provide informative advice without products than to recommend unnecessarily.
+   - **COLOR AXIS DIVERSITY - CRITICAL RULE**: When recommending multiple products, you MUST ensure diversity across different color axes (Green, Pink, Blue, Yellow). DO NOT recommend multiple products from the same color axis, even if they serve multiple needs. For example:
+     * If the user needs help with skin, hair, sleep, and energy, do NOT just recommend multiple Green products (like magnesium) even if they address multiple needs.
+     * Instead, recommend products from DIFFERENT axes: one from Pink (for skin/hair), one from Green (for sleep), one from Blue (for energy), etc.
+     * The goal is to provide a balanced, diverse product portfolio that addresses each need with the most appropriate axis.
+     * When the product context shows products with color axis information, prioritize selecting products from different axes to maximize diversity.
+     * Exception: Only recommend multiple products from the same axis if the user's needs are exclusively within that single axis (e.g., only sleep-related needs = only Green products is acceptable).
 
 6. **Product Combinations & Bundling - Sales Strategy**:
    - **ALWAYS suggest product combinations** when recommending products that work well together.
@@ -1016,6 +1022,12 @@ ${isContinuingConversation ? '   - **NO GREETINGS**: Since this is a continuing 
      * Be helpful, not pushy - present it as a recommendation, not pressure
    - When you DO recommend products, explain WHY each product is suitable for their specific situation, but keep explanations concise when the user explicitly asked for a list.
    - IMPORTANT: If you're not sure whether to recommend products, DON'T. It's better to provide informative advice without products than to recommend unnecessarily.
+   - **COLOR AXIS DIVERSITY - CRITICAL RULE**: When recommending multiple products, you MUST ensure diversity across different color axes (Green, Pink, Blue, Yellow). DO NOT recommend multiple products from the same color axis, even if they serve multiple needs. For example:
+     * If the user needs help with skin, hair, sleep, and energy, do NOT just recommend multiple Green products (like magnesium) even if they address multiple needs.
+     * Instead, recommend products from DIFFERENT axes: one from Pink (for skin/hair), one from Green (for sleep), one from Blue (for energy), etc.
+     * The goal is to provide a balanced, diverse product portfolio that addresses each need with the most appropriate axis.
+     * When the product context shows products with color axis information, prioritize selecting products from different axes to maximize diversity.
+     * Exception: Only recommend multiple products from the same axis if the user's needs are exclusively within that single axis (e.g., only sleep-related needs = only Green products is acceptable).
 
 6. **Product Combinations & Bundling - Sales Strategy**:
    - **ALWAYS suggest product combinations** when recommending products that work well together.
