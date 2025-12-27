@@ -2093,16 +2093,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
     const selectedActivityLevel = activityLevelBubbles[0];
     
-    // Map French activity level to stored value
-    const activityLevelMap: { [key: string]: string } = {
-      "Sédentaire": "Sédentaire",
-      "Léger": "Léger (1-2 entraînements/semaine)",
-      "Modéré": "Modéré (2-3 entraînements/semaine)",
-      "Actif": "Actif (4-5 entraînements/semaine)",
-      "Très actif": "Très actif (6+ entraînements/semaine)",
-    };
-
-    const mappedActivityLevel = activityLevelMap[selectedActivityLevel] || selectedActivityLevel;
+    // The selected activity level already includes the number of times, so use it directly
+    const mappedActivityLevel = selectedActivityLevel;
     setActivityLevel(mappedActivityLevel);
     setHasAskedActivityLevel(true);
     setIsAskingActivityLevel(false);
@@ -2119,12 +2111,15 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
     setIsLoading(false);
 
-    // Now proceed with plan generation
-    await proceedWithPlanGeneration();
+    // Now proceed with plan generation - pass mappedActivityLevel directly to avoid async state issue
+    await proceedWithPlanGeneration(mappedActivityLevel);
   };
 
-  const proceedWithPlanGeneration = async () => {
+  const proceedWithPlanGeneration = async (activityLevelOverride?: string) => {
     if (!userId || isGeneratingPlan) return;
+
+    // Use override if provided, otherwise fall back to state (for other call sites)
+    const activityLevelToUse = activityLevelOverride || activityLevel;
 
     setIsGeneratingPlan(true);
 
@@ -2142,17 +2137,19 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         }
       });
 
+      const requestBody = {
+        userId,
+        recommendedProducts: allRecommendedProducts,
+        activityLevel: activityLevelToUse || undefined,
+      };
+
       // Call the generate-plan API
       const response = await fetch("/api/generate-plan", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          userId,
-          recommendedProducts: allRecommendedProducts,
-          activityLevel: activityLevel || undefined,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -2402,7 +2399,13 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
               {!message.isUser && isAskingActivityLevel && (() => {
                 const isLastMessage = messages[messages.length - 1]?.id === message.id;
-                const activityLevelOptions = ["Sédentaire", "Léger", "Modéré", "Actif", "Très actif"];
+                const activityLevelOptions = [
+                  "Sédentaire", 
+                  "Léger (1-2 entraînements/semaine)", 
+                  "Modéré (2-3 entraînements/semaine)", 
+                  "Actif (4-5 entraînements/semaine)", 
+                  "Très actif (6+ entraînements/semaine)"
+                ];
                 if (isLastMessage) {
                   return (
                     <FloatingBubbles
