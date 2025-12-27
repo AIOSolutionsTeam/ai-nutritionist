@@ -746,102 +746,145 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          }
                     `;
 
-               const response: Response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
-                    method: 'POST',
-                    headers: {
-                         'Content-Type': 'application/json',
-                         'X-Shopify-Storefront-Access-Token': shopifyToken,
-                    },
-                    body: JSON.stringify({
-                         query,
-                         variables: cursor ? { cursor } : {},
-                    }),
-               });
+               // Retry logic with exponential backoff for timeout errors
+               const maxRetries = 3;
+               let retryCount = 0;
+               let pageFetched = false;
 
-               if (!response.ok) {
-                    throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
-               }
+               while (!pageFetched && retryCount < maxRetries) {
+                    if (retryCount > 0) {
+                         const backoffDelay = Math.min(1000 * Math.pow(2, retryCount - 1), 10000); // Max 10 seconds
+                         console.log(`[Shopify] Retry attempt ${retryCount}/${maxRetries - 1} after ${backoffDelay}ms delay...`);
+                         await new Promise(resolve => setTimeout(resolve, backoffDelay));
+                    }
 
-               // The Shopify GraphQL response structure is known but complex; keep it as any but
-               // explicitly disable the lint rule here to avoid polluting the rest of the file.
-               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-               const data: any = await response.json();
+                    // Create AbortController for timeout
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-               if (data.errors) {
-                    console.error('GraphQL errors:', data.errors);
-                    throw new Error('GraphQL query failed');
-               }
+                    try {
+                         const response: Response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
+                              method: 'POST',
+                              headers: {
+                                   'Content-Type': 'application/json',
+                                   'X-Shopify-Storefront-Access-Token': shopifyToken,
+                              },
+                              body: JSON.stringify({
+                                   query,
+                                   variables: cursor ? { cursor } : {},
+                              }),
+                              signal: controller.signal,
+                         });
 
-               const edges = data.data.products.edges || [];
-               console.log(`[Shopify] Page ${pageCount}: Received ${edges.length} products`);
-               
-               for (const edge of edges) {
-                    const product = edge.node;
-                    const variant = product.variants.edges[0]?.node;
-                    const image = product.images.edges[0]?.node;
-                    const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
-                    const collectionHandles = product.collections?.edges.map((edge: { node: { handle: string } }) => edge.node.handle) || [];
+                         clearTimeout(timeoutId);
+
+                         if (!response.ok) {
+                              throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
+                         }
+
+                         // The Shopify GraphQL response structure is known but complex; keep it as any but
+                         // explicitly disable the lint rule here to avoid polluting the rest of the file.
+                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                         const data: any = await response.json();
+
+                         if (data.errors) {
+                              console.error('GraphQL errors:', data.errors);
+                              throw new Error('GraphQL query failed');
+                         }
+
+                         const edges = data.data.products.edges || [];
+                         console.log(`[Shopify] Page ${pageCount}: Received ${edges.length} products`);
                     
-                    const price = parseFloat(variant?.price.amount || '0');
-                    const compareAtPrice = variant?.compareAtPrice?.amount 
-                         ? parseFloat(variant.compareAtPrice.amount) 
-                         : null;
-                    
-                    const isOnSale = compareAtPrice !== null && compareAtPrice > price;
-                    const discountPercentage = isOnSale && compareAtPrice 
-                         ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
-                         : undefined;
-                    
-                    const primaryCollection = collectionHandles.length > 0 
-                         ? collectionHandles[0] 
-                         : undefined;
+                         for (const edge of edges) {
+                              const product = edge.node;
+                              const variant = product.variants.edges[0]?.node;
+                              const image = product.images.edges[0]?.node;
+                              const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
+                              const collectionHandles = product.collections?.edges.map((edge: { node: { handle: string } }) => edge.node.handle) || [];
+                              
+                              const price = parseFloat(variant?.price.amount || '0');
+                              const compareAtPrice = variant?.compareAtPrice?.amount 
+                                   ? parseFloat(variant.compareAtPrice.amount) 
+                                   : null;
+                              
+                              const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+                              const discountPercentage = isOnSale && compareAtPrice 
+                                   ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+                                   : undefined;
+                              
+                              const primaryCollection = collectionHandles.length > 0 
+                                   ? collectionHandles[0] 
+                                   : undefined;
 
-                    // Extract structured product data from description HTML
-                    const parsedData = extractProductData({
-                         descriptionHtml: product.descriptionHtml || '',
-                         description: product.description || '',
-                         metafields: [] // Storefront API doesn't return metafields
-                    });
+                              // Extract structured product data from description HTML
+                              const parsedData = extractProductData({
+                                   descriptionHtml: product.descriptionHtml || '',
+                                   description: product.description || '',
+                                   metafields: [] // Storefront API doesn't return metafields
+                              });
 
-                    // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
-                    const colorAxis = getColorAxisForHandle(product.handle);
+                              // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
+                              const colorAxis = getColorAxisForHandle(product.handle);
 
-                    const cachedProduct: CachedProductData = {
-                         title: product.title,
-                         price: price,
-                         originalPrice: compareAtPrice || undefined,
-                         discountPercentage: discountPercentage,
-                         isOnSale: isOnSale,
-                         image: image?.url || '',
-                         variantId: variant?.id || '',
-                         available: variant?.availableForSale || false,
-                         currency: variant?.price.currencyCode || 'USD',
-                         tags: product.tags || [],
-                         collections: collections.length > 0 ? collections : undefined,
-                         collection: primaryCollection,
-                         description: product.description || '',
-                         // Structured product data
-                         benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
-                         targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
-                         usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
-                         contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
-                         parsedData: parsedData,
-                         // Store handle for HTML extraction later
-                         handle: product.handle,
-                         colorAxis: colorAxis,
-                    };
+                              const cachedProduct: CachedProductData = {
+                                   title: product.title,
+                                   price: price,
+                                   originalPrice: compareAtPrice || undefined,
+                                   discountPercentage: discountPercentage,
+                                   isOnSale: isOnSale,
+                                   image: image?.url || '',
+                                   variantId: variant?.id || '',
+                                   available: variant?.availableForSale || false,
+                                   currency: variant?.price.currencyCode || 'USD',
+                                   tags: product.tags || [],
+                                   collections: collections.length > 0 ? collections : undefined,
+                                   collection: primaryCollection,
+                                   description: product.description || '',
+                                   // Structured product data
+                                   benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
+                                   targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
+                                   usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
+                                   contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
+                                   parsedData: parsedData,
+                                   // Store handle for HTML extraction later
+                                   handle: product.handle,
+                                   colorAxis: colorAxis,
+                              };
 
-                    allProducts.push(cachedProduct);
-               }
+                              allProducts.push(cachedProduct);
+                         }
 
-               // Check if there's a next page
-               hasNextPage = data.data.products.pageInfo.hasNextPage;
-               cursor = data.data.products.pageInfo.endCursor;
-               
-               if (hasNextPage) {
-                    console.log(`[Shopify] More pages available, continuing...`);
-               } else {
-                    console.log(`[Shopify] ✅ Finished fetching all pages. Total products: ${allProducts.length}`);
+                         // Check if there's a next page
+                         hasNextPage = data.data.products.pageInfo.hasNextPage;
+                         cursor = data.data.products.pageInfo.endCursor;
+                         
+                         if (hasNextPage) {
+                              console.log(`[Shopify] More pages available, continuing...`);
+                         } else {
+                              console.log(`[Shopify] ✅ Finished fetching all pages. Total products: ${allProducts.length}`);
+                         }
+
+                         pageFetched = true; // Success, exit retry loop
+                    } catch (error: unknown) {
+                         clearTimeout(timeoutId);
+                         
+                         const isTimeoutError = error instanceof Error && 
+                              (error.name === 'AbortError' || 
+                               error.message.includes('timeout') || 
+                               error.message.includes('Connect Timeout'));
+                         
+                         if (isTimeoutError && retryCount < maxRetries - 1) {
+                              retryCount++;
+                              console.warn(`[Shopify] Request timeout on page ${pageCount}, will retry (${retryCount}/${maxRetries - 1})...`);
+                              // Continue to retry
+                         } else {
+                              // Either not a timeout error, or max retries reached
+                              if (isTimeoutError) {
+                                   throw new Error(`Shopify API request timed out after ${maxRetries} attempts. This may indicate network issues or the Shopify API is unavailable.`);
+                              }
+                              throw error;
+                         }
+                    }
                }
           }
           
