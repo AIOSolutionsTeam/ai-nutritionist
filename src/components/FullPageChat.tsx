@@ -2401,10 +2401,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                 const isLastMessage = messages[messages.length - 1]?.id === message.id;
                 const activityLevelOptions = [
                   "Sédentaire", 
-                  "Léger (1-2 entraînements/semaine)", 
-                  "Modéré (2-3 entraînements/semaine)", 
-                  "Actif (4-5 entraînements/semaine)", 
-                  "Très actif (6+ entraînements/semaine)"
+                  "Léger (1-2 fois/sem)", 
+                  "Modéré (2-3 fois/sem)", 
+                  "Actif (4-5 fois/sem)", 
+                  "Très actif (6+ fois/sem)"
                 ];
                 if (isLastMessage) {
                   return (

@@ -41,17 +41,29 @@ function mapActivityLevelToEnglish(frenchActivityLevel?: string): ActivityLevel 
      
      const activityMap: Record<string, ActivityLevel> = {
           'Sédentaire': 'sedentary',
-          'Léger (1-2 entraînements/semaine)': 'light',
+          'Léger (1-2 fois/sem)': 'light',
           'Léger': 'light',
-          'Modéré (2-3 entraînements/semaine)': 'moderate',
+          'Modéré (2-3 fois/sem)': 'moderate',
           'Modéré': 'moderate',
-          'Actif (4-5 entraînements/semaine)': 'very_active',
+          'Actif (4-5 fois/sem)': 'very_active',
           'Actif': 'very_active',
-          'Très actif (6+ entraînements/semaine)': 'very_active',
+          'Très actif (6+ fois/sem)': 'very_active',
           'Très actif': 'very_active',
      };
      
      return activityMap[frenchActivityLevel] || undefined;
+}
+
+/**
+ * Get fallback activity level in French based on goals
+ * If activity level is undefined and goal is muscle_gain, return "Actif (4-5 fois/sem)"
+ * Otherwise, return undefined
+ */
+function getFallbackActivityLevel(goals: string[]): string | undefined {
+     if (goals.includes('muscle_gain') || goals.includes('sport')) {
+          return 'Actif (4-5 fois/sem)';
+     }
+     return undefined;
 }
 
 /**
@@ -84,8 +96,18 @@ function calculateNutritionValues(
           };
      }
 
+     // If activity level is not provided, use fallback for muscle_gain goals
+     // This ensures calculations use appropriate activity level
+     const activityLevelForCalculation = activityLevel || getFallbackActivityLevel(userProfile.goals);
+     
+     // Log the activity level being used for calculation (before mapping)
+     console.log('[Generate Plan] Activity level used for calculation (French):', activityLevelForCalculation || 'Not provided')
+     
      // Map French activity level to English
-     const mappedActivityLevel = mapActivityLevelToEnglish(activityLevel);
+     const mappedActivityLevel = mapActivityLevelToEnglish(activityLevelForCalculation);
+     
+     // Log the mapped activity level being used for calculations (English)
+     console.log('[Generate Plan] Activity level used for calculations (English/mapped):', mappedActivityLevel || 'Not provided')
      
      // Use the actual calculation function
      // This already handles fat percentage correctly (25% for weight loss, 30% otherwise)
@@ -245,16 +267,9 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
           // This overrides AI estimates with scientific calculations
           const calculatedNutrition = calculateNutritionValues(userProfile, activityLevel);
           
-          // Map activity level back to French for display
-          const activityLevelMap: Record<ActivityLevel, string> = {
-               'sedentary': 'Sédentaire',
-               'light': 'Léger (1-2 entraînements/semaine)',
-               'moderate': 'Modéré (2-3 entraînements/semaine)',
-               'very_active': 'Très actif (6+ entraînements/semaine)',
-          };
-          const displayActivityLevel = calculatedNutrition.activityLevel 
-               ? activityLevelMap[calculatedNutrition.activityLevel] 
-               : (activityLevel || planData.activityLevel || undefined);
+          // Use the user's original activity level selection for display, not the calculated one
+          // If not provided, use fallback based on goals (only for muscle_gain -> "Actif")
+          const displayActivityLevel = activityLevel || planData.activityLevel || getFallbackActivityLevel(userProfile.goals);
 
           return {
                userProfile: {
@@ -315,16 +330,9 @@ function createDefaultPlan(
      // Calculate nutrition values using actual user data
      const calculatedNutrition = calculateNutritionValues(userProfile, activityLevel);
      
-     // Map activity level back to French for display
-     const activityLevelMap: Record<ActivityLevel, string> = {
-          'sedentary': 'Sédentaire',
-          'light': 'Léger (1-2 entraînements/semaine)',
-          'moderate': 'Modéré (2-3 entraînements/semaine)',
-          'very_active': 'Très actif (6+ entraînements/semaine)',
-     };
-     const displayActivityLevel = calculatedNutrition.activityLevel 
-          ? activityLevelMap[calculatedNutrition.activityLevel] 
-          : activityLevel;
+     // Use the user's original activity level selection for display, not the calculated one
+     // If not provided, use fallback based on goals (only for muscle_gain -> "Actif")
+     const displayActivityLevel = activityLevel || getFallbackActivityLevel(userProfile.goals);
 
      // Map recommended products to supplements only if we have products
      const supplements: Array<{
@@ -414,6 +422,9 @@ export async function POST(request: NextRequest) {
      try {
           const body = await request.json()
           const { userId, activityLevel } = body
+
+          // Log the activity level picked by the user
+          console.log('[Generate Plan] Activity level picked by user:', activityLevel || 'Not provided')
 
           if (!userId) {
                return NextResponse.json(
