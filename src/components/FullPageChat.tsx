@@ -558,7 +558,7 @@ type OnboardingQuestion =
   | 'height'
   | 'goals'
   | 'allergies'
-  | 'budget'
+  | 'activity_level'
   | 'additional_info'
   | 'complete';
 
@@ -569,7 +569,7 @@ interface OnboardingData {
   height?: number;
   goals?: string[];
   allergies?: string[];
-  budget?: { min: number; max: number; currency: string };
+  activityLevel?: string; // Required before saving, but optional during onboarding
   additionalInfo?: string;
 }
 
@@ -638,10 +638,10 @@ const formatSummary = (data: OnboardingData): string => {
   parts.push(`• Objectifs: ${translateGoals(data.goals)}`);
   parts.push(`• Allergies/Régimes: ${translateAllergies(data.allergies)}`);
   
-  if (data.budget) {
-    parts.push(`• Budget: ${data.budget.min}-${data.budget.max} ${data.budget.currency}`);
+  if (data.activityLevel) {
+    parts.push(`• Niveau d'activité: ${data.activityLevel}`);
   } else {
-    parts.push(`• Budget: Non renseigné`);
+    parts.push(`• Niveau d'activité: Non renseigné`);
   }
   
   parts.push(`• Informations supplémentaires: ${data.additionalInfo || 'Aucune'}`);
@@ -675,10 +675,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
-  const [hasAskedActivityLevel, setHasAskedActivityLevel] = useState(false);
-  const [activityLevel, setActivityLevel] = useState<string | null>(null);
-  const [isAskingActivityLevel, setIsAskingActivityLevel] = useState(false);
-  const [activityLevelBubbles, setActivityLevelBubbles] = useState<string[]>([]);
 
   const generateMessageId = (): string => {
     messageIdCounterRef.current += 1;
@@ -985,14 +981,20 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         allowMultiple: true,
         allowCustomInput: true,
       },
-      budget: {
-        question:"Quel budget mensuel prévoyez-vous pour les produits de bien-être?",
+      activity_level: {
+        question: "Quel est votre niveau d'activité physique ?",
         progress: "[7/8]",
-        examples: "Sélectionnez une option ou ajoutez votre budget personnalisé",
-        suggestions: ["0-50 EUR", "50-100 EUR", "100-150 EUR", "150-200 EUR", "200+ EUR"],
+        examples: "Sélectionnez une option",
+        suggestions: [
+          "Sédentaire", 
+          "Léger (1-2 fois/sem)", 
+          "Modéré (2-3 fois/sem)", 
+          "Actif (4-5 fois/sem)", 
+          "Très actif (6+ fois/sem)"
+        ],
         hasBubbles: true,
         allowMultiple: false,
-        allowCustomInput: true,
+        allowCustomInput: false,
       },
       additional_info: {
         question: "Y a-t-il autre chose que vous aimeriez me dire? (médicaments, conditions médicales, etc.)",
@@ -1107,8 +1109,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       
       const questionInfo = getQuestionInfo('age');
       const welcomeMessage = shopifyCustomerName
-        ? `Bonjour ${shopifyCustomerName}! 👋 Je suis votre Nutritionniste IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.`
-        : "Bonjour! 👋 Je suis votre Nutritionniste IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.";
+        ? `Bonjour ${shopifyCustomerName}! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.`
+        : "Bonjour! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.";
       
       setMessages([
         {
@@ -1372,30 +1374,41 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         return { allergies };
       }
       
-      case 'budget': {
-        const numbers = input.match(/\d+/g);
-        if (numbers && numbers.length >= 1) {
-          const firstNum = parseInt(numbers[0]);
-          const secondNum = numbers.length >= 2 ? parseInt(numbers[1]) : firstNum + 50;
-          
-          let currency = 'EUR';
-          if (lowerInput.includes('usd') || lowerInput.includes('dollar') || lowerInput.includes('$')) currency = 'USD';
-          if (lowerInput.includes('eur') || lowerInput.includes('euro') || lowerInput.includes('€')) currency = 'EUR';
-          
-          const min = Math.min(firstNum, secondNum);
-          const max = Math.max(firstNum, secondNum);
-          
-          if (min >= 0) {
-            return { budget: { min, max: max >= min ? max : min + 50, currency } };
+      case 'activity_level': {
+        // Activity level options
+        const activityLevelOptions = [
+          "Sédentaire", 
+          "Léger (1-2 fois/sem)", 
+          "Modéré (2-3 fois/sem)", 
+          "Actif (4-5 fois/sem)", 
+          "Très actif (6+ fois/sem)"
+        ];
+        
+        // Try to match input with activity level options
+        for (const option of activityLevelOptions) {
+          if (lowerInput.includes(option.toLowerCase().split(' ')[0]) || 
+              input.includes(option)) {
+            return { activityLevel: option };
           }
         }
-        const textBudgetMatch = lowerInput.match(/(?:environ|around|about|jusqu'à|up to|max)\s*(\d+)/);
-        if (textBudgetMatch) {
-          const amount = parseInt(textBudgetMatch[1]);
-          let currency = 'EUR';
-          if (lowerInput.includes('usd') || lowerInput.includes('dollar') || lowerInput.includes('$')) currency = 'USD';
-          return { budget: { min: Math.max(0, amount - 25), max: amount + 25, currency } };
+        
+        // Map common variations
+        if (lowerInput.includes('sédentaire') || lowerInput.includes('sedentary')) {
+          return { activityLevel: "Sédentaire" };
         }
+        if (lowerInput.includes('léger') || lowerInput.includes('light')) {
+          return { activityLevel: "Léger (1-2 fois/sem)" };
+        }
+        if (lowerInput.includes('modéré') || lowerInput.includes('moderate')) {
+          return { activityLevel: "Modéré (2-3 fois/sem)" };
+        }
+        if (lowerInput.includes('actif') && !lowerInput.includes('très')) {
+          return { activityLevel: "Actif (4-5 fois/sem)" };
+        }
+        if (lowerInput.includes('très actif') || lowerInput.includes('very active')) {
+          return { activityLevel: "Très actif (6+ fois/sem)" };
+        }
+        
         return null;
       }
       
@@ -1419,7 +1432,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   };
 
   const getNextQuestion = (currentStep: OnboardingQuestion): { step: OnboardingQuestion; question: string; progress: string } => {
-    const nextSteps: OnboardingQuestion[] = ['age', 'gender', 'weight', 'height', 'goals', 'allergies', 'budget', 'additional_info', 'complete'];
+    const nextSteps: OnboardingQuestion[] = ['age', 'gender', 'weight', 'height', 'goals', 'allergies', 'activity_level', 'additional_info', 'complete'];
     const currentIndex = nextSteps.indexOf(currentStep);
     const nextStep = nextSteps[currentIndex + 1] || 'complete';
     const questionInfo = getQuestionInfo(nextStep);
@@ -1540,33 +1553,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         parsed = { allergies };
         break;
       }
-      case "budget": {
-        const first = allSelections[0] || "";
-        const rangeMatch = first.match(/(\d+)\s*-\s*(\d+)\s*(EUR|USD)/i);
-        if (rangeMatch) {
-          parsed = {
-            budget: {
-              min: parseInt(rangeMatch[1], 10),
-              max: parseInt(rangeMatch[2], 10),
-              currency: rangeMatch[3].toUpperCase(),
-            },
-          };
-        } else {
-          const numbers = first.match(/\d+/g);
-          if (numbers && numbers.length >= 1) {
-            const firstNum = parseInt(numbers[0], 10);
-            const secondNum = numbers.length >= 2 ? parseInt(numbers[1], 10) : firstNum + 50;
-            let currency = "EUR";
-            const lower = first.toLowerCase();
-            if (lower.includes("usd") || lower.includes("dollar") || lower.includes("$")) currency = "USD";
-            parsed = {
-              budget: {
-                min: Math.min(firstNum, secondNum),
-                max: Math.max(firstNum, secondNum),
-                currency,
-              },
-            };
-          }
+      case "activity_level": {
+        const selected = allSelections[0];
+        if (selected) {
+          parsed = { activityLevel: selected };
         }
         break;
       }
@@ -1584,23 +1574,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       setCustomInputs([]);
       setShowCustomInput(false);
       setCustomInputValue("");
-
-      // Don't save yet if budget is completed - wait for additional_info
-      if (onboardingStep === "budget" && updatedData.budget) {
-        const next = getNextQuestion(onboardingStep);
-        setOnboardingHistory((prev) => [...prev, next.step]);
-        setOnboardingStep(next.step);
-
-        const nextQuestionMessage: Message = {
-          id: generateMessageId(),
-          text: `Merci! ${next.progress}\n\n${next.question}\n\n💡 Astuce: Tapez 'retour' pour revenir à la question précédente, ou 'résumé' pour voir vos réponses.`,
-          isUser: false,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, nextQuestionMessage]);
-        setIsLoading(false);
-        return;
-      }
 
       const next = getNextQuestion(onboardingStep);
       setOnboardingHistory((prev) => [...prev, next.step]);
@@ -1627,7 +1600,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   };
 
   const saveUserProfile = async (finalData: OnboardingData) => {
-    if (!userId || !finalData.age || !finalData.gender || !finalData.budget) {
+    if (!userId || !finalData.age || !finalData.gender || !finalData.activityLevel) {
       return;
     }
     
@@ -1639,7 +1612,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       height: finalData.height,
       goals: finalData.goals || [],
       allergies: finalData.allergies || [],
-      budget: finalData.budget,
+      activityLevel: finalData.activityLevel,
       additionalInfo: finalData.additionalInfo || "",
     };
     
@@ -2086,40 +2059,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     }
   };
 
-  const handleActivityLevelAnswer = async () => {
-    if (activityLevelBubbles.length === 0) return;
-
-    setIsLoading(true);
-
-    const selectedActivityLevel = activityLevelBubbles[0];
-    
-    // The selected activity level already includes the number of times, so use it directly
-    const mappedActivityLevel = selectedActivityLevel;
-    setActivityLevel(mappedActivityLevel);
-    setHasAskedActivityLevel(true);
-    setIsAskingActivityLevel(false);
-    setActivityLevelBubbles([]);
-
-    // Add user message
-    const userMessage: Message = {
-      id: generateMessageId(),
-      text: selectedActivityLevel,
-      isUser: true,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
-    setIsLoading(false);
-
-    // Now proceed with plan generation - pass mappedActivityLevel directly to avoid async state issue
-    await proceedWithPlanGeneration(mappedActivityLevel);
-  };
-
-  const proceedWithPlanGeneration = async (activityLevelOverride?: string) => {
+  const proceedWithPlanGeneration = async () => {
     if (!userId || isGeneratingPlan) return;
-
-    // Use override if provided, otherwise fall back to state (for other call sites)
-    const activityLevelToUse = activityLevelOverride || activityLevel;
 
     setIsGeneratingPlan(true);
 
@@ -2140,7 +2081,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       const requestBody = {
         userId,
         recommendedProducts: allRecommendedProducts,
-        activityLevel: activityLevelToUse || undefined,
       };
 
       // Call the generate-plan API
@@ -2213,22 +2153,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
   const handleGeneratePlan = async () => {
     if (!userId || isGeneratingPlan) return;
-
-    // Check if we need to ask activity level first
-    if (!hasAskedActivityLevel) {
-      setIsAskingActivityLevel(true);
-      
-      const activityLevelQuestion: Message = {
-        id: generateMessageId(),
-        text: "Quel est votre niveau d'activité physique ?\n\nSélectionnez une option",
-        isUser: false,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, activityLevelQuestion]);
-      return;
-    }
-
-    // If already asked, proceed with plan generation
     await proceedWithPlanGeneration();
   };
 
@@ -2256,7 +2180,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             {isOnboardingComplete && userId && (
               <button
                 onClick={handleGeneratePlan}
-                disabled={isGeneratingPlan || isLoading || isAskingActivityLevel}
+                disabled={isGeneratingPlan || isLoading}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-primary text-primary-foreground text-xs sm:text-sm font-light uppercase tracking-[0.1em] rounded-full hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-sm hover:shadow-md flex items-center gap-1.5 sm:gap-2"
                 title="Générer un plan nutritionnel personnalisé"
               >
@@ -2397,44 +2321,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                 return null;
               })()}
 
-              {!message.isUser && isAskingActivityLevel && (() => {
-                const isLastMessage = messages[messages.length - 1]?.id === message.id;
-                const activityLevelOptions = [
-                  "Sédentaire", 
-                  "Léger (1-2 fois/sem)", 
-                  "Modéré (2-3 fois/sem)", 
-                  "Actif (4-5 fois/sem)", 
-                  "Très actif (6+ fois/sem)"
-                ];
-                if (isLastMessage) {
-                  return (
-                    <FloatingBubbles
-                      suggestions={activityLevelOptions}
-                      selected={activityLevelBubbles}
-                      customInputs={[]}
-                      onBubbleClick={(option) => {
-                        // Single selection like gender - replace if already selected
-                        setActivityLevelBubbles((prev) => {
-                          if (prev.includes(option)) {
-                            return prev.filter((s) => s !== option);
-                          }
-                          return [option]; // Single selection
-                        });
-                      }}
-                      onCustomInputAdd={() => {}}
-                      onCustomInputRemove={() => {}}
-                      showCustomInputField={false}
-                      onToggleCustomInput={() => {}}
-                      customInputValue=""
-                      onCustomInputChange={() => {}}
-                      onValidate={handleActivityLevelAnswer}
-                      canValidate={!isLoading && activityLevelBubbles.length > 0}
-                      allowCustomInput={false}
-                    />
-                  );
-                }
-                return null;
-              })()}
 
               {message.recommendedProducts &&
                 message.recommendedProducts.length > 0 &&

@@ -20,11 +20,7 @@ export interface IUserProfile extends Document {
      height: number; // Height in cm (required)
      goals: string[];
      allergies: string[];
-     budget: {
-          min: number;
-          max: number;
-          currency: string;
-     };
+     activityLevel: string; // Activity level in French (e.g., "Sédentaire", "Léger (1-2 fois/sem)", etc.) - REQUIRED
      shopifyCustomerId?: string; // Shopify customer ID if logged in
      shopifyCustomerName?: string; // Shopify customer name if logged in
      lastInteraction: Date;
@@ -83,23 +79,9 @@ const UserProfileSchema = new Schema<IUserProfile>({
                message: 'Cannot have more than 20 allergies'
           }
      },
-     budget: {
-          min: {
-               type: Number,
-               required: true,
-               min: 0
-          },
-          max: {
-               type: Number,
-               required: true,
-               min: 0
-          },
-          currency: {
-               type: String,
-               required: true,
-               default: 'USD',
-               enum: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'BRL', 'MXN', 'CNY']
-          }
+     activityLevel: {
+          type: String,
+          required: true
      },
      lastInteraction: {
           type: Date,
@@ -118,11 +100,6 @@ const UserProfileSchema = new Schema<IUserProfile>({
      timestamps: true // Automatically adds createdAt and updatedAt
 });
 
-/* // Add budget validation
-UserProfileSchema.path('budget').validate(function (budget: { min: number; max: number }) {
-     return budget.max >= budget.min;
-}, 'Maximum budget must be greater than or equal to minimum budget');
- */
 // Create the model
 export const UserProfile: Model<IUserProfile> = mongoose.models.UserProfile || mongoose.model<IUserProfile>('UserProfile', UserProfileSchema);
 
@@ -202,11 +179,7 @@ class DatabaseService {
           height: number;
           goals: string[];
           allergies: string[];
-          budget: {
-               min: number;
-               max: number;
-               currency: string;
-          };
+          activityLevel: string;
           shopifyCustomerId?: string;
           shopifyCustomerName?: string;
      }): Promise<IUserProfile> {
@@ -231,7 +204,7 @@ class DatabaseService {
                     height: savedProfile.height,
                     goals: savedProfile.goals,
                     allergies: savedProfile.allergies,
-                    budget: savedProfile.budget,
+                    activityLevel: savedProfile.activityLevel,
                     shopifyCustomerId: savedProfile.shopifyCustomerId,
                     shopifyCustomerName: savedProfile.shopifyCustomerName,
                     lastInteraction: savedProfile.lastInteraction,
@@ -280,11 +253,7 @@ class DatabaseService {
           height: number;
           goals: string[];
           allergies: string[];
-          budget: {
-               min: number;
-               max: number;
-               currency: string;
-          };
+          activityLevel: string;
           shopifyCustomerId?: string;
           shopifyCustomerName?: string;
      }>): Promise<IUserProfile | null> {
@@ -318,7 +287,7 @@ class DatabaseService {
                          height: updatedProfile.height,
                          goals: updatedProfile.goals,
                          allergies: updatedProfile.allergies,
-                         budget: updatedProfile.budget,
+                         activityLevel: updatedProfile.activityLevel,
                          shopifyCustomerId: updatedProfile.shopifyCustomerId,
                          shopifyCustomerName: updatedProfile.shopifyCustomerName,
                          lastInteraction: updatedProfile.lastInteraction,
@@ -459,11 +428,7 @@ const newProfile = await dbService.createUserProfile({
   gender: 'female',
   goals: ['weight_loss', 'muscle_gain'],
   allergies: ['nuts', 'dairy'],
-  budget: {
-    min: 50,
-    max: 200,
-    currency: 'USD'
-  }
+  activityLevel: 'Modéré (2-3 fois/sem)'
 });
 
 // 3. Get user profile
@@ -472,7 +437,7 @@ const profile = await dbService.getUserProfile('user123');
 // 4. Update user profile
 const updatedProfile = await dbService.updateUserProfile('user123', {
   goals: ['weight_loss', 'muscle_gain', 'better_sleep'],
-  budget: { min: 75, max: 250, currency: 'USD' }
+  activityLevel: 'Actif (4-5 fois/sem)'
 });
 
 // 5. Update last interaction

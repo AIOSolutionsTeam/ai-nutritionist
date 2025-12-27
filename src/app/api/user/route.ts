@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
                gender: userProfile.gender,
                goals: userProfile.goals,
                allergies: userProfile.allergies,
-               budget: userProfile.budget,
+               activityLevel: userProfile.activityLevel,
                shopifyCustomerId: userProfile.shopifyCustomerId,
                shopifyCustomerName: userProfile.shopifyCustomerName,
                lastInteraction: userProfile.lastInteraction,
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
           const body = await request.json();
 
           // Validate required fields
-          const { userId, age, gender, weight, height, goals, allergies, budget } = body;
+          const { userId, age, gender, weight, height, goals, allergies, activityLevel } = body;
 
           if (!userId) {
                return NextResponse.json(
@@ -116,16 +116,9 @@ export async function POST(request: NextRequest) {
                );
           }
 
-          if (!budget || typeof budget.min !== 'number' || typeof budget.max !== 'number') {
+          if (!activityLevel || typeof activityLevel !== 'string' || activityLevel.trim() === '') {
                return NextResponse.json(
-                    { error: 'budget must have min and max numbers' },
-                    { status: 400 }
-               );
-          }
-
-          if (budget.min < 0 || budget.max < 0 || budget.max < budget.min) {
-               return NextResponse.json(
-                    { error: 'budget min and max must be non-negative, and max must be >= min' },
+                    { error: 'activityLevel is required and must be a non-empty string' },
                     { status: 400 }
                );
           }
@@ -156,7 +149,7 @@ export async function POST(request: NextRequest) {
                height: number;
                goals: string[];
                allergies: string[];
-               budget: { min: number; max: number; currency: string };
+               activityLevel: string;
                shopifyCustomerId?: string;
                shopifyCustomerName?: string;
           } = {
@@ -167,11 +160,7 @@ export async function POST(request: NextRequest) {
                height,
                goals: goals || [],
                allergies: allergies || [],
-               budget: {
-                    min: budget.min,
-                    max: budget.max,
-                    currency: budget.currency || 'USD'
-               }
+               activityLevel: activityLevel
           };
 
           // Add Shopify customer info if available
@@ -214,7 +203,7 @@ export async function POST(request: NextRequest) {
                gender: userProfile.gender,
                goals: userProfile.goals,
                allergies: userProfile.allergies,
-               budget: userProfile.budget,
+               activityLevel: userProfile.activityLevel,
                shopifyCustomerId: userProfile.shopifyCustomerId,
                shopifyCustomerName: userProfile.shopifyCustomerName,
                lastInteraction: userProfile.lastInteraction,
@@ -285,14 +274,14 @@ export async function PUT(request: NextRequest) {
           }
 
           // Validate and update profile
-          const { age, gender, goals, allergies, budget } = body;
+          const { age, gender, goals, allergies, activityLevel } = body;
 
           const updateData: Partial<{
                age: number;
                gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
                goals: string[];
                allergies: string[];
-               budget: { min: number; max: number; currency: string };
+               activityLevel: string;
           }> = {};
 
           if (age !== undefined) {
@@ -323,24 +312,14 @@ export async function PUT(request: NextRequest) {
                updateData.allergies = Array.isArray(allergies) ? allergies : [];
           }
 
-          if (budget !== undefined) {
-               if (typeof budget.min !== 'number' || typeof budget.max !== 'number') {
+          if (activityLevel !== undefined) {
+               if (typeof activityLevel !== 'string' || activityLevel.trim() === '') {
                     return NextResponse.json(
-                         { error: 'budget must have min and max numbers' },
+                         { error: 'activityLevel must be a non-empty string' },
                          { status: 400 }
                     );
                }
-               if (budget.min < 0 || budget.max < 0 || budget.max < budget.min) {
-                    return NextResponse.json(
-                         { error: 'budget min and max must be non-negative, and max must be >= min' },
-                         { status: 400 }
-                    );
-               }
-               updateData.budget = {
-                    min: budget.min,
-                    max: budget.max,
-                    currency: budget.currency || 'USD'
-               };
+               updateData.activityLevel = activityLevel;
           }
 
           console.log('🔄 [API PUT] Updating profile for userId:', userId);
@@ -362,7 +341,7 @@ export async function PUT(request: NextRequest) {
                gender: updatedProfile.gender,
                goals: updatedProfile.goals,
                allergies: updatedProfile.allergies,
-               budget: updatedProfile.budget,
+               activityLevel: updatedProfile.activityLevel,
                shopifyCustomerId: updatedProfile.shopifyCustomerId,
                shopifyCustomerName: updatedProfile.shopifyCustomerName,
                lastInteraction: updatedProfile.lastInteraction,

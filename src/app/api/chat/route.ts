@@ -246,12 +246,6 @@ function deriveGoalKeysFromContext(
 interface UserIntent {
      goal?: keyof typeof GOAL_TAGS
      secondaryGoals: Array<keyof typeof GOAL_TAGS>
-     /** Budget range from the stored profile, if available */
-     budget?: {
-          min: number
-          max: number
-          currency: string
-     }
      /** Dietary / lifestyle constraints inferred from allergies field */
      requireHalal: boolean
      requireVegetarian: boolean
@@ -308,13 +302,6 @@ function buildUserIntent(params: {
      return {
           goal: primaryGoal,
           secondaryGoals,
-          budget: userProfile?.budget
-               ? {
-                    min: userProfile.budget.min,
-                    max: userProfile.budget.max,
-                    currency: userProfile.budget.currency
-               }
-               : undefined,
           requireHalal,
           requireVegetarian,
           requireVegan,
@@ -541,17 +528,6 @@ function applyUserProfileFiltersToProducts(
                if (hasLactoseTag) return false
           }
 
-          // Budget filter: only enforce when currency matches profile budget currency
-          if (intent.budget && typeof product.price === 'number') {
-               if (product.currency && product.currency !== intent.budget.currency) {
-                    // Different currencies – skip strict budget check
-                    return true
-               }
-               if (product.price < intent.budget.min || product.price > intent.budget.max) {
-                    return false
-               }
-          }
-
           return true
      })
 
@@ -560,15 +536,6 @@ function applyUserProfileFiltersToProducts(
           return products
      }
 
-     // Optional: sort by proximity to budget mid-point when we have budget info
-     if (intent.budget) {
-          const mid = (intent.budget.min + intent.budget.max) / 2
-          return [...filtered].sort((a, b) => {
-               const priceA = typeof a.price === 'number' ? a.price : mid
-               const priceB = typeof b.price === 'number' ? b.price : mid
-               return Math.abs(priceA - mid) - Math.abs(priceB - mid)
-          })
-     }
 
      return filtered
 }
@@ -749,11 +716,6 @@ function formatUserProfileContext(userProfile: IUserProfile | null): string {
           contextParts.push(`Allergies/Régimes: ${allergiesText}`)
      } else {
           contextParts.push(`Allergies/Régimes: Aucune`)
-     }
-     
-     // Budget
-     if (userProfile.budget) {
-          contextParts.push(`Budget mensuel: ${userProfile.budget.min}-${userProfile.budget.max} ${userProfile.budget.currency}`)
      }
 
      return contextParts.join('\n')
@@ -1035,26 +997,6 @@ export async function POST(request: NextRequest) {
                // Continue without product context - AI will still work, just without product reference
           }
 
-          // Detect budget mentions in user message for budget-aware upselling
-          const budgetPattern = /\b(budget|prix|coût|coûte|coûter|payer|paye|payé|euros?|€|eur)\s*(?:de|:)?\s*(\d+)/i
-          const budgetMatch = messageToProcess.match(budgetPattern)
-          let detectedBudget: number | undefined = undefined
-          if (budgetMatch) {
-               detectedBudget = parseInt(budgetMatch[2], 10)
-               console.log(`[API] Detected budget mention: ${detectedBudget}€`)
-          }
-          
-          // Also check user profile for budget (use the upper bound of their range)
-          if (!detectedBudget && userProfile?.budget) {
-               detectedBudget = userProfile.budget.max
-               console.log(`[API] Using budget from user profile: ${detectedBudget}€`)
-          }
-
-          // Add budget context to product context if budget is detected
-          if (detectedBudget && productContext) {
-               productContext += `\n\nUSER BUDGET: ${detectedBudget}€\n`;
-               productContext += `IMPORTANT: When recommending products, if a product is within 5-10€ of the user's budget (${detectedBudget}€), suggest it as a worthwhile investment. Frame price differences as small investments that provide significant value. For example: "Pour seulement [X]€ de plus, vous obtenez [benefit]". Be helpful and sales-oriented, not pushy.\n`;
-          }
 
           let nutritionResponse
 
@@ -1526,7 +1468,7 @@ export async function POST(request: NextRequest) {
           })
 
           // Build a structured intent that summarizes what the user wants for the
-          // merchandising layer (goals, budget, dietary constraints, browsing mode).
+          // merchandising layer (goals, dietary constraints, browsing mode).
           const intent: UserIntent = buildUserIntent({
                goalKeys,
                userProfile,
@@ -2313,7 +2255,7 @@ export async function POST(request: NextRequest) {
                          }
 
                          // Convert combos to include actual product data and apply the same
-                         // profile-based filtering (budget, halal/vegan, etc.).
+                         // profile-based filtering (halal/vegan, etc.).
                          const combosWithProducts = await Promise.all(
                               combos.map(async (combo) => {
                                    const rawProducts = await getComboProducts(combo)
@@ -2399,7 +2341,6 @@ export async function POST(request: NextRequest) {
                intent: {
                     goal: intent.goal ?? null,
                     secondaryGoals: intent.secondaryGoals,
-                    budget: intent.budget ?? null,
                     halal: intent.requireHalal,
                     vegetarian: intent.requireVegetarian,
                     vegan: intent.requireVegan,

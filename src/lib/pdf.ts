@@ -36,11 +36,6 @@ interface ExtendedUserProfile {
      gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
      goals: string[];
      allergies: string[];
-     budget: {
-          min: number;
-          max: number;
-          currency: string;
-     };
      height?: number; // in cm
      weight?: number; // in kg
      medications?: string[];
@@ -1009,7 +1004,6 @@ export function createSampleNutritionPlan(userProfile: IUserProfile): NutritionP
                gender: userProfile.gender,
                goals: userProfile.goals,
                allergies: userProfile.allergies,
-               budget: userProfile.budget,
                height: userProfile.height,
                weight: userProfile.weight,
                medications: [],

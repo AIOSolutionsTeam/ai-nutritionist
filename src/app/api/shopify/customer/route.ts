@@ -89,11 +89,7 @@ export async function GET(request: NextRequest) {
                               height: 170, // Default height
                               goals: [],
                               allergies: [],
-                              budget: {
-                                   min: 0,
-                                   max: 1000,
-                                   currency: 'USD'
-                              },
+                              activityLevel: 'Modéré (2-3 fois/sem)', // Default activity level
                               shopifyCustomerId: customerInfo.customerId,
                               shopifyCustomerName: customerInfo.customerName
                          };

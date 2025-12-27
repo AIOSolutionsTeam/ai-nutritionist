@@ -140,6 +140,9 @@ async function generatePlanWithAI(
      const translatedGoals = translateGoals(userProfile.goals)
      const goalsText = translatedGoals.join(', ')
 
+     // Use activity level from user profile (required field) or override if provided
+     const activityLevelToUse = activityLevel || userProfile.activityLevel;
+     
      // Build user profile context for the AI
      const userProfileContext = `
 Profil utilisateur:
@@ -147,8 +150,7 @@ Profil utilisateur:
 - Sexe: ${userProfile.gender === 'male' ? 'Homme' : userProfile.gender === 'female' ? 'Femme' : 'Autre'}
 - Objectifs: ${goalsText}
 - Allergies: ${userProfile.allergies.length > 0 ? userProfile.allergies.join(', ') : 'Aucune'}
-- Budget: ${userProfile.budget.min}-${userProfile.budget.max} ${userProfile.budget.currency}
-${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
+${activityLevelToUse ? `- Niveau d'activité: ${activityLevelToUse}` : ''}
 `
 
      try {
@@ -265,11 +267,10 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
 
           // Calculate nutrition values using actual user data (height, weight, activityLevel)
           // This overrides AI estimates with scientific calculations
-          const calculatedNutrition = calculateNutritionValues(userProfile, activityLevel);
+          const calculatedNutrition = calculateNutritionValues(userProfile, activityLevelToUse);
           
-          // Use the user's original activity level selection for display, not the calculated one
-          // If not provided, use fallback based on goals (only for muscle_gain -> "Actif")
-          const displayActivityLevel = activityLevel || planData.activityLevel || getFallbackActivityLevel(userProfile.goals);
+          // Use the user's activity level from profile (required field)
+          const displayActivityLevel = activityLevelToUse || planData.activityLevel || userProfile.activityLevel;
 
           return {
                userProfile: {
@@ -278,7 +279,6 @@ ${activityLevel ? `- Niveau d'activité: ${activityLevel}` : ''}
                     gender: userProfile.gender,
                     goals: translatedGoals, // Use translated goals
                     allergies: userProfile.allergies,
-                    budget: userProfile.budget,
                     height: userProfile.height,
                     weight: userProfile.weight,
                     medications: [],
@@ -330,9 +330,8 @@ function createDefaultPlan(
      // Calculate nutrition values using actual user data
      const calculatedNutrition = calculateNutritionValues(userProfile, activityLevel);
      
-     // Use the user's original activity level selection for display, not the calculated one
-     // If not provided, use fallback based on goals (only for muscle_gain -> "Actif")
-     const displayActivityLevel = activityLevel || getFallbackActivityLevel(userProfile.goals);
+     // Use the user's activity level from profile (required field) or override if provided
+     const displayActivityLevel = activityLevel || userProfile.activityLevel;
 
      // Map recommended products to supplements only if we have products
      const supplements: Array<{
@@ -362,7 +361,6 @@ function createDefaultPlan(
                gender: userProfile.gender,
                goals: translatedGoals,
                allergies: userProfile.allergies,
-               budget: userProfile.budget,
                height: userProfile.height,
                weight: userProfile.weight,
                medications: [],
@@ -421,10 +419,7 @@ function createDefaultPlan(
 export async function POST(request: NextRequest) {
      try {
           const body = await request.json()
-          const { userId, activityLevel } = body
-
-          // Log the activity level picked by the user
-          console.log('[Generate Plan] Activity level picked by user:', activityLevel || 'Not provided')
+          const { userId } = body
 
           if (!userId) {
                return NextResponse.json(
@@ -477,12 +472,12 @@ export async function POST(request: NextRequest) {
           
           // If no products, productContext remains empty string
 
-          // Generate plan with AI (pass activity level if provided)
+          // Generate plan with AI (activity level comes from user profile)
           const nutritionPlan = await generatePlanWithAI(
                userProfile,
                regularProducts,
                productContext,
-               activityLevel
+               undefined // Activity level is now in user profile
           )
 
           // Generate PDF
