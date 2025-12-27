@@ -1109,8 +1109,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       
       const questionInfo = getQuestionInfo('age');
       const welcomeMessage = shopifyCustomerName
-        ? `Bonjour ${shopifyCustomerName}! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.`
-        : "Bonjour! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.";
+        ? `Bonjour ${shopifyCustomerName}! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.\n\n⚠️ Note importante: Vos objectifs et votre niveau d'activité seront utilisés pour générer votre plan nutritionnel personnalisé en PDF.`
+        : "Bonjour! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.\n\n⚠️ Note importante: Vos objectifs et votre niveau d'activité seront utilisés pour générer votre plan nutritionnel personnalisé en PDF.";
       
       setMessages([
         {
