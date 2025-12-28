@@ -43,6 +43,67 @@ interface UsageStats {
     };
 }
 
+// Loading Skeleton Component
+function DashboardSkeleton() {
+    return (
+        <div className="admin-container">
+            <div className="dashboard">
+                <div className="dashboard-header">
+                    <div className="skeleton skeleton-title" style={{ width: '300px' }}></div>
+                    <div className="skeleton" style={{ width: '100px', height: '40px', borderRadius: '8px' }}></div>
+                </div>
+
+                {/* KPI Grid */}
+                <div className="kpi-grid skeleton-grid-4">
+                    {[1, 2, 3, 4].map(i => (
+                        <div key={i} className="skeleton skeleton-card">
+                            <div className="skeleton skeleton-text" style={{ width: '60%' }}></div>
+                            <div className="skeleton skeleton-title" style={{ width: '40%', height: '32px', marginBottom: '8px' }}></div>
+                            <div className="skeleton skeleton-text" style={{ width: '30%' }}></div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Usage Section */}
+                <div style={{ marginBottom: '32px' }}>
+                    <div className="skeleton skeleton-title" style={{ width: '200px' }}></div>
+                    <div className="usage-grid">
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className="skeleton skeleton-card" style={{ height: '80px', padding: '16px' }}>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <div className="skeleton" style={{ width: '40px', height: '40px', borderRadius: '50%' }}></div>
+                                    <div style={{ flex: 1 }}>
+                                        <div className="skeleton skeleton-text" style={{ width: '40%', marginBottom: '4px' }}></div>
+                                        <div className="skeleton skeleton-text" style={{ width: '60%' }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Charts */}
+                <div className="charts-grid">
+                    <div className="chart-card skeleton-chart"></div>
+                    <div className="chart-card skeleton-chart"></div>
+                </div>
+
+                <div className="chart-card skeleton-chart" style={{ marginTop: '24px' }}></div>
+
+                {/* Recent Events */}
+                <div style={{ marginTop: '32px' }}>
+                    <div className="skeleton skeleton-title" style={{ width: '250px' }}></div>
+                    <div className="events-table-container">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <div key={i} className="skeleton skeleton-table-row"></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function AdminDashboard() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -239,6 +300,11 @@ export default function AdminDashboard() {
                 </div>
             </div>
         );
+    }
+
+    // Show skeleton loading state while fetching initial data
+    if (isAuthenticated && !stats) {
+        return <DashboardSkeleton />;
     }
 
     // Dashboard
