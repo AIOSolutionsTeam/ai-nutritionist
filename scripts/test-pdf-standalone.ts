@@ -15,11 +15,7 @@ const mockUserProfile = {
      allergies: ['lactose'],
      height: 180,
      weight: 70,
-     budget: {
-          min: 50,
-          max: 200,
-          currency: 'EUR' as const
-     },
+     activityLevel: 'Modéré (2-3 fois/sem)',
      shopifyCustomerId: undefined,
      shopifyCustomerName: undefined,
      lastInteraction: new Date(),

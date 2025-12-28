@@ -73,8 +73,8 @@ export class AnalyticsService {
                     page_location: window.location.href
                })
 
-                    // Make gtag available globally
-                    window.gtag = gtag
+               // Make gtag available globally
+               window.gtag = gtag
           }
      }
 
@@ -103,7 +103,7 @@ export class AnalyticsService {
                const userId = typeof data.userId === 'string' ? data.userId : undefined
                // eslint-disable-next-line @typescript-eslint/no-unused-vars
                const { userId: _userId, ...properties } = data // Remove userId from properties to avoid duplication
-               
+
                const eventData: AnalyticsEvent = {
                     event: eventName,
                     properties,
@@ -117,11 +117,54 @@ export class AnalyticsService {
                     await this.sendToAnalyticsEndpoint(eventData)
                }
 
+               // Persist to MongoDB
+               if (typeof window === 'undefined') {
+                    // Server-side: direct DB access
+                    try {
+                         console.log('[Analytics] Server-side: Persisting to MongoDB:', eventName)
+                         const { analyticsEventService } = await import('../lib/analytics-event')
+                         const { dbService } = await import('../lib/db')
+                         await dbService.connect()
+                         const savedEvent = await analyticsEventService.createEvent({
+                              event: eventName,
+                              properties,
+                              userId,
+                              sessionId: this.sessionId
+                         })
+                         console.log('[Analytics] Event saved to MongoDB:', savedEvent._id)
+                    } catch (dbError) {
+                         console.error('[Analytics] Failed to persist event to MongoDB:', dbError)
+                    }
+               } else {
+                    // Client-side: send to /api/analytics endpoint
+                    try {
+                         console.log('[Analytics] Client-side: Sending to API:', eventName)
+                         const response = await fetch('/api/analytics', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                   event: eventName,
+                                   properties,
+                                   userId,
+                                   sessionId: this.sessionId
+                              })
+                         })
+                         if (response.ok) {
+                              console.log('[Analytics] Event sent to API successfully')
+                         } else {
+                              console.error('[Analytics] API returned error:', response.status)
+                         }
+                    } catch (apiError) {
+                         console.error('[Analytics] Failed to send event to analytics API:', apiError)
+                    }
+               }
+
                console.log('Event tracked:', eventName, data)
           } catch (error) {
                console.error('Analytics tracking error:', error)
           }
      }
+
 
      // Send event to custom analytics endpoint
      private async sendToAnalyticsEndpoint(eventData: AnalyticsEvent): Promise<void> {

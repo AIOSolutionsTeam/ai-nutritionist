@@ -128,7 +128,7 @@ const InitialLoadingScreen = () => (
         <div className="absolute inset-0 rounded-full border-2 border-primary/50 animate-ping" style={{ animationDuration: "2s", animationDelay: "0s" }}></div>
         <div className="absolute inset-0 rounded-full border-2 border-primary/35 animate-ping" style={{ animationDelay: "0.7s", animationDuration: "2s" }}></div>
       </div>
-      
+
       {/* Loading Text */}
       <div className="text-center space-y-2">
         <h2 className="font-serif uppercase tracking-widest text-lg sm:text-xl font-light text-foreground">
@@ -138,7 +138,7 @@ const InitialLoadingScreen = () => (
           Initialisation en cours...
         </p>
       </div>
-      
+
       {/* Loading Dots */}
       <div className="flex items-center space-x-2">
         <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
@@ -178,17 +178,17 @@ const Avatar = ({ isUser }: { isUser: boolean }) => {
 };
 
 // Product Grid with Staggered Animation
-const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSearchResult[]; messageId: string }) => {
+const ProductGridWithAnimation = ({ products, messageId, userId }: { products: ProductSearchResult[]; messageId: string; userId?: string | null }) => {
   const [visibleCount, setVisibleCount] = useState(0);
 
   useEffect(() => {
     // Reset when products change
     setVisibleCount(0);
-    
+
     // Show products one by one with delay
     if (products.length > 0) {
       const timers: NodeJS.Timeout[] = [];
-      
+
       products.forEach((_, index) => {
         const timer = setTimeout(() => {
           setVisibleCount(prev => Math.max(prev, index + 1));
@@ -203,7 +203,7 @@ const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSe
   }, [products, messageId]);
 
   return (
-      <div className="mt-4">
+    <div className="mt-4">
       <p className="text-xs uppercase tracking-[0.1em] font-light text-muted-foreground mb-3">
         Produits recommandés :
       </p>
@@ -211,16 +211,15 @@ const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSe
         {products.map((product, idx) => (
           <div
             key={idx}
-            className={`transition-all duration-700 ${
-              idx < visibleCount
-                ? 'opacity-100 translate-y-0'
-                : 'opacity-0 translate-y-4'
-            }`}
+            className={`transition-all duration-700 ${idx < visibleCount
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-4'
+              }`}
             style={{
               transitionDelay: `${idx * 150}ms`,
             }}
           >
-            <ProductCard product={product} />
+            <ProductCard product={product} userId={userId} />
           </div>
         ))}
       </div>
@@ -229,22 +228,36 @@ const ProductGridWithAnimation = ({ products, messageId }: { products: ProductSe
 };
 
 // Combo Grid with Staggered Animation
-const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedCombo[]; messageId: string }) => {
+const ComboGridWithAnimation = ({ combos, messageId, userId }: { combos: RecommendedCombo[]; messageId: string; userId?: string | null }) => {
   const [visibleComboCount, setVisibleComboCount] = useState(0);
+  const [visibleProductCounts, setVisibleProductCounts] = useState<{ [comboIdx: number]: number }>({});
 
   useEffect(() => {
     // Reset when combos change
     setVisibleComboCount(0);
-    
+    setVisibleProductCounts({});
+
     // Show combos one by one with delay
     if (combos.length > 0) {
       const timers: NodeJS.Timeout[] = [];
-      
-      combos.forEach((_, index) => {
-        const timer = setTimeout(() => {
-          setVisibleComboCount(prev => Math.max(prev, index + 1));
-        }, index * 450); // 450ms delay between each combo (slowed down)
-        timers.push(timer);
+
+      combos.forEach((combo, comboIdx) => {
+        // Delay for combo to appear
+        const comboTimer = setTimeout(() => {
+          setVisibleComboCount(prev => Math.max(prev, comboIdx + 1));
+
+          // Then animate products within this combo with staggered delay
+          combo.products.forEach((_, productIdx) => {
+            const productTimer = setTimeout(() => {
+              setVisibleProductCounts(prev => ({
+                ...prev,
+                [comboIdx]: Math.max(prev[comboIdx] || 0, productIdx + 1)
+              }));
+            }, comboIdx * 450 + productIdx * 600); // 600ms delay between each product (slowed down)
+            timers.push(productTimer);
+          });
+        }, comboIdx * 450); // 450ms delay between each combo
+        timers.push(comboTimer);
       });
 
       return () => {
@@ -262,11 +275,10 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
         {combos.map((combo, comboIdx) => (
           <div
             key={comboIdx}
-            className={`transition-all duration-700 ${
-              comboIdx < visibleComboCount
-                ? 'opacity-100 translate-y-0'
-                : 'opacity-0 translate-y-4'
-            }`}
+            className={`transition-all duration-700 ${comboIdx < visibleComboCount
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-4'
+              }`}
             style={{
               transitionDelay: `${comboIdx * 180}ms`,
             }}
@@ -284,9 +296,23 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">
-                {combo.products.map((product, productIdx) => (
-                  <ProductCard key={productIdx} product={product} />
-                ))}
+                {combo.products.map((product, productIdx) => {
+                  const visibleCount = visibleProductCounts[comboIdx] || 0;
+                  return (
+                    <div
+                      key={productIdx}
+                      className={`transition-all duration-1000 ${productIdx < visibleCount
+                        ? 'opacity-100 translate-y-0'
+                        : 'opacity-0 translate-y-4'
+                        }`}
+                      style={{
+                        transitionDelay: `${productIdx * 250}ms`,
+                      }}
+                    >
+                      <ProductCard product={product} userId={userId} />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -297,14 +323,14 @@ const ComboGridWithAnimation = ({ combos, messageId }: { combos: RecommendedComb
 };
 
 // Product Card component
-const ProductCard = ({ product }: { product: ProductSearchResult }) => {
+const ProductCard = ({ product, userId }: { product: ProductSearchResult; userId?: string | null }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   const handleAddToCart = async () => {
     if (isAdding) return;
     setIsAdding(true);
-    trackAddToCart(product.title, product.variantId, product.price, 1);
+    trackAddToCart(product.title, product.variantId, product.price, 1, userId || undefined);
 
     try {
       const result = await ensureCartAndAddProduct(product.variantId, 1);
@@ -442,7 +468,7 @@ const FloatingBubbles = ({
     <div className="mt-4 space-y-3 animate-fadeInUp">
       {allSelections.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
-            <span className="text-xs uppercase tracking-[0.1em] font-light text-muted-foreground w-full">Sélectionné ({allSelections.length}) :</span>
+          <span className="text-xs uppercase tracking-[0.1em] font-light text-muted-foreground w-full">Sélectionné ({allSelections.length}) :</span>
           {selected.map((item, idx) => (
             <span
               key={`selected-${idx}`}
@@ -483,11 +509,10 @@ const FloatingBubbles = ({
             <button
               key={index}
               onClick={() => onBubbleClick(suggestion)}
-              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-light uppercase tracking-[0.1em] transition-all duration-300 hover:-translate-y-1 flex items-center gap-1 sm:gap-2 max-w-full ${
-                isSelected
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-card text-foreground border border-muted hover:border-primary/50 hover:bg-primary/5 shadow-sm"
-              }`}
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-light uppercase tracking-[0.1em] transition-all duration-300 hover:-translate-y-1 flex items-center gap-1 sm:gap-2 max-w-full ${isSelected
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-card text-foreground border border-muted hover:border-primary/50 hover:bg-primary/5 shadow-sm"
+                }`}
             >
               <span className="truncate max-w-[100px] xs:max-w-[120px] sm:max-w-[200px]">{suggestion}</span>
               {isSelected && <span className="flex-shrink-0 text-xs sm:text-sm">✓</span>}
@@ -516,7 +541,7 @@ const FloatingBubbles = ({
               onKeyPress={(e) => e.key === "Enter" && handleCustomSubmit()}
               placeholder="Votre réponse (1 mots)"
               maxLength={30}
-              className="flex-1 min-w-0 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-muted rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 bg-background text-foreground"
+              className="flex-1 min-w-0 px-2 sm:px-3 py-1.5 sm:py-2 text-base sm:text-sm border border-muted rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 bg-background text-foreground"
               autoFocus
             />
             <button
@@ -551,7 +576,7 @@ const FloatingBubbles = ({
   );
 };
 
-type OnboardingQuestion = 
+type OnboardingQuestion =
   | 'age'
   | 'gender'
   | 'weight'
@@ -591,7 +616,7 @@ const translateGender = (gender?: string): string => {
 
 const translateGoals = (goals?: string[]): string => {
   if (!goals || goals.length === 0) return 'Aucun';
-  
+
   const goalMap: { [key: string]: string } = {
     'weight_loss': 'Perte de poids',
     'energy': 'Énergie',
@@ -602,13 +627,13 @@ const translateGoals = (goals?: string[]): string => {
     'immunity': 'Immunité',
     'other_goals': 'Autres objectifs'
   };
-  
+
   return goals.map(g => goalMap[g] || g).join(', ');
 };
 
 const translateAllergies = (allergies?: string[]): string => {
   if (!allergies || allergies.length === 0) return 'Aucune';
-  
+
   const allergyMap: { [key: string]: string } = {
     'lactose': 'Lactose',
     'gluten': 'Gluten',
@@ -617,35 +642,35 @@ const translateAllergies = (allergies?: string[]): string => {
     'vegan': 'Végétalien',
     'nuts': 'Sans noix'
   };
-  
+
   return allergies.map(a => allergyMap[a] || a).join(', ');
 };
 
 const formatSummary = (data: OnboardingData): string => {
   const parts: string[] = [];
-  
+
   parts.push(`• Âge: ${data.age || 'Non renseigné'}`);
   parts.push(`• Sexe: ${translateGender(data.gender)}`);
-  
+
   if (data.weight) {
     parts.push(`• Poids: ${data.weight} kg`);
   }
-  
+
   if (data.height) {
     parts.push(`• Taille: ${data.height} cm`);
   }
-  
+
   parts.push(`• Objectifs: ${translateGoals(data.goals)}`);
   parts.push(`• Allergies/Régimes: ${translateAllergies(data.allergies)}`);
-  
+
   if (data.activityLevel) {
     parts.push(`• Niveau d'activité: ${data.activityLevel}`);
   } else {
     parts.push(`• Niveau d'activité: Non renseigné`);
   }
-  
+
   parts.push(`• Informations supplémentaires: ${data.additionalInfo || 'Aucune'}`);
-  
+
   return parts.join('\n');
 };
 
@@ -742,13 +767,13 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   useEffect(() => {
     // Check if any message is currently typing
     const isTyping = messages.some(msg => !msg.isUser && msg.isTyping);
-    
+
     if (isTyping) {
       // During typing, scroll less frequently (every 200ms) to avoid too aggressive scrolling
       const scrollInterval = setInterval(() => {
         scrollToBottom();
       }, 200);
-      
+
       return () => clearInterval(scrollInterval);
     } else {
       // When not typing, scroll immediately
@@ -761,12 +786,12 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     const intervalsMap = typewriterIntervalsRef.current;
     const timeoutsMap = typewriterTimeoutsRef.current;
     const activeTyping = activeTypingMessagesRef.current;
-    
+
     // Allow tuning speed between environments (faster in production by default)
     const parsedSpeed =
       Number(
         process.env.NEXT_PUBLIC_TYPEWRITER_SPEED ||
-          (process.env.NODE_ENV === "production" ? 2.5 : 1.25)
+        (process.env.NODE_ENV === "production" ? 2.5 : 1.25)
       ) || 1.25;
     const speedMultiplier = Math.min(Math.max(parsedSpeed, 0.5), 4); // Clamp for safety
     const baseDelayMs = 20 / speedMultiplier; // Lower = faster typing
@@ -775,14 +800,14 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       speedMultiplier >= 1.5
         ? { min: 2, max: 5 }
         : { min: 1, max: 3 }; // Larger chunks when sped up
-    
+
     // Only process messages that need typing initialization
     messages.forEach((message) => {
       // Only apply typewriter to non-user messages that haven't been fully displayed
       if (!message.isUser && message.isTyping && message.displayedText !== undefined) {
         const fullText = message.text;
         const currentDisplayed = message.displayedText || "";
-        
+
         // Skip if already being processed
         if (intervalsMap.has(message.id) || timeoutsMap.has(message.id) || activeTyping.has(message.id)) {
           return;
@@ -837,15 +862,15 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
             // Get remaining text
             const remaining = fullText.slice(current.length);
-            
+
             // Determine chunk size based on what's coming next
             let chunkSize = 1;
             let pauseAfter = false;
-            
+
             // Check for punctuation that should trigger a pause
             const nextChar = remaining[0];
             const nextFewChars = remaining.slice(0, 10);
-            
+
             // If we're at punctuation, add a longer pause after typing it
             if (/[.!?。！？]\s/.test(nextFewChars)) {
               // Type the punctuation and space, then pause
@@ -878,19 +903,19 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             // Ensure we don't exceed remaining text
             chunkSize = Math.min(chunkSize, remaining.length);
             const nextChars = fullText.slice(0, current.length + chunkSize);
-            
+
             // Schedule next chunk - speed-adjusted delays
             const randomVariation = (Math.random() * 6 - 3) / speedMultiplier; // ±3ms scaled
             const delay = pauseAfter
               ? baseDelayMs * punctuationDelayMultiplier + randomVariation
               : baseDelayMs + randomVariation;
-            
+
             const timeout = setTimeout(() => {
               typeNextChunk();
             }, Math.max(2, delay)); // Minimum 2ms delay (reduced for faster start)
-            
+
             timeoutsMap.set(message.id, timeout);
-            
+
             return prev.map((m) =>
               m.id === message.id
                 ? { ...m, displayedText: nextChars }
@@ -986,10 +1011,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         progress: "[7/8]",
         examples: "Sélectionnez une option",
         suggestions: [
-          "Sédentaire", 
-          "Léger (1-2 fois/sem)", 
-          "Modéré (2-3 fois/sem)", 
-          "Actif (4-5 fois/sem)", 
+          "Sédentaire",
+          "Léger (1-2 fois/sem)",
+          "Modéré (2-3 fois/sem)",
+          "Actif (4-5 fois/sem)",
           "Très actif (6+ fois/sem)"
         ],
         hasBubbles: true,
@@ -1010,12 +1035,12 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   // Trigger background product fetching when chat page loads
   useEffect(() => {
     if (!isConsultationStarted) return;
-    
+
     console.log('[FullPageChat] ========================================');
     console.log('[FullPageChat] CHAT PAGE LOADED - STARTING PRODUCT PREFETCH');
     console.log('[FullPageChat] ========================================');
     console.log('[FullPageChat] Timestamp:', new Date().toISOString());
-    
+
     // Prefetch products in the background (non-blocking)
     // This will fetch all products and extract HTML content in parallel batches
     // Results are cached for 3-4 hours
@@ -1062,7 +1087,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       // Determine userId: prioritize Shopify customer ID if available
       const storedUserId = localStorage.getItem("chat_user_id");
       let currentUserId: string;
-      
+
       if (shopifyCustomerId) {
         // Use Shopify customer ID as userId
         currentUserId = `shopify_${shopifyCustomerId}`;
@@ -1086,7 +1111,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           if (profile && profile.age && profile.gender) {
             setIsOnboardingComplete(true);
             setOnboardingStep('complete');
-            const greeting = shopifyCustomerName 
+            const greeting = shopifyCustomerName
               ? `Bonjour ${shopifyCustomerName}! 👋 J'ai votre profil. Comment puis-je vous aider aujourd'hui avec votre parcours nutritionnel?`
               : `Bonjour! 👋 J'ai votre profil. Comment puis-je vous aider aujourd'hui avec votre parcours nutritionnel?`;
             setMessages([
@@ -1106,12 +1131,12 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       }
 
       setIsCheckingProfile(false);
-      
+
       const questionInfo = getQuestionInfo('age');
       const welcomeMessage = shopifyCustomerName
         ? `Bonjour ${shopifyCustomerName}! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.\n\n⚠️ Note importante: Vos objectifs et votre niveau d'activité seront utilisés pour générer votre plan nutritionnel personnalisé en PDF.`
         : "Bonjour! 👋 Je suis votre Assistante virtuelle IA 🥗✨\n\nAvant de commencer, j'aimerais en savoir un peu plus sur vous pour vous donner les meilleurs conseils personnalisés. Cela ne prendra qu'un instant!\n\n💡 Astuce: Vous pouvez taper 'retour' à tout moment pour revenir à une question précédente, ou 'résumé' pour voir vos réponses.\n\n⚠️ Note importante: Vos objectifs et votre niveau d'activité seront utilisés pour générer votre plan nutritionnel personnalisé en PDF.";
-      
+
       setMessages([
         {
           id: "1",
@@ -1137,7 +1162,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     const SpeechRecognitionCtor =
       (window as WindowWithSpeechRecognition).SpeechRecognition ||
       (window as WindowWithSpeechRecognition).webkitSpeechRecognition;
-    
+
     if (SpeechRecognitionCtor) {
       setIsVoiceSupported(true);
       const recognition = new SpeechRecognitionCtor();
@@ -1149,7 +1174,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         if (typeof navigator !== "undefined") {
           // Check navigator.languages array (all preferred languages)
           if (navigator.languages && Array.isArray(navigator.languages)) {
-            isFrench = navigator.languages.some(lang => 
+            isFrench = navigator.languages.some(lang =>
               lang && typeof lang === "string" && lang.toLowerCase().startsWith("fr")
             );
           }
@@ -1239,7 +1264,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
   const parseOnboardingResponse = (input: string, step: OnboardingQuestion): Partial<OnboardingData> | null => {
     const lowerInput = input.toLowerCase().trim();
-    
+
     switch (step) {
       case 'age': {
         const ageMatch = input.match(/\d+/);
@@ -1255,7 +1280,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         }
         return null;
       }
-      
+
       case 'gender': {
         if (lowerInput.includes('homme') || lowerInput.includes('male')) {
           return { gender: 'male' as const };
@@ -1268,7 +1293,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         }
         return null;
       }
-      
+
       case 'weight': {
         if (lowerInput.includes('skip') || lowerInput.includes('passer')) {
           return { weight: undefined };
@@ -1283,7 +1308,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         }
         return null;
       }
-      
+
       case 'height': {
         if (lowerInput.includes('skip') || lowerInput.includes('passer')) {
           return { height: undefined };
@@ -1298,7 +1323,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         }
         return null;
       }
-      
+
       case 'goals': {
         const goals: string[] = [];
         const goalKeywords: { [key: string]: string } = {
@@ -1322,20 +1347,20 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           'sleep': 'better_sleep',
           'dormir': 'better_sleep',
         };
-        
+
         for (const [keyword, goal] of Object.entries(goalKeywords)) {
           if (lowerInput.includes(keyword) && !goals.includes(goal)) {
             goals.push(goal);
           }
         }
-        
+
         if (goals.length === 0 && lowerInput.length > 3) {
           return { goals: ['wellness'] };
         }
-        
+
         return goals.length > 0 ? { goals } : null;
       }
-      
+
       case 'allergies': {
         const allergies: string[] = [];
         const allergyKeywords: { [key: string]: string } = {
@@ -1358,40 +1383,40 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           'soja': 'soy',
           'soy': 'soy',
         };
-        
-        if (lowerInput.includes('aucune') || lowerInput.includes('none') || 
-            lowerInput.includes('pas') || lowerInput.includes('rien') ||
-            lowerInput.includes('non')) {
+
+        if (lowerInput.includes('aucune') || lowerInput.includes('none') ||
+          lowerInput.includes('pas') || lowerInput.includes('rien') ||
+          lowerInput.includes('non')) {
           return { allergies: [] };
         }
-        
+
         for (const [keyword, allergy] of Object.entries(allergyKeywords)) {
           if (lowerInput.includes(keyword) && !allergies.includes(allergy)) {
             allergies.push(allergy);
           }
         }
-        
+
         return { allergies };
       }
-      
+
       case 'activity_level': {
         // Activity level options
         const activityLevelOptions = [
-          "Sédentaire", 
-          "Léger (1-2 fois/sem)", 
-          "Modéré (2-3 fois/sem)", 
-          "Actif (4-5 fois/sem)", 
+          "Sédentaire",
+          "Léger (1-2 fois/sem)",
+          "Modéré (2-3 fois/sem)",
+          "Actif (4-5 fois/sem)",
           "Très actif (6+ fois/sem)"
         ];
-        
+
         // Try to match input with activity level options
         for (const option of activityLevelOptions) {
-          if (lowerInput.includes(option.toLowerCase().split(' ')[0]) || 
-              input.includes(option)) {
+          if (lowerInput.includes(option.toLowerCase().split(' ')[0]) ||
+            input.includes(option)) {
             return { activityLevel: option };
           }
         }
-        
+
         // Map common variations
         if (lowerInput.includes('sédentaire') || lowerInput.includes('sedentary')) {
           return { activityLevel: "Sédentaire" };
@@ -1408,15 +1433,15 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         if (lowerInput.includes('très actif') || lowerInput.includes('very active')) {
           return { activityLevel: "Très actif (6+ fois/sem)" };
         }
-        
+
         return null;
       }
-      
+
       case 'additional_info': {
         // Allow skipping with 'passer', 'rien', 'none', 'nothing'
-        if (lowerInput.includes('passer') || lowerInput.includes('rien') || 
-            lowerInput.includes('none') || lowerInput.includes('nothing') ||
-            lowerInput.includes('non') || lowerInput.includes('pas')) {
+        if (lowerInput.includes('passer') || lowerInput.includes('rien') ||
+          lowerInput.includes('none') || lowerInput.includes('nothing') ||
+          lowerInput.includes('non') || lowerInput.includes('pas')) {
           return { additionalInfo: "" };
         }
         // Accept any text input for additional info
@@ -1425,7 +1450,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         }
         return null;
       }
-      
+
       default:
         return null;
     }
@@ -1436,7 +1461,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     const currentIndex = nextSteps.indexOf(currentStep);
     const nextStep = nextSteps[currentIndex + 1] || 'complete';
     const questionInfo = getQuestionInfo(nextStep);
-    
+
     return {
       step: nextStep,
       question: questionInfo.question + (questionInfo.examples ? `\n\n💡 ${questionInfo.examples}` : ''),
@@ -1446,14 +1471,14 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
   const goToPreviousQuestion = (): boolean => {
     if (onboardingHistory.length <= 1) return false;
-    
+
     const newHistory = [...onboardingHistory];
     newHistory.pop();
     const previousStep = newHistory[newHistory.length - 1];
-    
+
     setOnboardingHistory(newHistory);
     setOnboardingStep(previousStep);
-    
+
     const questionInfo = getQuestionInfo(previousStep);
     const backMessage: Message = {
       id: generateMessageId(),
@@ -1462,7 +1487,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, backMessage]);
-    
+
     return true;
   };
 
@@ -1603,7 +1628,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     if (!userId || !finalData.age || !finalData.gender || !finalData.activityLevel) {
       return;
     }
-    
+
     const profilePayload = {
       userId,
       age: finalData.age,
@@ -1615,7 +1640,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       activityLevel: finalData.activityLevel,
       additionalInfo: finalData.additionalInfo || "",
     };
-    
+
     try {
       const response = await fetch("/api/user", {
         method: "POST",
@@ -1641,7 +1666,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         try {
           const errorData = await response.json();
           const apiError = errorData.error || errorData.message;
-          
+
           // Map API error messages to user-friendly French messages
           if (response.status === 503 || apiError?.includes('Database connection')) {
             errorText = "🔌 Impossible de se connecter à la base de données pour le moment. Pouvez-vous réessayer dans quelques instants ? Si le problème persiste, vérifiez votre connexion Internet. 🌐";
@@ -1667,7 +1692,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             errorText = "😔 Oups ! Une erreur s'est produite lors de l'enregistrement. Pouvez-vous vérifier vos informations et réessayer ? 💚";
           }
         }
-        
+
         const errorMessage: Message = {
           id: generateMessageId(),
           text: errorText + "\n\n💡 Vous pouvez réessayer en tapant 'retour' puis en validant à nouveau vos réponses.",
@@ -1678,10 +1703,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       }
     } catch (error) {
       console.error("Error saving user profile:", error);
-      
+
       // Handle network errors and other exceptions
       let errorText = "😔 Oups ! Une petite erreur s'est produite lors de l'enregistrement. Pouvez-vous réessayer ? 💚";
-      
+
       if (error instanceof TypeError && error.message === "Failed to fetch") {
         errorText = "🔌 Impossible de se connecter au serveur. Pouvez-vous vérifier votre connexion Internet et réessayer ? 🌐";
       } else if (error instanceof Error) {
@@ -1693,7 +1718,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           errorText = `😔 Oups ! Une erreur s'est produite : ${error.message}. Pouvez-vous réessayer ? 💚`;
         }
       }
-      
+
       const errorMessage: Message = {
         id: generateMessageId(),
         text: errorText + "\n\n💡 Vous pouvez réessayer en tapant 'retour' puis en validant à nouveau vos réponses.",
@@ -1734,7 +1759,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           msg.id === lastAIMessage.id ? { ...msg, pendingComboResponse: false } : msg
         )
       );
-      
+
       if (isYes) {
         // Show the combo (user message already added above)
         const comboMessage: Message = {
@@ -1748,7 +1773,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         setIsLoading(false);
         return;
       }
-      
+
       if (isNo) {
         // User explicitly declined (user message already added above)
         const declinedMessage: Message = {
@@ -1770,7 +1795,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
     if (!isOnboardingComplete && onboardingStep !== 'complete') {
       const lowerInput = currentInput.toLowerCase().trim();
-      
+
       if (lowerInput === 'retour' || lowerInput === 'back' || lowerInput === 'précédent' || lowerInput === 'previous') {
         const wentBack = goToPreviousQuestion();
         if (wentBack) {
@@ -1788,7 +1813,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           return;
         }
       }
-      
+
       if (lowerInput === 'résumé' || lowerInput === 'summary' || lowerInput === 'récapitulatif') {
         const summaryMessage: Message = {
           id: generateMessageId(),
@@ -1800,7 +1825,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         setIsLoading(false);
         return;
       }
-      
+
       const qInfo = getQuestionInfo(onboardingStep);
       if (qInfo.hasBubbles && !showCustomInput) {
         const errorMessage: Message = {
@@ -1815,19 +1840,19 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       }
 
       const parsed = parseOnboardingResponse(currentInput, onboardingStep);
-      
+
       if (parsed) {
         const updatedData = { ...onboardingData, ...parsed };
         setOnboardingData(updatedData);
-        
+
         if (!onboardingHistory.includes(onboardingStep)) {
           setOnboardingHistory((prev) => [...prev, onboardingStep]);
         }
-        
+
         // When additional_info is completed, show summary and save
         if (onboardingStep === 'additional_info' && updatedData.additionalInfo !== undefined) {
           const summaryText = `📋 Récapitulatif:\n\n${formatSummary(updatedData)}\n\nEnregistrement en cours...`;
-          
+
           const summaryMessage: Message = {
             id: generateMessageId(),
             text: summaryText,
@@ -1835,16 +1860,16 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             timestamp: new Date(),
           };
           setMessages((prev) => [...prev, summaryMessage]);
-          
+
           await saveUserProfile(updatedData);
           setIsLoading(false);
           return;
         }
-        
+
         const next = getNextQuestion(onboardingStep);
         setOnboardingHistory((prev) => [...prev, next.step]);
         setOnboardingStep(next.step);
-        
+
         const nextQuestionMessage: Message = {
           id: generateMessageId(),
           text: `Merci! ${next.progress}\n\n${next.question}\n\n💡 Astuce: Tapez 'retour' pour revenir à la question précédente, ou 'résumé' pour voir vos réponses.`,
@@ -1862,7 +1887,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         };
         setMessages((prev) => [...prev, retryMessage]);
       }
-      
+
       setIsLoading(false);
       return;
     }
@@ -1912,8 +1937,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
-          message: currentInput, 
+        body: JSON.stringify({
+          message: currentInput,
           userId,
           conversationHistory,
           contextVariantIds,
@@ -1956,10 +1981,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
       const fullText = data.reply ||
         "😔 Désolé, je n'ai pas pu traiter votre demande pour le moment. Pouvez-vous réessayer ? 💚";
-      
+
       // Show first character immediately so bubble appears with content right away
       const firstChar = fullText.length > 0 ? fullText[0] : "";
-      
+
       const aiMessage: Message = {
         id: generateMessageId(),
         text: fullText,
@@ -1998,7 +2023,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
       // Determine error type and provide helpful message
       let errorText = "😔 Oups ! Une petite erreur s'est produite. Pouvez-vous réessayer ? 💚";
-      
+
       if (error instanceof TypeError && error.message === "Failed to fetch") {
         errorText = "🔌 Impossible de se connecter au serveur. Veuillez vérifier que le serveur de développement est en cours d'exécution.\n\n💡 Pour démarrer le serveur, exécutez :\n`npm run dev` ou `yarn dev`";
       } else if (error instanceof Error) {
@@ -2013,8 +2038,8 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
       trackEvent("chat_error", {
         category: "error",
-        errorType: error instanceof TypeError && error.message === "Failed to fetch" 
-          ? "network_error" 
+        errorType: error instanceof TypeError && error.message === "Failed to fetch"
+          ? "network_error"
           : "api_error",
         errorMessage: error instanceof Error ? error.message : String(error),
         ...(userId && { userId }),
@@ -2105,7 +2130,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           const pdfResponse = await fetch(data.pdfUrl);
           const blob = await pdfResponse.blob();
           const url = window.URL.createObjectURL(blob);
-          
+
           // Create a temporary anchor element to trigger download
           const link = document.createElement('a');
           link.href = url;
@@ -2113,7 +2138,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-          
+
           // Clean up the object URL
           window.URL.revokeObjectURL(url);
         } catch (downloadError) {
@@ -2233,20 +2258,18 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
           {messages.map((message, index) => (
             <div
               key={message.id}
-              className={`flex items-start space-x-2 sm:space-x-3 ${
-                message.isUser ? "flex-row-reverse space-x-reverse" : ""
-              } ${message.isUser ? "" : "animate-fade-in"}`}
-              style={message.isUser ? {} : { 
+              className={`flex items-start space-x-2 sm:space-x-3 ${message.isUser ? "flex-row-reverse space-x-reverse" : ""
+                } ${message.isUser ? "" : "animate-fade-in"}`}
+              style={message.isUser ? {} : {
                 animationDelay: `${Math.min(index * 0.03, 0.15)}s`
               }}
             >
               {!message.isUser && <Avatar isUser={false} />}
               <div
-                className={`max-w-[85%] sm:max-w-[75%] px-3 sm:px-4 py-2 sm:py-3 rounded-2xl ${
-                  message.isUser
-                    ? "bg-primary/20 text-foreground rounded-br-lg shadow-sm"
-                    : "bg-card text-foreground border border-secondary/30 rounded-bl-lg shadow-sm"
-                }`}
+                className={`max-w-[85%] sm:max-w-[75%] px-3 sm:px-4 py-2 sm:py-3 rounded-2xl ${message.isUser
+                  ? "bg-primary/20 text-foreground rounded-br-lg shadow-sm"
+                  : "bg-card text-foreground border border-secondary/30 rounded-bl-lg shadow-sm"
+                  }`}
               >
                 {!message.isUser && !message.isTyping && (
                   <div className="flex justify-end mb-1">
@@ -2264,11 +2287,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                     </button>
                   </div>
                 )}
-                <div className={`text-xs sm:text-sm md:text-base leading-relaxed prose prose-sm max-w-none break-words ${
-                  message.isUser 
-                    ? "prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-em:text-gray-200" 
-                    : "prose-headings:text-gray-900 prose-p:text-gray-800 prose-strong:text-gray-900 prose-em:text-gray-700"
-                }`}>
+                <div className={`text-xs sm:text-sm md:text-base leading-relaxed prose prose-sm max-w-none break-words ${message.isUser
+                  ? "prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-em:text-gray-200"
+                  : "prose-headings:text-gray-900 prose-p:text-gray-800 prose-strong:text-gray-900 prose-em:text-gray-700"
+                  }`}>
                   <ReactMarkdown
                     components={{
                       p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
@@ -2287,86 +2309,87 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                       h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-1 first:mt-0">{children}</h3>,
                     }}
                   >
-                    {message.isTyping && message.displayedText !== undefined 
+                    {message.isTyping && message.displayedText !== undefined
                       ? message.displayedText + (message.displayedText.length < message.text.length ? "|" : "")
                       : message.text}
                   </ReactMarkdown>
                 </div>
 
-              {!message.isUser && !isOnboardingComplete && onboardingStep !== 'complete' && (() => {
-                const info = getQuestionInfo(onboardingStep);
-                const isLastMessage = messages[messages.length - 1]?.id === message.id;
-                if (isLastMessage && info.hasBubbles && info.suggestions) {
-                  return (
-                    <FloatingBubbles
-                      suggestions={info.suggestions}
-                      selected={selectedBubbles}
-                      customInputs={customInputs}
-                      onBubbleClick={handleBubbleClick}
-                      onCustomInputAdd={handleCustomInputAdd}
-                      onCustomInputRemove={handleCustomInputRemove}
-                      showCustomInputField={showCustomInput}
-                      onToggleCustomInput={() => {
-                        setShowCustomInput(!showCustomInput);
-                        if (showCustomInput) setCustomInputValue("");
-                      }}
-                      customInputValue={customInputValue}
-                      onCustomInputChange={setCustomInputValue}
-                      onValidate={processBubbleAnswer}
-                      canValidate={!isLoading && (selectedBubbles.length > 0 || customInputs.length > 0)}
-                      allowCustomInput={info.allowCustomInput !== false}
+                {!message.isUser && !isOnboardingComplete && onboardingStep !== 'complete' && (() => {
+                  const info = getQuestionInfo(onboardingStep);
+                  const isLastMessage = messages[messages.length - 1]?.id === message.id;
+                  if (isLastMessage && info.hasBubbles && info.suggestions) {
+                    return (
+                      <FloatingBubbles
+                        suggestions={info.suggestions}
+                        selected={selectedBubbles}
+                        customInputs={customInputs}
+                        onBubbleClick={handleBubbleClick}
+                        onCustomInputAdd={handleCustomInputAdd}
+                        onCustomInputRemove={handleCustomInputRemove}
+                        showCustomInputField={showCustomInput}
+                        onToggleCustomInput={() => {
+                          setShowCustomInput(!showCustomInput);
+                          if (showCustomInput) setCustomInputValue("");
+                        }}
+                        customInputValue={customInputValue}
+                        onCustomInputChange={setCustomInputValue}
+                        onValidate={processBubbleAnswer}
+                        canValidate={!isLoading && (selectedBubbles.length > 0 || customInputs.length > 0)}
+                        allowCustomInput={info.allowCustomInput !== false}
+                      />
+                    );
+                  }
+                  return null;
+                })()}
+
+
+                {message.recommendedProducts &&
+                  message.recommendedProducts.length > 0 &&
+                  !message.isTyping && (
+                    <ProductGridWithAnimation
+                      products={message.recommendedProducts}
+                      messageId={message.id}
+                      userId={userId}
                     />
-                  );
-                }
-                return null;
-              })()}
+                  )}
 
-
-              {message.recommendedProducts &&
-                message.recommendedProducts.length > 0 &&
-                !message.isTyping && (
-                  <ProductGridWithAnimation 
-                    products={message.recommendedProducts}
-                    messageId={message.id}
-                  />
+                {message.pendingComboResponse && message.suggestedCombo && !message.isTyping && (
+                  <div className="mt-4 p-4 bg-accent/20 border border-accent/30 rounded-xl">
+                    <p className="text-sm font-light text-foreground mb-2">
+                      💡 J&apos;ai remarqué une combinaison de produits qui pourrait vous intéresser !
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      La combinaison <strong>&quot;{message.suggestedCombo.name}&quot;</strong> contient certains des produits que j&apos;ai recommandés et pourrait vous offrir des avantages supplémentaires.
+                    </p>
+                    <p className="text-xs font-light text-foreground mb-2">
+                      Souhaitez-vous voir cette combinaison ? (Répondez &quot;oui&quot; ou &quot;non&quot;)
+                    </p>
+                  </div>
                 )}
 
-              {message.pendingComboResponse && message.suggestedCombo && !message.isTyping && (
-              <div className="mt-4 p-4 bg-accent/20 border border-accent/30 rounded-xl">
-                <p className="text-sm font-light text-foreground mb-2">
-                  💡 J&apos;ai remarqué une combinaison de produits qui pourrait vous intéresser !
-                </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  La combinaison <strong>&quot;{message.suggestedCombo.name}&quot;</strong> contient certains des produits que j&apos;ai recommandés et pourrait vous offrir des avantages supplémentaires.
-                </p>
-                <p className="text-xs font-light text-foreground mb-2">
-                  Souhaitez-vous voir cette combinaison ? (Répondez &quot;oui&quot; ou &quot;non&quot;)
+                {message.recommendedCombos &&
+                  message.recommendedCombos.length > 0 &&
+                  !message.isTyping && (
+                    <ComboGridWithAnimation
+                      combos={message.recommendedCombos}
+                      messageId={message.id}
+                      userId={userId}
+                    />
+                  )}
+
+                <p
+                  className={`text-xs mt-3 ${message.isUser ? "text-muted-foreground/60" : "text-muted-foreground/60"
+                    }`}
+                >
+                  {message.timestamp.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </p>
               </div>
-              )}
-
-              {message.recommendedCombos &&
-                message.recommendedCombos.length > 0 &&
-                !message.isTyping && (
-                  <ComboGridWithAnimation 
-                    combos={message.recommendedCombos}
-                    messageId={message.id}
-                  />
-                )}
-
-              <p
-                className={`text-xs mt-3 ${
-                  message.isUser ? "text-muted-foreground/60" : "text-muted-foreground/60"
-                }`}
-              >
-                {message.timestamp.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </p>
+              {message.isUser && <Avatar isUser={true} />}
             </div>
-            {message.isUser && <Avatar isUser={true} />}
-          </div>
           ))}
         </div>
 
@@ -2390,11 +2413,10 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             <button
               onClick={toggleVoiceInput}
               disabled={isLoading}
-              className={`p-2 sm:p-3 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center ${
-                isListening
-                  ? "bg-accent text-foreground animate-pulse shadow-sm"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
+              className={`p-2 sm:p-3 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center justify-center ${isListening
+                ? "bg-accent text-foreground animate-pulse shadow-sm"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
               title={isListening ? "Arrêter l'enregistrement" : "Démarrer la saisie vocale"}
             >
               {isListening ? (
@@ -2439,14 +2461,13 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
                     isCheckingProfile
                       ? "Chargement..."
                       : isListening
-                      ? "Écoute... Parlez maintenant..."
-                      : !isOnboardingComplete
-                      ? "Répondez à la question..."
-                      : "Posez des questions sur la nutrition, les suppléments..."
+                        ? "Écoute... Parlez maintenant..."
+                        : !isOnboardingComplete
+                          ? "Répondez à la question..."
+                          : "Posez des questions sur la nutrition, les suppléments..."
                   }
-                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 border border-muted rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 resize-none transition-all duration-300 placeholder-muted-foreground bg-background text-xs sm:text-sm md:text-base text-foreground ${
-                    isListening ? "ring-2 ring-accent border-accent" : ""
-                  }`}
+                  className={`w-full px-3 sm:px-4 py-2 sm:py-3 border border-muted rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 resize-none transition-all duration-300 placeholder-muted-foreground bg-background text-base sm:text-sm md:text-base text-foreground ${isListening ? "ring-2 ring-accent border-accent" : ""
+                    }`}
                   rows={1}
                   disabled={isLoading || isListening || isCheckingProfile}
                   style={{

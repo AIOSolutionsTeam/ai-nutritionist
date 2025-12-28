@@ -37,11 +37,20 @@ export interface Product {
      interactions?: string[]
 }
 
+export interface AIUsageMetadata {
+     provider: 'openai' | 'gemini'
+     model: string
+     promptTokens: number
+     completionTokens: number
+     totalTokens: number
+}
+
 export interface StructuredNutritionResponse {
      reply: string
      products: Product[]
      disclaimer?: string
      recommendedProducts?: ProductSearchResult[] // Will be populated by the chat API with Shopify products
+     usage?: AIUsageMetadata // Optional usage metadata for cost tracking
 }
 
 export interface ProductSearchResult {
@@ -119,7 +128,7 @@ export class OpenAIService {
                     max_tokens: 5,
                     temperature: 0
                })
-               
+
                // If we get here without error, the API is working
                if (testCompletion.choices[0]?.message?.content) {
                     this.resetCooldown()
@@ -146,7 +155,7 @@ export class OpenAIService {
                     console.log('[OpenAIService] Health check: Still in quota error, keeping cooldown')
                     return false
                }
-               
+
                // Other error (network, etc.) - don't reset cooldown, but not a quota issue
                console.log('[OpenAIService] Health check: Non-quota error, keeping cooldown')
                return false
@@ -154,8 +163,8 @@ export class OpenAIService {
      }
 
      async generateNutritionAdvice(
-          userQuery: string, 
-          _userId?: string, 
+          userQuery: string,
+          _userId?: string,
           userProfileContext?: string,
           conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
           productContext?: string
@@ -181,7 +190,7 @@ IMPORTANT: Use this profile information to tailor your advice. Consider their ag
 
           // Determine if this is a continuing conversation
           const isContinuingConversation = conversationHistory && conversationHistory.length > 0
-          const conversationContext = isContinuingConversation 
+          const conversationContext = isContinuingConversation
                ? '\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with "Salut", "Bonjour", or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you\'re continuing a chat with a friend.'
                : ''
 
@@ -300,23 +309,23 @@ IMPORTANT:
                     // If there are more than 5 messages, summarize older ones
                     const MAX_RECENT_MESSAGES = 5
                     const totalMessages = conversationHistory.length
-                    
+
                     if (totalMessages > MAX_RECENT_MESSAGES) {
                          // Keep last 5 messages, summarize the rest
                          const olderMessages = conversationHistory.slice(0, totalMessages - MAX_RECENT_MESSAGES)
                          const recentMessages = conversationHistory.slice(-MAX_RECENT_MESSAGES)
-                         
+
                          // Create a concise summary of older conversation
                          const summary = olderMessages
                               .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`)
                               .join(' | ')
-                         
+
                          // Add summary as a system message
                          messages.push({
                               role: 'system',
                               content: `Previous conversation summary (${olderMessages.length} earlier messages): ${summary}`
                          })
-                         
+
                          // Add recent messages
                          for (const msg of recentMessages) {
                               messages.push({
@@ -389,7 +398,7 @@ IMPORTANT:
                          (trimmedContent.match(/\[/g) || []).length !== (trimmedContent.match(/\]/g) || []).length ||
                          (trimmedContent.match(/"/g) || []).length % 2 !== 0
                     )
-                    
+
                     if (isLikelyTruncated) {
                          console.warn('[OpenAIService] Response appears to be truncated - JSON structure incomplete')
                          // Try to extract what we can, but log the issue
@@ -398,7 +407,7 @@ IMPORTANT:
                     const parsedResponse = JSON.parse(responseContent)
 
                     // Check if this is a direct nutrition plan format (for generate-plan route)
-                    const isNutritionPlanFormat = 
+                    const isNutritionPlanFormat =
                          parsedResponse.dailyCalories !== undefined &&
                          parsedResponse.macronutrients !== undefined &&
                          parsedResponse.mealPlan !== undefined &&
@@ -411,7 +420,14 @@ IMPORTANT:
                          return {
                               reply: JSON.stringify(parsedResponse),
                               products: [],
-                              disclaimer: parsedResponse.disclaimer
+                              disclaimer: parsedResponse.disclaimer,
+                              usage: completion.usage ? {
+                                   provider: 'openai' as const,
+                                   model: this.config.model,
+                                   promptTokens: completion.usage.prompt_tokens,
+                                   completionTokens: completion.usage.completion_tokens,
+                                   totalTokens: completion.usage.total_tokens
+                              } : undefined
                          } as StructuredNutritionResponse
                     }
 
@@ -419,14 +435,25 @@ IMPORTANT:
                     if (!parsedResponse.reply || !Array.isArray(parsedResponse.products)) {
                          throw new Error('Invalid response structure')
                     }
-                    
+
                     // EDGE CASE: Check if reply is empty or just whitespace
                     if (typeof parsedResponse.reply === 'string' && parsedResponse.reply.trim().length === 0) {
                          console.warn('[OpenAIService] Response has empty reply field')
                          throw new Error('Empty reply field')
                     }
 
-                    return parsedResponse as StructuredNutritionResponse
+                    // Add actual usage metadata to the response
+                    const responseWithUsage: StructuredNutritionResponse = {
+                         ...parsedResponse,
+                         usage: completion.usage ? {
+                              provider: 'openai' as const,
+                              model: this.config.model,
+                              promptTokens: completion.usage.prompt_tokens,
+                              completionTokens: completion.usage.completion_tokens,
+                              totalTokens: completion.usage.total_tokens
+                         } : undefined
+                    }
+                    return responseWithUsage
                } catch (parseError) {
                     console.error('Failed to parse OpenAI response as JSON:', parseError)
                     console.error('Raw response (first 500 chars):', responseContent.substring(0, 500))
@@ -463,7 +490,7 @@ IMPORTANT:
                     if (jsonMatch && jsonMatch[1]) {
                          extractedReply = jsonMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
                     }
-                    
+
                     return {
                          reply: extractedReply || responseContent || 'Désolé, je n\'ai pas pu traiter votre demande correctement.',
                          products: [],
@@ -532,7 +559,7 @@ IMPORTANT:
      async generateNutritionPlan(
           userProfileContext: string,
           productContext: string
-     ): Promise<{ dailyCalories: number; macronutrients: { protein: { grams: number; percentage: number }; carbs: { grams: number; percentage: number }; fats: { grams: number; percentage: number } }; activityLevel: string; mealPlan: { breakfast: string[]; morningSnack?: string[]; lunch: string[]; afternoonSnack?: string[]; dinner: string[]; eveningSnack?: string[] }; supplements: Array<{ title: string; moment: string; dosage: string; duration: string; comments: string; description?: string }>; personalizedTips: string[] }> {
+     ): Promise<{ dailyCalories: number; macronutrients: { protein: { grams: number; percentage: number }; carbs: { grams: number; percentage: number }; fats: { grams: number; percentage: number } }; activityLevel: string; mealPlan: { breakfast: string[]; morningSnack?: string[]; lunch: string[]; afternoonSnack?: string[]; dinner: string[]; eveningSnack?: string[] }; supplements: Array<{ title: string; moment: string; dosage: string; duration: string; comments: string; description?: string }>; personalizedTips: string[]; usage?: { provider: 'openai'; model: string; promptTokens: number; completionTokens: number; totalTokens: number } }> {
           // Short‑circuit if we're currently in a local cooldown window
           if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
                const remainingMs = this.quotaResetAt - Date.now()
@@ -666,7 +693,17 @@ Remember: Return ONLY the JSON object, nothing else.`
                          throw new Error('Missing required fields in nutrition plan response')
                     }
 
-                    return planData
+                    // Add usage metadata to the return
+                    return {
+                         ...planData,
+                         usage: completion.usage ? {
+                              provider: 'openai' as const,
+                              model: this.config.model,
+                              promptTokens: completion.usage.prompt_tokens,
+                              completionTokens: completion.usage.completion_tokens,
+                              totalTokens: completion.usage.total_tokens
+                         } : undefined
+                    }
                } catch (parseError) {
                     console.error('[OpenAIService] Failed to parse nutrition plan response:', parseError)
                     console.error('[OpenAIService] Raw response:', responseContent)
@@ -783,7 +820,7 @@ export class GeminiService {
                     console.log('[GeminiService] Health check: Still in quota error, keeping cooldown')
                     return false
                }
-               
+
                // Other error (network, etc.) - don't reset cooldown, but not a quota issue
                console.log('[GeminiService] Health check: Non-quota error, keeping cooldown')
                return false
@@ -834,7 +871,7 @@ export class GeminiService {
           if (cleaned.startsWith('{')) {
                let braceCount = 0
                let jsonEndIndex = -1
-               
+
                for (let i = 0; i < cleaned.length; i++) {
                     if (cleaned[i] === '{') {
                          braceCount++
@@ -846,7 +883,7 @@ export class GeminiService {
                          }
                     }
                }
-               
+
                if (jsonEndIndex > 0 && jsonEndIndex < cleaned.length) {
                     // Extract only the JSON part, discard any text after
                     cleaned = cleaned.substring(0, jsonEndIndex)
@@ -936,8 +973,8 @@ export class GeminiService {
      }
 
      async generateNutritionAdvice(
-          userQuery: string, 
-          _userId?: string, 
+          userQuery: string,
+          _userId?: string,
           userProfileContext?: string,
           conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
           productContext?: string
@@ -963,7 +1000,7 @@ IMPORTANT: Use this profile information to tailor your advice. Consider their ag
 
           // Determine if this is a continuing conversation
           const isContinuingConversation = conversationHistory && conversationHistory.length > 0
-          const conversationContext = isContinuingConversation 
+          const conversationContext = isContinuingConversation
                ? '\n\nIMPORTANT CONVERSATION CONTEXT: This is a CONTINUING conversation. The user has already been greeted and you have been discussing topics. DO NOT greet them again with "Salut", "Bonjour", or similar greetings. Continue naturally from where the conversation left off. Be conversational and natural, as if you\'re continuing a chat with a friend.'
                : ''
 
@@ -1072,17 +1109,17 @@ IMPORTANT:
           if (conversationHistory && conversationHistory.length > 0) {
                const MAX_RECENT_MESSAGES = 5
                const totalMessages = conversationHistory.length
-               
+
                if (totalMessages > MAX_RECENT_MESSAGES) {
                     // Keep last 5 messages, summarize the rest
                     const olderMessages = conversationHistory.slice(0, totalMessages - MAX_RECENT_MESSAGES)
                     const recentMessages = conversationHistory.slice(-MAX_RECENT_MESSAGES)
-                    
+
                     // Create a concise summary of older conversation
                     const summary = olderMessages
                          .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 80)}${msg.content.length > 80 ? '...' : ''}`)
                          .join(' | ')
-                    
+
                     conversationContextText = '\n\nCONVERSATION HISTORY:\n'
                     conversationContextText += `[Summary of ${olderMessages.length} earlier messages: ${summary}]\n\n`
                     conversationContextText += 'Recent messages:\n'
@@ -1115,7 +1152,7 @@ IMPORTANT:
                     })
 
                     const prompt = `${systemPrompt}${conversationContextText}\n\nUser Question: ${userQuery}`
-                    
+
                     // Log input data sent to model
                     console.log('[GeminiService] Input data sent to model:', {
                          model: modelName,
@@ -1127,7 +1164,7 @@ IMPORTANT:
                          userQuery: userQuery,
                          conversationHistoryLength: conversationHistory?.length || 0
                     })
-                    
+
                     const result = await model.generateContent(prompt)
                     const response = await result.response
                     const responseContent = response.text()
@@ -1167,7 +1204,7 @@ IMPORTANT:
                          const parsedResponse = JSON.parse(cleanedContent)
 
                          // Check if this is a direct nutrition plan format (for generate-plan route)
-                         const isNutritionPlanFormat = 
+                         const isNutritionPlanFormat =
                               parsedResponse.dailyCalories !== undefined &&
                               parsedResponse.macronutrients !== undefined &&
                               parsedResponse.mealPlan !== undefined &&
@@ -1180,7 +1217,14 @@ IMPORTANT:
                               return {
                                    reply: JSON.stringify(parsedResponse),
                                    products: [],
-                                   disclaimer: parsedResponse.disclaimer
+                                   disclaimer: parsedResponse.disclaimer,
+                                   usage: result.response?.usageMetadata ? {
+                                        provider: 'gemini' as const,
+                                        model: modelName,
+                                        promptTokens: result.response.usageMetadata.promptTokenCount || 0,
+                                        completionTokens: result.response.usageMetadata.candidatesTokenCount || 0,
+                                        totalTokens: result.response.usageMetadata.totalTokenCount || 0
+                                   } : undefined
                               } as StructuredNutritionResponse
                          }
 
@@ -1190,7 +1234,18 @@ IMPORTANT:
                          }
 
                          console.log(`Successfully used Gemini model: ${modelName}`)
-                         return parsedResponse as StructuredNutritionResponse
+                         // Add actual usage metadata to the response
+                         const responseWithUsage: StructuredNutritionResponse = {
+                              ...parsedResponse,
+                              usage: result.response?.usageMetadata ? {
+                                   provider: 'gemini' as const,
+                                   model: modelName,
+                                   promptTokens: result.response.usageMetadata.promptTokenCount || 0,
+                                   completionTokens: result.response.usageMetadata.candidatesTokenCount || 0,
+                                   totalTokens: result.response.usageMetadata.totalTokenCount || 0
+                              } : undefined
+                         }
+                         return responseWithUsage
                     } catch (parseError) {
                          console.error('Failed to parse Gemini response as JSON:', parseError)
                          console.error('Raw response:', responseContent)
@@ -1210,7 +1265,7 @@ IMPORTANT:
                               const reparsed = JSON.parse(sanitized)
 
                               // Check if this is a direct nutrition plan format (for generate-plan route)
-                              const isNutritionPlanFormat = 
+                              const isNutritionPlanFormat =
                                    reparsed.dailyCalories !== undefined &&
                                    reparsed.macronutrients !== undefined &&
                                    reparsed.mealPlan !== undefined &&
@@ -1311,7 +1366,7 @@ IMPORTANT:
      async generateNutritionPlan(
           userProfileContext: string,
           productContext: string
-     ): Promise<{ dailyCalories: number; macronutrients: { protein: { grams: number; percentage: number }; carbs: { grams: number; percentage: number }; fats: { grams: number; percentage: number } }; activityLevel: string; mealPlan: { breakfast: string[]; morningSnack?: string[]; lunch: string[]; afternoonSnack?: string[]; dinner: string[]; eveningSnack?: string[] }; supplements: Array<{ title: string; moment: string; dosage: string; duration: string; comments: string; description?: string }>; personalizedTips: string[] }> {
+     ): Promise<{ dailyCalories: number; macronutrients: { protein: { grams: number; percentage: number }; carbs: { grams: number; percentage: number }; fats: { grams: number; percentage: number } }; activityLevel: string; mealPlan: { breakfast: string[]; morningSnack?: string[]; lunch: string[]; afternoonSnack?: string[]; dinner: string[]; eveningSnack?: string[] }; supplements: Array<{ title: string; moment: string; dosage: string; duration: string; comments: string; description?: string }>; personalizedTips: string[]; usage?: { provider: 'gemini'; model: string; promptTokens: number; completionTokens: number; totalTokens: number } }> {
           // Local in-process cooldown when we hit quota / 429 errors
           if (this.quotaResetAt && this.quotaResetAt > Date.now()) {
                const remainingMs = this.quotaResetAt - Date.now()
@@ -1444,7 +1499,17 @@ Remember: Return ONLY the JSON object, nothing else.`
                          }
 
                          console.log(`[GeminiService] Successfully generated nutrition plan with model: ${modelName}`)
-                         return planData
+                         // Add usage metadata to the return
+                         return {
+                              ...planData,
+                              usage: result.response?.usageMetadata ? {
+                                   provider: 'gemini' as const,
+                                   model: modelName,
+                                   promptTokens: result.response.usageMetadata.promptTokenCount || 0,
+                                   completionTokens: result.response.usageMetadata.candidatesTokenCount || 0,
+                                   totalTokens: result.response.usageMetadata.totalTokenCount || 0
+                              } : undefined
+                         }
                     } catch (parseError) {
                          console.error('[GeminiService] Failed to parse nutrition plan response:', parseError)
                          console.error('[GeminiService] Raw response:', responseContent)

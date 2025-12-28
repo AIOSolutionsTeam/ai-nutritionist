@@ -274,4 +274,16 @@ nav a:hover::after {
     -webkit-appearance: none;
     appearance: none;
   }
+  
+  /* Prevent zoom on input focus - ensure minimum 16px font-size */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }

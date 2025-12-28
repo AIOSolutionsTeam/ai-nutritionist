@@ -4,6 +4,7 @@ import { pdfGenerator, NutritionPlan } from '../../../lib/pdf'
 import { openaiService, geminiService, AIQuotaError } from '../../../lib/openai'
 import { fetchAllProductsWithParsedData, ProductSearchResult, generateProductContextForVariantIds } from '../../../lib/shopify'
 import { calculateNutritionPlan, ActivityLevel } from '../../../utils/nutrition-calculations'
+import { aiUsageService } from '../../../lib/ai-usage'
 
 /**
  * Translate goals from English to French and remove underscores
@@ -38,7 +39,7 @@ function translateGoals(goals: string[]): string[] {
  */
 function mapActivityLevelToEnglish(frenchActivityLevel?: string): ActivityLevel | undefined {
      if (!frenchActivityLevel) return undefined;
-     
+
      const activityMap: Record<string, ActivityLevel> = {
           'Sédentaire': 'sedentary',
           'Léger (1-2 fois/sem)': 'light',
@@ -50,7 +51,7 @@ function mapActivityLevelToEnglish(frenchActivityLevel?: string): ActivityLevel 
           'Très actif (6+ fois/sem)': 'very_active',
           'Très actif': 'very_active',
      };
-     
+
      return activityMap[frenchActivityLevel] || undefined;
 }
 
@@ -99,16 +100,16 @@ function calculateNutritionValues(
      // If activity level is not provided, use fallback for muscle_gain goals
      // This ensures calculations use appropriate activity level
      const activityLevelForCalculation = activityLevel || getFallbackActivityLevel(userProfile.goals);
-     
+
      // Log the activity level being used for calculation (before mapping)
      console.log('[Generate Plan] Activity level used for calculation (French):', activityLevelForCalculation || 'Not provided')
-     
+
      // Map French activity level to English
      const mappedActivityLevel = mapActivityLevelToEnglish(activityLevelForCalculation);
-     
+
      // Log the mapped activity level being used for calculations (English)
      console.log('[Generate Plan] Activity level used for calculations (English/mapped):', mappedActivityLevel || 'Not provided')
-     
+
      // Use the actual calculation function
      // This already handles fat percentage correctly (25% for weight loss, 30% otherwise)
      const nutritionPlan = calculateNutritionPlan(
@@ -142,7 +143,7 @@ async function generatePlanWithAI(
 
      // Use activity level from user profile (required field) or override if provided
      const activityLevelToUse = activityLevel || userProfile.activityLevel;
-     
+
      // Build user profile context for the AI
      const userProfileContext = `
 Profil utilisateur:
@@ -156,34 +157,88 @@ ${activityLevelToUse ? `- Niveau d'activité: ${activityLevelToUse}` : ''}
      try {
           // Try Gemini first
           let planData
-          
+          let usedProvider: 'gemini' | 'openai' = 'gemini'
+
           try {
                planData = await geminiService.generateNutritionPlan(
                     userProfileContext,
                     productContext
                )
+
+               // Track Gemini usage for plan generation (use actual tokens from response)
+               try {
+                    if (planData.usage) {
+                         await aiUsageService.trackUsage({
+                              provider: planData.usage.provider,
+                              modelName: planData.usage.model,
+                              promptTokens: planData.usage.promptTokens,
+                              completionTokens: planData.usage.completionTokens,
+                              requestType: 'plan_generation',
+                              userId: userProfile.userId
+                         })
+                    } else {
+                         // Fallback to estimates
+                         await aiUsageService.trackUsage({
+                              provider: 'gemini',
+                              modelName: 'gemini-2.0-flash',
+                              promptTokens: 3000,
+                              completionTokens: 2000,
+                              requestType: 'plan_generation',
+                              userId: userProfile.userId
+                         })
+                    }
+               } catch (usageError) {
+                    console.error('[Generate Plan] Usage tracking error (non-fatal):', usageError)
+               }
           } catch (geminiError) {
                console.error('[Generate Plan] Gemini error:', geminiError)
-               
+
                // If it's a quota error, try OpenAI as fallback
                if (geminiError instanceof AIQuotaError) {
                     const quotaError = geminiError as AIQuotaError
                     console.warn(`[Generate Plan] Gemini quota exceeded, falling back to OpenAI. retryAfterMs=${quotaError.retryAfterMs ?? 'unknown'}`)
-                    
+
                     // Check if OpenAI is also in cooldown
                     if (openaiService.isInCooldown()) {
                          const remaining = openaiService.getCooldownRemainingMs()
                          console.warn(`[Generate Plan] OpenAI also in cooldown (${Math.ceil(remaining / 1000)}s remaining). Using default plan.`)
                          return createDefaultPlan(userProfile, recommendedProducts, productContext.length > 0, activityLevel)
                     }
-                    
+
                     // Try OpenAI as fallback
                     try {
                          planData = await openaiService.generateNutritionPlan(
                               userProfileContext,
                               productContext
                          )
+                         usedProvider = 'openai'
                          console.log('[Generate Plan] Successfully used OpenAI as fallback')
+
+                         // Track OpenAI usage for plan generation (use actual tokens from response)
+                         try {
+                              if (planData.usage) {
+                                   await aiUsageService.trackUsage({
+                                        provider: planData.usage.provider,
+                                        modelName: planData.usage.model,
+                                        promptTokens: planData.usage.promptTokens,
+                                        completionTokens: planData.usage.completionTokens,
+                                        requestType: 'plan_generation',
+                                        userId: userProfile.userId
+                                   })
+                              } else {
+                                   // Fallback to estimates
+                                   await aiUsageService.trackUsage({
+                                        provider: 'openai',
+                                        modelName: 'gpt-4o-mini',
+                                        promptTokens: 3000,
+                                        completionTokens: 2000,
+                                        requestType: 'plan_generation',
+                                        userId: userProfile.userId
+                                   })
+                              }
+                         } catch (usageError) {
+                              console.error('[Generate Plan] Usage tracking error (non-fatal):', usageError)
+                         }
                     } catch (openaiError) {
                          console.error('[Generate Plan] OpenAI fallback also failed:', openaiError)
                          // If OpenAI also fails with quota error, use default plan
@@ -208,7 +263,7 @@ ${activityLevelToUse ? `- Niveau d'activité: ${activityLevelToUse}` : ''}
                comments?: string;
                [key: string]: unknown;
           }> = []
-          
+
           if (planData.supplements && Array.isArray(planData.supplements)) {
                for (const supplement of planData.supplements) {
                     // Try to find matching product from recommended products or catalog
@@ -268,7 +323,7 @@ ${activityLevelToUse ? `- Niveau d'activité: ${activityLevelToUse}` : ''}
           // Calculate nutrition values using actual user data (height, weight, activityLevel)
           // This overrides AI estimates with scientific calculations
           const calculatedNutrition = calculateNutritionValues(userProfile, activityLevelToUse);
-          
+
           // Use the user's activity level from profile (required field)
           const displayActivityLevel = activityLevelToUse || planData.activityLevel || userProfile.activityLevel;
 
@@ -326,10 +381,10 @@ function createDefaultPlan(
      activityLevel?: string
 ): NutritionPlan {
      const translatedGoals = translateGoals(userProfile.goals)
-     
+
      // Calculate nutrition values using actual user data
      const calculatedNutrition = calculateNutritionValues(userProfile, activityLevel);
-     
+
      // Use the user's activity level from profile (required field) or override if provided
      const displayActivityLevel = activityLevel || userProfile.activityLevel;
 
@@ -342,7 +397,7 @@ function createDefaultPlan(
           duration?: string;
           comments?: string;
           [key: string]: unknown;
-     }> = 
+     }> =
           hasProducts && recommendedProducts.length > 0
                ? recommendedProducts.map(product => ({
                     ...product,
@@ -463,13 +518,13 @@ export async function POST(request: NextRequest) {
                          includeUsageInstructions: true,
                          includeContraindications: true,
                     })
-                    
+
                     if (productContext) {
                          productContext = `\n\nRECOMMENDED PRODUCTS FOR THIS USER (use these products in the nutrition plan):\n${productContext}\n\nIMPORTANT: Use these recommended products when creating the supplement plan. These are the products that were specifically recommended for this user based on their profile and goals.\n`
                     }
                }
           }
-          
+
           // If no products, productContext remains empty string
 
           // Generate plan with AI (activity level comes from user profile)
