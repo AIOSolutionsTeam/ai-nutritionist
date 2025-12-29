@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 // Admin authentication configuration
 // Set ADMIN_PASSWORD in your .env file
@@ -6,40 +7,59 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const ADMIN_SESSION_COOKIE = 'admin_session';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Simple session store (in production, use Redis or database)
-const sessionStore = new Map<string, { expiresAt: number }>();
+// Helper to sign data
+function sign(data: string): string {
+    return createHmac('sha256', ADMIN_PASSWORD).update(data).digest('hex');
+}
 
-// Generate a random session token
+// Generate a stateless session token
 function generateSessionToken(): string {
-    return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    const expiresAt = Date.now() + SESSION_DURATION_MS;
+    const payload = expiresAt.toString();
+    const signature = sign(payload);
+    return `${payload}.${signature}`;
 }
 
 // Validate admin password and create session
 export function authenticateAdmin(password: string): string | null {
     if (password === ADMIN_PASSWORD) {
-        const token = generateSessionToken();
-        sessionStore.set(token, { expiresAt: Date.now() + SESSION_DURATION_MS });
-        return token;
+        return generateSessionToken();
     }
     return null;
 }
 
-// Validate session token
-export function validateSession(token: string): boolean {
-    const session = sessionStore.get(token);
-    if (!session) return false;
-
-    if (Date.now() > session.expiresAt) {
-        sessionStore.delete(token);
-        return false;
-    }
-
-    return true;
-}
-
 // Clear session
 export function clearSession(token: string): void {
-    sessionStore.delete(token);
+    // Stateless session: we can't invalidate tokens server-side without a database.
+    // Client-side cookie clearing is sufficient for this simple implementation.
+}
+// Validate session token
+export function validateSession(token: string): boolean {
+    try {
+        const [payload, tokenSignature] = token.split('.');
+        if (!payload || !tokenSignature) return false;
+
+        // Check if expired
+        const expiresAt = parseInt(payload, 10);
+        if (isNaN(expiresAt) || Date.now() > expiresAt) {
+            return false;
+        }
+
+        // Verify signature
+        const expectedSignature = sign(payload);
+
+        // Use timingSafeEqual to prevent timing attacks
+        const tokenSigBuffer = Buffer.from(tokenSignature);
+        const expectedSigBuffer = Buffer.from(expectedSignature);
+
+        if (tokenSigBuffer.length !== expectedSigBuffer.length) {
+            return false;
+        }
+
+        return timingSafeEqual(tokenSigBuffer, expectedSigBuffer);
+    } catch {
+        return false;
+    }
 }
 
 // Middleware to check admin authentication
@@ -94,14 +114,3 @@ export function createLogoutResponse(): NextResponse {
     return response;
 }
 
-// Clean up expired sessions periodically
-if (typeof setInterval !== 'undefined') {
-    setInterval(() => {
-        const now = Date.now();
-        for (const [token, session] of sessionStore.entries()) {
-            if (now > session.expiresAt) {
-                sessionStore.delete(token);
-            }
-        }
-    }, 60 * 60 * 1000); // Clean up every hour
-}

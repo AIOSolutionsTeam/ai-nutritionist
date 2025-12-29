@@ -475,19 +475,35 @@ export default function AdminDashboard() {
                                 <div className="loading-spinner"></div>
                             </div>
                         ) : stats?.hourlyActivity?.length ? (
-                            <div className="hourly-chart">
-                                {stats.hourlyActivity.map((hour, index) => {
-                                    const maxEvents = Math.max(...stats.hourlyActivity.map(h => h.events), 1);
-                                    return (
-                                        <div key={index} className="hourly-bar-wrapper" title={`${hour.hour}:00 - ${hour.events} événements`}>
-                                            <div
-                                                className="hourly-bar"
-                                                style={{ height: `${Math.max((hour.events / maxEvents) * 100, 5)}%` }}
-                                            />
-                                            <span className="hourly-label">{hour.hour}</span>
-                                        </div>
-                                    );
-                                })}
+                            <div className="hourly-chart-container">
+                                <div className="hourly-chart hourly-row">
+                                    {stats.hourlyActivity.slice(0, 12).map((hour, index) => {
+                                        const maxEvents = Math.max(...stats.hourlyActivity.map(h => h.events), 1);
+                                        return (
+                                            <div key={index} className="hourly-bar-wrapper" title={`${hour.hour}:00 - ${hour.events} événements`}>
+                                                <div
+                                                    className="hourly-bar"
+                                                    style={{ height: `${Math.max((hour.events / maxEvents) * 100, 5)}%` }}
+                                                />
+                                                <span className="hourly-label">{hour.hour}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="hourly-chart hourly-row">
+                                    {stats.hourlyActivity.slice(12, 24).map((hour, index) => {
+                                        const maxEvents = Math.max(...stats.hourlyActivity.map(h => h.events), 1);
+                                        return (
+                                            <div key={index + 12} className="hourly-bar-wrapper" title={`${hour.hour}:00 - ${hour.events} événements`}>
+                                                <div
+                                                    className="hourly-bar"
+                                                    style={{ height: `${Math.max((hour.events / maxEvents) * 100, 5)}%` }}
+                                                />
+                                                <span className="hourly-label">{hour.hour}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         ) : (
                             <div className="no-data">
@@ -629,38 +645,40 @@ export default function AdminDashboard() {
                         </div>
                     ) : filteredEvents.length ? (
                         <>
-                            <table className="events-table">
-                                <thead>
-                                    <tr>
-                                        <th>Événement</th>
-                                        <th>ID Utilisateur</th>
-                                        <th>Session</th>
-                                        <th>Détails</th>
-                                        <th>Heure</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {paginatedEvents.map((event) => (
-                                        <tr key={event._id}>
-                                            <td>
-                                                <span className={`event-badge ${getEventBadgeClass(event.event)}`}>
-                                                    {event.event.replace(/_/g, ' ')}
-                                                </span>
-                                            </td>
-                                            <td>{event.userId || '—'}</td>
-                                            <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                                                {event.sessionId?.substring(0, 16)}...
-                                            </td>
-                                            <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {event.properties?.product_name as string ||
-                                                    event.properties?.source as string ||
-                                                    '—'}
-                                            </td>
-                                            <td>{formatDate(event.timestamp)}</td>
+                            <div className="events-table-wrapper">
+                                <table className="events-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Événement</th>
+                                            <th>ID Utilisateur</th>
+                                            <th>Session</th>
+                                            <th>Détails</th>
+                                            <th>Heure</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {paginatedEvents.map((event) => (
+                                            <tr key={event._id}>
+                                                <td>
+                                                    <span className={`event-badge ${getEventBadgeClass(event.event)}`}>
+                                                        {event.event.replace(/_/g, ' ')}
+                                                    </span>
+                                                </td>
+                                                <td>{event.userId || '—'}</td>
+                                                <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                                                    {event.sessionId?.substring(0, 16)}...
+                                                </td>
+                                                <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {event.properties?.product_name as string ||
+                                                        event.properties?.source as string ||
+                                                        '—'}
+                                                </td>
+                                                <td>{formatDate(event.timestamp)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                             {/* Pagination Controls */}
                             <div className="pagination-controls">
                                 <button
