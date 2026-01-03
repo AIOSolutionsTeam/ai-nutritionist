@@ -10,19 +10,22 @@ interface DashboardStats {
     totalRevenue: number;
     averageOrderValue: number;
     totalCartAdditions: number;
-    topProducts: Array<{ productName: string; recommendations: number; cartAdditions: number }>;
+    verifiedRevenue: number;
+    verifiedAverageOrderValue: number;
+    totalPurchases: number;
+    topProducts: Array<{ productName: string; recommendations: number; cartAdditions: number; purchases: number }>;
     eventsByDay: Array<{ date: string; events: Record<string, number>; total: number }>;
     eventTypeBreakdown: Array<{ eventType: string; count: number; percentage: number }>;
-    todayVsYesterday: {
-        today: { conversations: number; recommendations: number; cartAdditions: number; revenue: number };
-        yesterday: { conversations: number; recommendations: number; cartAdditions: number; revenue: number };
+    periodComparison: {
+        current: { conversations: number; recommendations: number; cartAdditions: number; revenue: number };
+        previous: { conversations: number; recommendations: number; cartAdditions: number; revenue: number };
         changes: { conversations: number; recommendations: number; cartAdditions: number; revenue: number };
     };
     hourlyActivity: Array<{ hour: number; events: number }>;
 }
 
 interface AnalyticsEvent {
-    _id: string;
+    id: string;
     event: string;
     properties: Record<string, unknown>;
     userId?: string;
@@ -41,6 +44,14 @@ interface UsageStats {
         yesterday: { requests: number; tokens: number; cost: number };
         change: { requests: number; tokens: number; cost: number };
     };
+}
+
+interface SalesChartData {
+    label: string;
+    count: number;
+    revenue: number;
+    date?: string;
+    sortKey: number;
 }
 
 // Loading Skeleton Component
@@ -107,6 +118,7 @@ function DashboardSkeleton() {
 export default function AdminDashboard() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [isComparisonLoading, setIsComparisonLoading] = useState(false);
     const [password, setPassword] = useState('');
     const [loginError, setLoginError] = useState('');
     const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -114,6 +126,13 @@ export default function AdminDashboard() {
     const [events, setEvents] = useState<AnalyticsEvent[]>([]);
     const [eventFilter, setEventFilter] = useState('all');
     const [eventsPage, setEventsPage] = useState(1);
+    const [comparisonRange, setComparisonRange] = useState('today');
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
+    const [salesChartData, setSalesChartData] = useState<SalesChartData[]>([]);
+    const [salesChartGranularity, setSalesChartGranularity] = useState<'week' | 'month' | 'year'>('week');
+    const [salesChartMetric, setSalesChartMetric] = useState<'count' | 'revenue'>('count');
+    const [isSalesChartLoading, setIsSalesChartLoading] = useState(false);
     const EVENTS_PER_PAGE = 10;
 
     // Check auth status on mount
@@ -174,11 +193,145 @@ export default function AdminDashboard() {
         }
     };
 
+    const getComparisonDates = useCallback(() => {
+        const now = new Date();
+        // Reset time to end of day for consistency in "end" dates if needed, or keep as "now"
+        // keeping "now" for current period end makes sense for real-time dashboard.
+
+        let cStartDate = new Date();
+        let cEndDate = new Date();
+        let pStartDate = new Date();
+        let pEndDate = new Date();
+
+        switch (comparisonRange) {
+            case 'week': // This Week vs Last Week
+                // Start of this week (Monday)
+                const day = now.getDay();
+                const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+                cStartDate = new Date(now.setDate(diff));
+                cStartDate.setHours(0, 0, 0, 0);
+                cEndDate = new Date(); // Now
+
+                // Last week
+                pStartDate = new Date(cStartDate);
+                pStartDate.setDate(pStartDate.getDate() - 7);
+                pEndDate = new Date(cStartDate); // End of last week is start of this week (or -1ms)
+                break;
+
+            case 'month': // This Month vs Last Month
+                cStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                cEndDate = new Date();
+
+                pStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                pEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999); // Last day of prev month
+                break;
+
+            case '7d': // Last 7 Days vs Previous 7 Days
+                cEndDate = new Date();
+                cStartDate = new Date();
+                cStartDate.setDate(cEndDate.getDate() - 7);
+
+                pEndDate = new Date(cStartDate);
+                pStartDate = new Date(pEndDate);
+                pStartDate.setDate(pEndDate.getDate() - 7);
+                break;
+
+            case '30d': // Last 30 Days vs Previous 30 Days
+                cEndDate = new Date();
+                cStartDate = new Date();
+                cStartDate.setDate(cEndDate.getDate() - 30);
+
+                pEndDate = new Date(cStartDate);
+                pStartDate = new Date(pEndDate);
+                pStartDate.setDate(pEndDate.getDate() - 30);
+                break;
+
+            case 'custom':
+                if (customStartDate && customEndDate) {
+                    cStartDate = new Date(customStartDate);
+                    cEndDate = new Date(customEndDate);
+                    cEndDate.setHours(23, 59, 59, 999); // Include full end day
+
+                    const duration = cEndDate.getTime() - cStartDate.getTime();
+                    pEndDate = new Date(cStartDate.getTime() - 1);
+                    pStartDate = new Date(pEndDate.getTime() - duration);
+                } else {
+                    return null; // Incomplete custom selection
+                }
+                break;
+
+            case 'today':
+            default:
+                cStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                cEndDate = new Date();
+
+                pEndDate = new Date(cStartDate); // Start of today is end of yesterday (effectively)
+                pStartDate = new Date(pEndDate);
+                pStartDate.setDate(pStartDate.getDate() - 1);
+                break;
+        }
+
+        return {
+            compareStartDate: cStartDate.toISOString(),
+            compareEndDate: cEndDate.toISOString(),
+            prevStartDate: pStartDate.toISOString(),
+            prevEndDate: pEndDate.toISOString()
+        };
+    }, [comparisonRange, customStartDate, customEndDate]);
+
+    const loadComparisonData = useCallback(async () => {
+        setIsComparisonLoading(true);
+        try {
+            const dateParams = getComparisonDates();
+            const queryParams = new URLSearchParams();
+
+            if (dateParams) {
+                queryParams.append('compareStartDate', dateParams.compareStartDate);
+                queryParams.append('compareEndDate', dateParams.compareEndDate);
+                queryParams.append('prevStartDate', dateParams.prevStartDate);
+                queryParams.append('prevEndDate', dateParams.prevEndDate);
+            }
+
+            const res = await fetch(`/api/admin/stats/comparison?${queryParams.toString()}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    setStats(prev => prev ? { ...prev, periodComparison: data.data } : null);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load comparison data:', error);
+        } finally {
+            setIsComparisonLoading(false);
+        }
+    }, [getComparisonDates]);
+
+    const loadSalesChartData = useCallback(async () => {
+        setIsSalesChartLoading(true);
+        try {
+            const res = await fetch(`/api/admin/stats/sales-chart?granularity=${salesChartGranularity}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    setSalesChartData(data.data);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load sales chart data:', error);
+        } finally {
+            setIsSalesChartLoading(false);
+        }
+    }, [salesChartGranularity]);
+
     const loadDashboardData = useCallback(async () => {
         setIsLoading(true);
         try {
+            // Initial load of all data
+            // We can also load comparison data here initially, or just rely on the separate call.
+            // Let's load everything initially to ensure consistent state, including default comparison.
+
             const [statsRes, eventsRes, usageRes] = await Promise.all([
-                fetch('/api/admin/stats'),
+                fetch('/api/admin/stats'), // Load default stats (Today vs Yesterday inside)
                 fetch('/api/admin/events?limit=50'),
                 fetch('/api/admin/usage')
             ]);
@@ -203,6 +356,29 @@ export default function AdminDashboard() {
             setIsLoading(false);
         }
     }, []);
+
+    // Initial load
+    useEffect(() => {
+        if (isAuthenticated) {
+            loadDashboardData();
+        }
+    }, [isAuthenticated, loadDashboardData]);
+
+    // Reload comparison data when date range changes
+    useEffect(() => {
+        if (isAuthenticated) {
+            if (comparisonRange !== 'custom' || (customStartDate && customEndDate)) {
+                loadComparisonData();
+            }
+        }
+    }, [comparisonRange, customStartDate, customEndDate, isAuthenticated, loadComparisonData]);
+
+    // Load sales chart data when granularity changes
+    useEffect(() => {
+        if (isAuthenticated) {
+            loadSalesChartData();
+        }
+    }, [isAuthenticated, loadSalesChartData]);
 
     // Filter events based on selection
     const filteredEvents = eventFilter === 'all'
@@ -343,9 +519,15 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="kpi-card" data-tooltip="Valeur totale des produits ajoutés au panier via le chat IA. Note : Basé sur les ajouts au panier, PAS sur les commandes Shopify confirmées.">
-                        <div className="kpi-label">Chiffre d&apos;Affaires</div>
+                        <div className="kpi-label">CA Panier</div>
                         <div className="kpi-value revenue">€{stats?.totalRevenue?.toFixed(2) ?? '0.00'}</div>
                         <div className="kpi-subtext">{stats?.totalCartAdditions ?? 0} articles ajoutés au panier</div>
+                    </div>
+
+                    <div className="kpi-card" data-tooltip="Revenu réel des achats confirmés via Shopify webhook. Ce sont les produits recommandés par le chatbot qui ont été effectivement achetés.">
+                        <div className="kpi-label">CA Vérifié ✓</div>
+                        <div className="kpi-value" style={{ color: '#10b981' }}>€{stats?.verifiedRevenue?.toFixed(2) ?? '0.00'}</div>
+                        <div className="kpi-subtext">{stats?.totalPurchases ?? 0} achats confirmés</div>
                     </div>
 
                     <div className="kpi-card" data-tooltip="Valeur moyenne du panier par session ayant au moins un produit ajouté. Formule : Chiffre d'affaires total ÷ Sessions avec activité panier">
@@ -404,58 +586,225 @@ export default function AdminDashboard() {
                         </div>
                     )}
                 </div>
+                {/* Sales Chart Section */}
+                <div className="chart-card" style={{ marginBottom: '32px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '8px' }}>
+                        <h3 className="chart-title" style={{ margin: 0 }}>📈 Évolution des Ventes</h3>
+
+                        {/* Metric Toggle - Center */}
+                        <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '8px' }}>
+                            {(['count', 'revenue'] as const).map((m) => (
+                                <button
+                                    key={m}
+                                    onClick={() => setSalesChartMetric(m)}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: salesChartMetric === m ? '#3b82f6' : 'transparent',
+                                        color: salesChartMetric === m ? 'white' : '#9ca3af',
+                                        fontSize: '12px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    {m === 'count' ? '📦 Produits' : '💰 CA (€)'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Granularity Toggle - Right */}
+                        <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '8px' }}>
+                            {(['week', 'month', 'year'] as const).map((g) => (
+                                <button
+                                    key={g}
+                                    onClick={() => setSalesChartGranularity(g)}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: salesChartGranularity === g ? '#10b981' : 'transparent',
+                                        color: salesChartGranularity === g ? 'white' : '#9ca3af',
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    {g === 'week' ? 'Semaine' : g === 'month' ? 'Mois' : 'Année'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {isSalesChartLoading ? (
+                        <div className="loading-container">
+                            <div className="loading-spinner"></div>
+                        </div>
+                    ) : salesChartData.length > 0 ? (() => {
+                        // Calculate max value and label width dynamically
+                        const values = salesChartData.map(d => salesChartMetric === 'count' ? d.count : d.revenue);
+                        const maxValue = Math.max(...values, 10);
+                        const niceMax = salesChartMetric === 'revenue'
+                            ? Math.ceil(maxValue / 100) * 100
+                            : Math.ceil(maxValue / 10) * 10;
+                        const maxLabel = salesChartMetric === 'revenue' ? `€${niceMax}` : `${niceMax}`;
+                        const labelWidth = Math.max(maxLabel.length * 8 + 5, 25); // ~8px per char + padding
+
+                        return (
+                            <div className="sales-chart-container" style={{ paddingLeft: `${labelWidth + 5}px` }}>
+                                <div className={`sales-chart-wrapper ${salesChartGranularity}`}>
+                                    {/* Grid Lines & Y-Axis */}
+                                    <div className="sales-chart-grid-container">
+                                        {[0, 1, 2, 3, 4].map((tick) => {
+                                            const tickValue = Math.round((niceMax / 4) * tick);
+                                            return (
+                                                <div key={tick} className="grid-line" style={{ bottom: `${(tick / 4) * 100}%` }}>
+                                                    <span
+                                                        className="grid-label"
+                                                        style={{
+                                                            left: `-${labelWidth + 5}px`,
+                                                            width: `${labelWidth}px`,
+                                                            whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        {salesChartMetric === 'revenue' ? `€${tickValue}` : tickValue}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Bars */}
+                                    <div className="sales-chart-bars">
+                                        {salesChartData.map((item, index) => {
+                                            const currentValue = salesChartMetric === 'count' ? item.count : item.revenue;
+                                            const values = salesChartData.map(d => salesChartMetric === 'count' ? d.count : d.revenue);
+                                            const maxValue = Math.max(...values, 10);
+                                            const niceMax = salesChartMetric === 'revenue'
+                                                ? Math.ceil(maxValue / 100) * 100
+                                                : Math.ceil(maxValue / 10) * 10;
+                                            const heightPercent = niceMax > 0 ? Math.max((currentValue / niceMax) * 100, 0) : 0;
+                                            return (
+                                                <div key={index} className="sales-bar-column">
+                                                    <div
+                                                        className="sales-bar"
+                                                        style={{ height: `${heightPercent}%` }}
+                                                        data-value={salesChartMetric === 'revenue' ? `€${currentValue.toFixed(2)}` : currentValue}
+                                                    />
+                                                    <span className="sales-label" title={item.label}>{item.label}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })() : (
+                        <div className="no-data">
+                            <div className="no-data-icon">📉</div>
+                            <p>Pas de données de vente pour cette période</p>
+                        </div>
+                    )}
+                </div>
+
                 <div className="charts-grid">
-                    {/* Today vs Yesterday */}
+                    {/* Comparison Section */}
                     <div className="chart-card">
-                        <h3 className="chart-title">📊 Aujourd&apos;hui vs Hier</h3>
-                        {isLoading ? (
-                            <div className="loading-container">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                            <h3 className="chart-title" style={{ margin: 0 }}>
+                                📊 {
+                                    comparisonRange === 'today' ? "Aujourd'hui vs Hier" :
+                                        comparisonRange === 'week' ? "Cette Semaine vs La Dernière" :
+                                            comparisonRange === 'month' ? "Ce Mois vs Le Dernier" :
+                                                comparisonRange === '7d' ? "7 Derniers Jours" :
+                                                    comparisonRange === '30d' ? "30 Derniers Jours" :
+                                                        "Période Personnalisée"
+                                }
+                            </h3>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                {comparisonRange === 'custom' && (
+                                    <>
+                                        <input
+                                            type="date"
+                                            value={customStartDate}
+                                            onChange={(e) => setCustomStartDate(e.target.value)}
+                                            className="comparison-date-input"
+                                        />
+                                        <span style={{ color: '#9ca3af' }}>→</span>
+                                        <input
+                                            type="date"
+                                            value={customEndDate}
+                                            onChange={(e) => setCustomEndDate(e.target.value)}
+                                            className="comparison-date-input"
+                                        />
+                                    </>
+                                )}
+                                <select
+                                    value={comparisonRange}
+                                    onChange={(e) => setComparisonRange(e.target.value)}
+                                    className="comparison-select"
+                                >
+                                    <option value="today">Aujourd&apos;hui vs Hier</option>
+                                    <option value="week">Cette Semaine vs Derniére</option>
+                                    <option value="month">Ce Mois vs Dernier</option>
+                                    <option value="7d">7 Derniers Jours</option>
+                                    <option value="30d">30 Derniers Jours</option>
+                                    <option value="custom">Personnalisé</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Show loading overlay specifically for this card when updating logic */}
+                        {isComparisonLoading ? (
+                            <div className="loading-container" style={{ minHeight: '200px' }}>
                                 <div className="loading-spinner"></div>
                             </div>
-                        ) : stats?.todayVsYesterday ? (
+                        ) : stats?.periodComparison ? (
                             <div className="comparison-grid">
                                 <div className="comparison-item">
                                     <div className="comparison-label">💬 Conversations</div>
                                     <div className="comparison-values">
-                                        <span className="today-value">{stats.todayVsYesterday.today.conversations}</span>
+                                        <span className="today-value">{stats.periodComparison.current.conversations}</span>
                                         <span className="vs-text">vs</span>
-                                        <span className="yesterday-value">{stats.todayVsYesterday.yesterday.conversations}</span>
+                                        <span className="yesterday-value">{stats.periodComparison.previous.conversations}</span>
                                     </div>
-                                    <span className={`change-badge ${stats.todayVsYesterday.changes.conversations >= 0 ? 'positive' : 'negative'}`}>
-                                        {stats.todayVsYesterday.changes.conversations >= 0 ? '↑' : '↓'} {Math.abs(stats.todayVsYesterday.changes.conversations)}%
+                                    <span className={`change-badge ${stats.periodComparison.changes.conversations >= 0 ? 'positive' : 'negative'}`}>
+                                        {stats.periodComparison.changes.conversations >= 0 ? '↑' : '↓'} {Math.abs(stats.periodComparison.changes.conversations)}%
                                     </span>
                                 </div>
                                 <div className="comparison-item">
                                     <div className="comparison-label">🎯 Recommandations</div>
                                     <div className="comparison-values">
-                                        <span className="today-value">{stats.todayVsYesterday.today.recommendations}</span>
+                                        <span className="today-value">{stats.periodComparison.current.recommendations}</span>
                                         <span className="vs-text">vs</span>
-                                        <span className="yesterday-value">{stats.todayVsYesterday.yesterday.recommendations}</span>
+                                        <span className="yesterday-value">{stats.periodComparison.previous.recommendations}</span>
                                     </div>
-                                    <span className={`change-badge ${stats.todayVsYesterday.changes.recommendations >= 0 ? 'positive' : 'negative'}`}>
-                                        {stats.todayVsYesterday.changes.recommendations >= 0 ? '↑' : '↓'} {Math.abs(stats.todayVsYesterday.changes.recommendations)}%
+                                    <span className={`change-badge ${stats.periodComparison.changes.recommendations >= 0 ? 'positive' : 'negative'}`}>
+                                        {stats.periodComparison.changes.recommendations >= 0 ? '↑' : '↓'} {Math.abs(stats.periodComparison.changes.recommendations)}%
                                     </span>
                                 </div>
                                 <div className="comparison-item">
                                     <div className="comparison-label">🛒 Ajouts Panier</div>
                                     <div className="comparison-values">
-                                        <span className="today-value">{stats.todayVsYesterday.today.cartAdditions}</span>
+                                        <span className="today-value">{stats.periodComparison.current.cartAdditions}</span>
                                         <span className="vs-text">vs</span>
-                                        <span className="yesterday-value">{stats.todayVsYesterday.yesterday.cartAdditions}</span>
+                                        <span className="yesterday-value">{stats.periodComparison.previous.cartAdditions}</span>
                                     </div>
-                                    <span className={`change-badge ${stats.todayVsYesterday.changes.cartAdditions >= 0 ? 'positive' : 'negative'}`}>
-                                        {stats.todayVsYesterday.changes.cartAdditions >= 0 ? '↑' : '↓'} {Math.abs(stats.todayVsYesterday.changes.cartAdditions)}%
+                                    <span className={`change-badge ${stats.periodComparison.changes.cartAdditions >= 0 ? 'positive' : 'negative'}`}>
+                                        {stats.periodComparison.changes.cartAdditions >= 0 ? '↑' : '↓'} {Math.abs(stats.periodComparison.changes.cartAdditions)}%
                                     </span>
                                 </div>
                                 <div className="comparison-item">
                                     <div className="comparison-label">💰 Revenus</div>
                                     <div className="comparison-values">
-                                        <span className="today-value">€{stats.todayVsYesterday.today.revenue}</span>
+                                        <span className="today-value">€{stats.periodComparison.current.revenue}</span>
                                         <span className="vs-text">vs</span>
-                                        <span className="yesterday-value">€{stats.todayVsYesterday.yesterday.revenue}</span>
+                                        <span className="yesterday-value">€{stats.periodComparison.previous.revenue}</span>
                                     </div>
-                                    <span className={`change-badge ${stats.todayVsYesterday.changes.revenue >= 0 ? 'positive' : 'negative'}`}>
-                                        {stats.todayVsYesterday.changes.revenue >= 0 ? '↑' : '↓'} {Math.abs(stats.todayVsYesterday.changes.revenue)}%
+                                    <span className={`change-badge ${stats.periodComparison.changes.revenue >= 0 ? 'positive' : 'negative'}`}>
+                                        {stats.periodComparison.changes.revenue >= 0 ? '↑' : '↓'} {Math.abs(stats.periodComparison.changes.revenue)}%
                                     </span>
                                 </div>
                             </div>
@@ -475,31 +824,46 @@ export default function AdminDashboard() {
                                 <div className="loading-spinner"></div>
                             </div>
                         ) : stats?.hourlyActivity?.length ? (
-                            <div className="hourly-chart-container">
-                                <div className="hourly-chart hourly-row">
-                                    {stats.hourlyActivity.slice(0, 12).map((hour, index) => {
+                            <div className="radial-chart-container">
+                                <div className="radial-chart">
+                                    {/* Concentric circles for grid */}
+                                    <div className="radial-grid">
+                                        <div className="radial-circle" />
+                                        <div className="radial-circle" />
+                                        <div className="radial-circle" />
+                                    </div>
+
+                                    {/* Center label */}
+                                    <div className="radial-center">
+                                        <span className="radial-center-value">
+                                            {stats.hourlyActivity.reduce((sum, h) => sum + h.events, 0)}
+                                        </span>
+                                        <span className="radial-center-label">Total</span>
+                                    </div>
+
+                                    {/* Bars radiating outward */}
+                                    {stats.hourlyActivity.map((hour, index) => {
                                         const maxEvents = Math.max(...stats.hourlyActivity.map(h => h.events), 1);
+                                        const barHeight = Math.max((hour.events / maxEvents) * 100, 10); // min 10%
+                                        const angle = (index * 15) - 90; // 15 degrees per hour, start from top
+
                                         return (
-                                            <div key={index} className="hourly-bar-wrapper" title={`${hour.hour}:00 - ${hour.events} événements`}>
+                                            <div
+                                                key={index}
+                                                className="radial-bar-group"
+                                                style={{ transform: `rotate(${angle}deg)` }}
+                                                title={`${hour.hour}:00 - ${hour.events} événements`}
+                                            >
                                                 <div
-                                                    className="hourly-bar"
-                                                    style={{ height: `${Math.max((hour.events / maxEvents) * 100, 5)}%` }}
+                                                    className="radial-bar"
+                                                    style={{ height: `${barHeight}%` }}
                                                 />
-                                                <span className="hourly-label">{hour.hour}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="hourly-chart hourly-row">
-                                    {stats.hourlyActivity.slice(12, 24).map((hour, index) => {
-                                        const maxEvents = Math.max(...stats.hourlyActivity.map(h => h.events), 1);
-                                        return (
-                                            <div key={index + 12} className="hourly-bar-wrapper" title={`${hour.hour}:00 - ${hour.events} événements`}>
-                                                <div
-                                                    className="hourly-bar"
-                                                    style={{ height: `${Math.max((hour.events / maxEvents) * 100, 5)}%` }}
-                                                />
-                                                <span className="hourly-label">{hour.hour}</span>
+                                                <span
+                                                    className="radial-hour-label"
+                                                    style={{ transform: `rotate(${-angle}deg)` }}
+                                                >
+                                                    {hour.hour}
+                                                </span>
                                             </div>
                                         );
                                     })}
@@ -531,6 +895,7 @@ export default function AdminDashboard() {
                                             <th>Produit</th>
                                             <th className="center">Recommandé</th>
                                             <th className="center">Ajouté au Panier</th>
+                                            <th className="center">Achats</th>
                                             <th className="center">Conversion</th>
                                         </tr>
                                     </thead>
@@ -544,7 +909,7 @@ export default function AdminDashboard() {
                                                     <td>
                                                         <span className="product-rank">#{index + 1}</span>
                                                         <span className="product-name" title={product.productName}>
-                                                            {product.productName}
+                                                            {product.productName.split(' – ')[0]}
                                                         </span>
                                                     </td>
                                                     <td className="center">
@@ -552,6 +917,9 @@ export default function AdminDashboard() {
                                                     </td>
                                                     <td className="center">
                                                         <span className="metric-badge cart">{product.cartAdditions}</span>
+                                                    </td>
+                                                    <td className="center">
+                                                        <span className="metric-badge purchase">{product.purchases ?? 0}</span>
                                                     </td>
                                                     <td className="center">
                                                         <span className={`conversion-rate ${conversionRate >= 50 ? 'high' : conversionRate >= 25 ? 'medium' : 'low'}`}>
@@ -658,7 +1026,7 @@ export default function AdminDashboard() {
                                     </thead>
                                     <tbody>
                                         {paginatedEvents.map((event) => (
-                                            <tr key={event._id}>
+                                            <tr key={event.id}>
                                                 <td>
                                                     <span className={`event-badge ${getEventBadgeClass(event.event)}`}>
                                                         {event.event.replace(/_/g, ' ')}

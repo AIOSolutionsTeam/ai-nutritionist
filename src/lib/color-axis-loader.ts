@@ -1,178 +1,197 @@
 /**
  * Color Axis Loader
- * Loads product color axis mapping from CSV file
- * Maps product handles to their color axes (Green, Pink, Blue, Yellow)
+ * Loads product color axes from CSV file and provides lookup function
  */
 
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 
 type ColorAxis = 'Green' | 'Pink' | 'Blue' | 'Yellow';
 
-interface ProductColorMapping {
-     handle: string;
-     colorAxis: ColorAxis;
-     productName: string;
-     benefits?: string;
-}
-
-// Cache for the color axis mapping
+// Cache for color axis mapping (handle -> color axis)
 let colorAxisMap: Map<string, ColorAxis> | null = null;
-let productDetailsMap: Map<string, { colorAxis: ColorAxis; productName: string; benefits?: string }> | null = null;
+let loadAttempted = false;
 
 /**
- * Parse CSV file and extract product handle to color axis mapping
- * Handles multi-line quoted fields properly
+ * Parses CSV content and extracts handle -> color axis mapping
+ * CSV format: Found Product Name,Product Handle,Benefits,Box Color
  */
-function parseColorAxisCSV(): { handleToColor: Map<string, ColorAxis>; handleToDetails: Map<string, { colorAxis: ColorAxis; productName: string; benefits?: string }> } {
-     const csvPath = path.join(process.cwd(), 'products-data', 'product-list-with-color-axes.csv');
-     
-     if (!fs.existsSync(csvPath)) {
-          console.warn('[ColorAxis] CSV file not found at:', csvPath);
-          return { handleToColor: new Map(), handleToDetails: new Map() };
-     }
+function parseCSV(content: string): Map<string, ColorAxis> {
+    const map = new Map<string, ColorAxis>();
+    const lines = content.split('\n');
 
-     const csvContent = fs.readFileSync(csvPath, 'utf-8');
-     
-     const handleToColor = new Map<string, ColorAxis>();
-     const handleToDetails = new Map<string, { colorAxis: ColorAxis; productName: string; benefits?: string }>();
+    // Skip header row
+    let currentLine = '';
+    let inQuotedField = false;
 
-     // Parse CSV properly handling quoted fields that may span multiple lines
-     const rows: string[][] = [];
-     let currentRow: string[] = [];
-     let currentField = '';
-     let inQuotes = false;
-     
-     for (let i = 0; i < csvContent.length; i++) {
-          const char = csvContent[i];
-          const nextChar = csvContent[i + 1];
-          
-          if (char === '"') {
-               // Handle escaped quotes ("")
-               if (nextChar === '"') {
-                    currentField += '"';
-                    i++; // Skip next quote
-               } else {
-                    inQuotes = !inQuotes;
-               }
-          } else if (char === ',' && !inQuotes) {
-               // End of field
-               currentRow.push(currentField.trim());
-               currentField = '';
-          } else if ((char === '\n' || char === '\r') && !inQuotes) {
-               // End of row (but only if not in quotes)
-               if (currentField || currentRow.length > 0) {
-                    currentRow.push(currentField.trim());
-                    if (currentRow.length > 0 && currentRow.some(f => f.length > 0)) {
-                         rows.push(currentRow);
-                    }
-                    currentRow = [];
-                    currentField = '';
-               }
-               // Skip \r\n combination
-               if (char === '\r' && nextChar === '\n') {
-                    i++;
-               }
-          } else {
-               currentField += char;
-          }
-     }
-     
-     // Add last field and row if any
-     if (currentField || currentRow.length > 0) {
-          currentRow.push(currentField.trim());
-          if (currentRow.length > 0 && currentRow.some(f => f.length > 0)) {
-               rows.push(currentRow);
-          }
-     }
-     
-     // Skip header row
-     const dataRows = rows.slice(1);
-     
-     for (const row of dataRows) {
-          if (row.length >= 4) {
-               const productName = row[0].replace(/^"|"$/g, '').replace(/\n+/g, ' ').trim();
-               const handle = row[1].trim();
-               const benefits = row[2].replace(/^"|"$/g, '').replace(/\n+/g, ' ').trim();
-               const boxColor = row[3].trim() as ColorAxis;
-               
-               // Validate color axis
-               if (['Green', 'Pink', 'Blue', 'Yellow'].includes(boxColor)) {
-                    handleToColor.set(handle, boxColor);
-                    handleToDetails.set(handle, {
-                         colorAxis: boxColor,
-                         productName,
-                         benefits: benefits || undefined
-                    });
-               } else {
-                    console.warn(`[ColorAxis] Invalid color axis "${boxColor}" for handle "${handle}"`);
-               }
-          }
-     }
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
 
-     console.log(`[ColorAxis] Loaded ${handleToColor.size} product color mappings from CSV`);
-     return { handleToColor, handleToDetails };
+        // Handle multi-line fields (quoted fields with newlines)
+        if (inQuotedField) {
+            currentLine += '\n' + line;
+            // Check if this line closes the quoted field
+            const quoteCount = (currentLine.match(/"/g) || []).length;
+            if (quoteCount % 2 === 0) {
+                inQuotedField = false;
+                // Process the complete line
+                processCSVLine(currentLine, map);
+                currentLine = '';
+            }
+        } else {
+            // Check if this line starts a multi-line quoted field
+            const quoteCount = (line.match(/"/g) || []).length;
+            if (quoteCount % 2 !== 0) {
+                inQuotedField = true;
+                currentLine = line;
+            } else {
+                // Single line, process directly
+                processCSVLine(line, map);
+            }
+        }
+    }
+
+    return map;
 }
 
 /**
- * Get color axis for a product handle
- * @param handle - Product handle (e.g., "vitamine-b12")
- * @returns Color axis or undefined if not found
+ * Process a single CSV line and extract handle -> color axis
  */
-export function getColorAxisForHandle(handle: string): ColorAxis | undefined {
-     if (!handle) {
-          return undefined;
-     }
+function processCSVLine(line: string, map: Map<string, ColorAxis>): void {
+    if (!line.trim()) return;
 
-     // Load mapping if not cached
-     if (!colorAxisMap) {
-          const { handleToColor, handleToDetails } = parseColorAxisCSV();
-          colorAxisMap = handleToColor;
-          productDetailsMap = handleToDetails;
-     }
+    // Parse CSV fields (handle quoted fields)
+    const fields: string[] = [];
+    let current = '';
+    let inQuotes = false;
 
-     return colorAxisMap.get(handle);
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            fields.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    fields.push(current.trim()); // Add last field
+
+    // CSV columns: Found Product Name, Product Handle, Benefits, Box Color
+    // Index:       0                   1               2         3
+    if (fields.length >= 4) {
+        const handle = fields[1];
+        const boxColor = fields[3];
+
+        // Validate color axis
+        if (handle && boxColor) {
+            const normalizedColor = boxColor.trim();
+            if (['Green', 'Pink', 'Blue', 'Yellow'].includes(normalizedColor)) {
+                map.set(handle, normalizedColor as ColorAxis);
+            }
+        }
+    }
 }
 
 /**
- * Get full product details including color axis, name, and benefits
- * @param handle - Product handle
- * @returns Product details or undefined if not found
+ * Loads the color axis mapping from CSV file
+ * Returns cached map if already loaded
  */
-export function getProductDetailsForHandle(handle: string): { colorAxis: ColorAxis; productName: string; benefits?: string } | undefined {
-     if (!handle) {
-          return undefined;
-     }
+function loadColorAxisMap(): Map<string, ColorAxis> {
+    if (colorAxisMap !== null) {
+        return colorAxisMap;
+    }
 
-     // Load mapping if not cached
-     if (!productDetailsMap) {
-          const { handleToDetails } = parseColorAxisCSV();
-          productDetailsMap = handleToDetails;
-          if (!colorAxisMap) {
-               const { handleToColor } = parseColorAxisCSV();
-               colorAxisMap = handleToColor;
-          }
-     }
+    if (loadAttempted) {
+        // Already tried and failed, return empty map
+        return new Map();
+    }
 
-     return productDetailsMap.get(handle);
+    loadAttempted = true;
+
+    try {
+        // Try multiple possible paths for the CSV file
+        const possiblePaths = [
+            path.join(process.cwd(), 'products-data', 'product-list-with-color-axes.csv'),
+            path.join(process.cwd(), '..', 'products-data', 'product-list-with-color-axes.csv'),
+            path.resolve(__dirname, '..', '..', '..', 'products-data', 'product-list-with-color-axes.csv'),
+        ];
+
+        let csvContent: string | null = null;
+        let loadedPath: string | null = null;
+
+        for (const csvPath of possiblePaths) {
+            try {
+                if (fs.existsSync(csvPath)) {
+                    csvContent = fs.readFileSync(csvPath, 'utf-8');
+                    loadedPath = csvPath;
+                    break;
+                }
+            } catch {
+                // Try next path
+            }
+        }
+
+        if (!csvContent) {
+            console.warn('[ColorAxisLoader] CSV file not found in any expected location');
+            colorAxisMap = new Map();
+            return colorAxisMap;
+        }
+
+        colorAxisMap = parseCSV(csvContent);
+        console.log(`[ColorAxisLoader] Loaded ${colorAxisMap.size} product color axes from ${loadedPath}`);
+
+        // Log the mapping for debugging
+        if (colorAxisMap.size > 0) {
+            console.log('[ColorAxisLoader] Color axis distribution:');
+            const distribution: Record<string, number> = { Green: 0, Pink: 0, Blue: 0, Yellow: 0 };
+            colorAxisMap.forEach((axis) => {
+                distribution[axis]++;
+            });
+            console.log('[ColorAxisLoader]   Green:', distribution.Green);
+            console.log('[ColorAxisLoader]   Pink:', distribution.Pink);
+            console.log('[ColorAxisLoader]   Blue:', distribution.Blue);
+            console.log('[ColorAxisLoader]   Yellow:', distribution.Yellow);
+        }
+
+        return colorAxisMap;
+    } catch (error) {
+        console.error('[ColorAxisLoader] Error loading color axis CSV:', error);
+        colorAxisMap = new Map();
+        return colorAxisMap;
+    }
 }
 
 /**
- * Get all color axis mappings (for debugging or bulk operations)
+ * Gets the color axis for a given product handle
+ * @param handle - The product handle (e.g., "vitamine-b12")
+ * @returns The color axis (Green, Pink, Blue, Yellow) or undefined if not found
  */
-export function getAllColorAxisMappings(): Map<string, ColorAxis> {
-     if (!colorAxisMap) {
-          const { handleToColor } = parseColorAxisCSV();
-          colorAxisMap = handleToColor;
-     }
-     return new Map(colorAxisMap);
+export function getColorAxisForHandle(handle: string | undefined): ColorAxis | undefined {
+    if (!handle) {
+        return undefined;
+    }
+
+    const map = loadColorAxisMap();
+    return map.get(handle);
 }
 
 /**
- * Clear the cache (useful for testing or when CSV is updated)
+ * Gets all color axis mappings (for debugging/admin purposes)
+ * @returns Map of handle -> color axis
  */
-export function clearColorAxisCache(): void {
-     colorAxisMap = null;
-     productDetailsMap = null;
+export function getAllColorAxes(): Map<string, ColorAxis> {
+    return loadColorAxisMap();
 }
 
+/**
+ * Forces reload of the color axis mapping from CSV
+ * Useful if the CSV file has been updated
+ */
+export function reloadColorAxes(): Map<string, ColorAxis> {
+    colorAxisMap = null;
+    loadAttempted = false;
+    return loadColorAxisMap();
+}

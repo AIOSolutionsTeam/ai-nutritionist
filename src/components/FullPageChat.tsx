@@ -7,6 +7,7 @@ import {
   trackProductRecommended,
   trackAddToCart,
   trackEvent,
+  getSessionId,
 } from "../utils/analytics";
 import { ensureCartAndAddProduct } from "../utils/shopifyCart";
 
@@ -88,6 +89,34 @@ interface ProductSearchResult {
   discountPercentage?: number; // Discount percentage (e.g., 40 for 40% off)
   isOnSale?: boolean; // Whether the product is currently on sale
 }
+
+/**
+ * Detect if the user message indicates they want to generate a nutrition plan PDF
+ */
+const detectPlanGenerationIntent = (message: string): boolean => {
+  const lowerMessage = message.toLowerCase().trim();
+
+  // French patterns for plan generation requests
+  const planPatterns = [
+    // Direct requests for plans
+    /\b(génère|genere|générer|generer|créer|creer|faire|fais|donne|donnez).*(plan|programme)/i,
+    /\b(plan|programme).*(nutritionnel|nutrition|alimentaire|diététique|dietetique|régime|regime)/i,
+    // Diet plan requests
+    /\b(régime|regime|diète|diete).*(personnalisé|personnalise|pour moi)/i,
+    // PDF specific requests
+    /\b(pdf|télécharger|telecharger|document).*(plan|nutrition|régime|regime)/i,
+    /\b(plan|programme).*(pdf|télécharger|telecharger)/i,
+    // "I want a plan" style
+    /\b(je veux|j'aimerais|j'aimerai|voudrais|peux-tu|peux tu|pouvez-vous|pouvez vous).*(plan|programme|régime|regime)/i,
+    // Simple direct requests
+    /\bmon plan nutritionnel\b/i,
+    /\bmon programme alimentaire\b/i,
+    /\bmon régime personnalisé\b/i,
+    /\bmon regime personnalise\b/i,
+  ];
+
+  return planPatterns.some(pattern => pattern.test(lowerMessage));
+};
 
 // Loading animation component - Subtle, warm style
 const TypingIndicator = () => (
@@ -333,7 +362,9 @@ const ProductCard = ({ product, userId }: { product: ProductSearchResult; userId
     trackAddToCart(product.title, product.variantId, product.price, 1, userId || undefined);
 
     try {
-      const result = await ensureCartAndAddProduct(product.variantId, 1);
+      // Get session ID for purchase tracking
+      const sessionId = getSessionId();
+      const result = await ensureCartAndAddProduct(product.variantId, 1, sessionId);
 
       if (!result.success) {
         alert(result.message);
@@ -1889,6 +1920,23 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       }
 
       setIsLoading(false);
+      return;
+    }
+
+    // Check if user is asking to generate a nutrition plan (intent detection)
+    if (isOnboardingComplete && userId && detectPlanGenerationIntent(currentInput)) {
+      // Add confirmation message before generating
+      const confirmMessage: Message = {
+        id: generateMessageId(),
+        text: "✨ Je comprends que vous souhaitez générer votre plan nutritionnel personnalisé. Je lance la génération du PDF maintenant...",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, confirmMessage]);
+
+      // Trigger plan generation
+      setIsLoading(false);
+      await proceedWithPlanGeneration();
       return;
     }
 

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated, unauthorizedResponse } from '../../../../lib/admin-auth';
-import { analyticsEventService } from '../../../../lib/analytics-event';
-import { dbService } from '../../../../lib/db';
+import { isAuthenticated, unauthorizedResponse } from '../../../../../lib/admin-auth';
+import { analyticsEventService } from '../../../../../lib/analytics-event';
+import { dbService } from '../../../../../lib/db';
 
-// GET /api/admin/stats - Get dashboard statistics
+// GET /api/admin/stats/comparison - Get dashboard comparison statistics only
 export async function GET(request: NextRequest) {
     // Check authentication
     if (!isAuthenticated(request)) {
@@ -16,17 +16,12 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url);
 
-        const startDate = searchParams.get('startDate') ? new Date(searchParams.get('startDate')!) : undefined;
-        const endDate = searchParams.get('endDate') ? new Date(searchParams.get('endDate')!) : undefined;
-
         const compareStartDate = searchParams.get('compareStartDate') ? new Date(searchParams.get('compareStartDate')!) : undefined;
         const compareEndDate = searchParams.get('compareEndDate') ? new Date(searchParams.get('compareEndDate')!) : undefined;
         const prevStartDate = searchParams.get('prevStartDate') ? new Date(searchParams.get('prevStartDate')!) : undefined;
         const prevEndDate = searchParams.get('prevEndDate') ? new Date(searchParams.get('prevEndDate')!) : undefined;
 
-        const stats = await analyticsEventService.getDashboardStats(
-            startDate,
-            endDate,
+        const comparisonStats = await analyticsEventService.getPeriodComparison(
             compareStartDate,
             compareEndDate,
             prevStartDate,
@@ -35,12 +30,12 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            data: stats
+            data: comparisonStats
         });
     } catch (error) {
-        console.error('Error fetching stats:', error);
+        console.error('Error fetching comparison stats:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch statistics' },
+            { error: 'Failed to fetch comparison statistics' },
             { status: 500 }
         );
     }

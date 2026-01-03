@@ -22,7 +22,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Nutritionist - Your Personal Health Assistant",
+  title: "Vigaia",
   description:
     "Get personalized nutrition advice, supplement recommendations, and health guidance from our AI nutritionist. Chat with an expert to optimize your wellness journey.",
 };

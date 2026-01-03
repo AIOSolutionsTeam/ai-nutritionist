@@ -768,6 +768,11 @@
   color: #fbbf24;
 }
 
+.metric-badge.purchase {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
 .conversion-rate {
   display: inline-block;
   padding: 4px 10px;
@@ -856,6 +861,68 @@
   color: #f87171;
 }
 
+/* Comparison Section Inputs */
+.comparison-date-input {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e5e5e5;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color-scheme: dark;
+  /* Forces dark theme for native date picker */
+}
+
+.comparison-date-input:hover {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.comparison-date-input:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.comparison-select {
+  padding: 8px 32px 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e5e5e5;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.comparison-select:hover {
+  border-color: rgba(16, 185, 129, 0.5);
+  background-color: rgba(255, 255, 255, 0.08);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.comparison-select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.comparison-select option {
+  background: #1f2937;
+  color: #e5e5e5;
+  padding: 8px;
+}
+
 /* Hourly Activity Chart */
 .hourly-chart-container {
   display: flex;
@@ -870,6 +937,19 @@
   height: 100px;
   padding-bottom: 24px;
   position: relative;
+  /* Enable scrolling if needed */
+  width: 100%;
+}
+
+.hourly-bar-wrapper {
+  flex: 1;
+  /* Distribute space evenly by default */
+  min-width: 20px;
+  /* Ensure bars don't get too thin */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
 }
 
 .hourly-row {
@@ -903,6 +983,322 @@
   bottom: 0;
   font-size: 9px;
   color: #6b7280;
+}
+
+/* Radial/Clock Hourly Activity Chart */
+.radial-chart-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  min-height: 300px;
+}
+
+.radial-chart {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+
+.radial-grid {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.radial-circle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+}
+
+.radial-circle:nth-child(1) {
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+}
+
+.radial-circle:nth-child(2) {
+  width: 66%;
+  height: 66%;
+  transform: translate(-50%, -50%);
+}
+
+.radial-circle:nth-child(3) {
+  width: 33%;
+  height: 33%;
+  transform: translate(-50%, -50%);
+}
+
+.radial-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 10;
+  background: rgba(17, 24, 39, 0.9);
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.radial-center-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.radial-center-label {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.radial-bar-group {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 10px;
+  height: 50%;
+  margin-left: -5px;
+  /* Center the bar horizontally */
+  transform-origin: center bottom;
+  /* Rotate around the bottom center */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 15px;
+  /* Space for the label */
+}
+
+.radial-bar {
+  width: 8px;
+  background: linear-gradient(180deg, #10b981 0%, rgba(16, 185, 129, 0.5) 100%);
+  border-radius: 4px;
+  transition: height 0.5s ease, background 0.3s ease;
+  margin-top: auto;
+}
+
+.radial-bar-group:hover .radial-bar {
+  background: linear-gradient(180deg, #34d399 0%, rgba(52, 211, 153, 0.8) 100%);
+}
+
+.radial-hour-label {
+  position: absolute;
+  top: -5px;
+  font-size: 9px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+/* Sales Chart Refined */
+.sales-chart-container {
+  padding-left: 20px;
+  /* Space for Y-axis labels */
+  margin-top: 16px;
+  height: 300px;
+}
+
+.sales-chart-wrapper {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.sales-chart-grid-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 85%;
+  /* Leave space for X-axis labels */
+  pointer-events: none;
+}
+
+.grid-line {
+  position: absolute;
+  width: 100%;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.grid-label {
+  position: absolute;
+  left: -25px;
+  /* Adjust based on padding-left */
+  bottom: -6px;
+  /* Align vertically with line */
+  font-size: 10px;
+  color: #6b7280;
+  text-align: right;
+  width: 20px;
+}
+
+.sales-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  height: 85%;
+  /* Match grid height */
+  width: 100%;
+  position: relative;
+  /* Add padding to prevent bars from hitting exact edges */
+  padding: 0 10px;
+}
+
+.sales-bar-column {
+  flex: 1;
+  max-width: 60px;
+  /* Limit bar width */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  position: relative;
+}
+
+.sales-bar {
+  width: 60%;
+  /* Bar width relative to column */
+  background: #3b82f6;
+  /* Solid blue as requested */
+  /* Or gradient if preferred, but solid matches "classic chart" better */
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 2px 2px 0 0;
+  min-height: 0;
+  /* Allow 0 height */
+  transition: height 0.5s ease;
+  position: absolute;
+  bottom: 0;
+}
+
+.sales-bar:hover {
+  background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%);
+}
+
+.sales-label {
+  position: absolute;
+  bottom: -25px;
+  font-size: 10px;
+  color: #9ca3af;
+  text-align: center;
+  width: 120%;
+  /* Allow label to be wider than bar */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tooltip on hover */
+.sales-bar::after {
+  content: attr(data-value);
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.sales-bar:hover::after {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .hourly-chart-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px;
+    /* Negative margin to scroll edge-to-edge */
+    padding: 0 16px;
+    /* Inner padding */
+  }
+
+  .hourly-chart {
+    width: max-content;
+    /* Ensure it takes necessary width */
+    min-width: 100%;
+    gap: 8px;
+    /* More space on mobile to tap/read */
+  }
+
+  .hourly-bar-wrapper {
+    min-width: 30px;
+    /* Wider bars for touch targets */
+  }
+
+  /* Radial chart mobile adjustments */
+  .radial-chart-container {
+    padding: 10px;
+    min-height: 260px;
+  }
+
+  .radial-chart {
+    width: 220px;
+    height: 220px;
+  }
+
+  .radial-center {
+    width: 50px;
+    height: 50px;
+  }
+
+  .radial-center-value {
+    font-size: 14px;
+  }
+
+  .radial-bar {
+    width: 6px;
+  }
+
+  .radial-hour-label {
+    font-size: 8px;
+  }
+
+  .sales-chart-container {
+    padding-left: 10px;
+    height: 250px;
+    margin-bottom: 20px;
+    /* Extra space for labels */
+  }
+
+  .grid-label {
+    font-size: 9px;
+    left: -15px;
+  }
+
+  .sales-label {
+    font-size: 9px;
+    transform: rotate(45deg);
+    transform-origin: left top;
+    text-align: left;
+    left: 50%;
+    bottom: -35px;
+    width: auto;
+    white-space: nowrap;
+    overflow: visible;
+    /* Show full label when rotated */
+  }
+
+  /* Hide every second label on very small screens for the Month view */
+  .sales-chart-wrapper.month .sales-bar-column:nth-child(even) .sales-label {
+    display: none;
+  }
 }
 
 /* Event Breakdown Chart */

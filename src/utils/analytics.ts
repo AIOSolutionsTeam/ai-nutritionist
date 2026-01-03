@@ -131,7 +131,7 @@ export class AnalyticsService {
                               userId,
                               sessionId: this.sessionId
                          })
-                         console.log('[Analytics] Event saved to MongoDB:', savedEvent._id)
+                         console.log('[Analytics] Event saved to Firestore:', savedEvent.id)
                     } catch (dbError) {
                          console.error('[Analytics] Failed to persist event to MongoDB:', dbError)
                     }
@@ -306,6 +306,13 @@ export class AnalyticsService {
      private generateSessionId(): string {
           return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
      }
+
+     /**
+      * Get the current session ID for tracking purposes
+      */
+     getSessionId(): string {
+          return this.sessionId
+     }
 }
 
 // Export a default instance
@@ -341,3 +348,4 @@ export const trackChatOpened = analytics.trackChatOpened.bind(analytics)
 export const trackProductRecommended = analytics.trackProductRecommended.bind(analytics)
 export const trackAddToCart = analytics.trackAddToCart.bind(analytics)
 export const trackPlanDownloaded = analytics.trackPlanDownloaded.bind(analytics)
+export const getSessionId = () => analytics.getSessionId()

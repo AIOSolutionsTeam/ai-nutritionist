@@ -227,21 +227,31 @@ export async function addToShopifyCart(
  * cart on vigaia.com (or create a new cart if they don't have one yet).
  * This uses Shopify's cart permalink mechanism so there is only ONE cart:
  * the main store cart that the user can edit on vigaia.com.
+ * 
+ * @param variantId - The Shopify variant ID
+ * @param quantity - Quantity to add (default: 1)
+ * @param sessionId - Optional chatbot session ID for purchase tracking
  */
 export async function ensureCartAndAddProduct(
   variantId: string,
-  quantity: number = 1
+  quantity: number = 1,
+  sessionId?: string
 ): Promise<CartAndCheckoutResult> {
   // Convert GraphQL variant ID to numeric ID expected by Shopify cart URLs
   const numericVariantId = variantId.includes("/")
     ? variantId.split("/").pop() || variantId
     : variantId;
 
-  // Use Shopify cart permalink that APPENDS to the existing cart:
-  // /cart/add?id=VARIANT_ID&quantity=QTY
-  const url = `${SHOP_WEB_URL}/cart/add?id=${encodeURIComponent(
+  // Build the cart URL with variant and quantity
+  let url = `${SHOP_WEB_URL}/cart/add?id=${encodeURIComponent(
     numericVariantId
   )}&quantity=${encodeURIComponent(String(quantity))}`;
+
+  // Add sessionId as a cart line item attribute for purchase tracking
+  // Shopify supports attributes via: properties[key]=value
+  if (sessionId) {
+    url += `&properties[_chatbot_session]=${encodeURIComponent(sessionId)}`;
+  }
 
   return {
     success: true,

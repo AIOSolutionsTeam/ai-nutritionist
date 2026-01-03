@@ -439,14 +439,14 @@ export const COLLECTION_MAP: { [key: string]: string[] } = {
      'sante-digestive-detox': ['digestion', 'digestif', 'digestive', 'détox', 'detox', 'foie', 'liver', 'intestin', 'gut', 'probiotique', 'probiotic', 'chardon marie', 'milk thistle'],
      'sante-hormonale': ['hormonal', 'hormonale', 'hormone', 'hormones', 'équilibre hormonal', 'equilibre hormonal', 'maca', 'maca noire'],
      'articulation-mobilite': ['articulation', 'articulations', 'mobilité', 'mobilite', 'mobility', 'joints', 'cartilage', 'glucosamine', 'collagène', 'collagen'],
-     
+
      // Collections by ingredient
      'vitamines': ['vitamine', 'vitamines', 'vitamin', 'vitamins', 'multivitamine', 'multivitamin', 'vitamine b', 'vitamin b', 'vitamine c', 'vitamin c', 'vitamine d', 'vitamin d', 'vitamine k', 'vitamin k'],
      'mineraux': ['minéral', 'minéraux', 'mineral', 'minerals', 'magnésium', 'magnesium', 'calcium', 'fer', 'iron', 'zinc', 'sélénium', 'selenium'],
      'plantes-adaptogenes': ['plante adaptogène', 'plantes adaptogènes', 'adaptogen', 'adaptogens', 'ashwagandha', 'ginseng', 'rhodiola', 'maca'],
      'acides-gras-essentiels': ['acides gras', 'acide gras', 'oméga', 'omega', 'omega 3', 'oméga 3', 'fish oil', 'huile de poisson', 'epa', 'dha'],
      'probiotiques': ['probiotique', 'probiotiques', 'probiotic', 'probiotics', 'bactéries', 'bacteries', 'flore intestinale', 'gut health'],
-     
+
      // Legacy/alternative handles (for backward compatibility)
      'energie': ['energie', 'endurance', 'energy', 'vitality', 'fatigue', 'vitalité'],
      'beaute-anti-age': ['beauté', 'anti-âge', 'beauty', 'anti-age', 'peau', 'skin', 'collagène', 'collagen'],
@@ -590,18 +590,18 @@ export async function getCollectionMap(forceRefresh: boolean = false): Promise<{
 export async function fetchAllProductsWithParsedData(forceRefresh: boolean = false): Promise<CachedProductData[]> {
      const now = Date.now();
      const fetchStartTime = Date.now();
-     
+
      console.log('[Shopify] ========================================');
      console.log('[Shopify] FETCH ALL PRODUCTS WITH PARSED DATA');
      console.log('[Shopify] ========================================');
      console.log('[Shopify] Force refresh:', forceRefresh);
      console.log('[Shopify] Cache TTL:', `${PRODUCT_CACHE_TTL_MS / 1000 / 60 / 60} hours`);
-     
+
      // Return cached products if still valid
      if (!forceRefresh && cachedProducts.fetchedAt && now - cachedProducts.fetchedAt < PRODUCT_CACHE_TTL_MS) {
           const cacheAge = Math.round((now - cachedProducts.fetchedAt) / 1000 / 60);
           console.log(`[Shopify] ✅ Using cached products (${cachedProducts.products.length} products, cached ${cacheAge} minutes ago)`);
-          
+
           // Log cache statistics
           const productsWithExtracted = cachedProducts.products.filter(p => p.extractedContent).length;
           console.log(`[Shopify] Cached products with extracted content: ${productsWithExtracted}/${cachedProducts.products.length}`);
@@ -621,23 +621,23 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
      const fetchPromise = (async () => {
           try {
                console.log('[Shopify] 🔄 Starting fresh product fetch...');
-          console.log('[Shopify] Store domain:', shopifyDomain);
-          
-          // Fetch products in batches (Shopify limit is 250 per query)
-          const allProducts: CachedProductData[] = [];
-          let hasNextPage = true;
-          let cursor: string | null = null;
-          const batchSize = 250;
-          let pageCount = 0;
+               console.log('[Shopify] Store domain:', shopifyDomain);
 
-          console.log('[Shopify] Fetching products from Shopify API (batch size: 250)...');
-          
-          while (hasNextPage) {
-               pageCount++;
-               console.log(`[Shopify] Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ' (first page)'}...`);
-               // Build query with conditional cursor
-               const query: string = cursor
-                    ? `
+               // Fetch products in batches (Shopify limit is 250 per query)
+               const allProducts: CachedProductData[] = [];
+               let hasNextPage = true;
+               let cursor: string | null = null;
+               const batchSize = 250;
+               let pageCount = 0;
+
+               console.log('[Shopify] Fetching products from Shopify API (batch size: 250)...');
+
+               while (hasNextPage) {
+                    pageCount++;
+                    console.log(`[Shopify] Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ' (first page)'}...`);
+                    // Build query with conditional cursor
+                    const query: string = cursor
+                         ? `
                          query fetchAllProducts($cursor: String!) {
                               products(first: ${batchSize}, after: $cursor) {
                                    pageInfo {
@@ -691,7 +691,7 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                               }
                          }
                     `
-                    : `
+                         : `
                          query fetchAllProducts {
                               products(first: ${batchSize}) {
                                    pageInfo {
@@ -746,299 +746,299 @@ export async function fetchAllProductsWithParsedData(forceRefresh: boolean = fal
                          }
                     `;
 
-               // Retry logic with exponential backoff for timeout errors
-               const maxRetries = 3;
-               let retryCount = 0;
-               let pageFetched = false;
+                    // Retry logic with exponential backoff for timeout errors
+                    const maxRetries = 3;
+                    let retryCount = 0;
+                    let pageFetched = false;
 
-               while (!pageFetched && retryCount < maxRetries) {
-                    if (retryCount > 0) {
-                         const backoffDelay = Math.min(1000 * Math.pow(2, retryCount - 1), 10000); // Max 10 seconds
-                         console.log(`[Shopify] Retry attempt ${retryCount}/${maxRetries - 1} after ${backoffDelay}ms delay...`);
-                         await new Promise(resolve => setTimeout(resolve, backoffDelay));
-                    }
-
-                    // Create AbortController for timeout
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-                    try {
-                         const response: Response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
-                              method: 'POST',
-                              headers: {
-                                   'Content-Type': 'application/json',
-                                   'X-Shopify-Storefront-Access-Token': shopifyToken,
-                              },
-                              body: JSON.stringify({
-                                   query,
-                                   variables: cursor ? { cursor } : {},
-                              }),
-                              signal: controller.signal,
-                         });
-
-                         clearTimeout(timeoutId);
-
-                         if (!response.ok) {
-                              throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
+                    while (!pageFetched && retryCount < maxRetries) {
+                         if (retryCount > 0) {
+                              const backoffDelay = Math.min(1000 * Math.pow(2, retryCount - 1), 10000); // Max 10 seconds
+                              console.log(`[Shopify] Retry attempt ${retryCount}/${maxRetries - 1} after ${backoffDelay}ms delay...`);
+                              await new Promise(resolve => setTimeout(resolve, backoffDelay));
                          }
 
-                         // The Shopify GraphQL response structure is known but complex; keep it as any but
-                         // explicitly disable the lint rule here to avoid polluting the rest of the file.
-                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                         const data: any = await response.json();
+                         // Create AbortController for timeout
+                         const controller = new AbortController();
+                         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-                         if (data.errors) {
-                              console.error('GraphQL errors:', data.errors);
-                              throw new Error('GraphQL query failed');
-                         }
-
-                         const edges = data.data.products.edges || [];
-                         console.log(`[Shopify] Page ${pageCount}: Received ${edges.length} products`);
-                    
-                         for (const edge of edges) {
-                              const product = edge.node;
-                              const variant = product.variants.edges[0]?.node;
-                              const image = product.images.edges[0]?.node;
-                              const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
-                              const collectionHandles = product.collections?.edges.map((edge: { node: { handle: string } }) => edge.node.handle) || [];
-                              
-                              const price = parseFloat(variant?.price.amount || '0');
-                              const compareAtPrice = variant?.compareAtPrice?.amount 
-                                   ? parseFloat(variant.compareAtPrice.amount) 
-                                   : null;
-                              
-                              const isOnSale = compareAtPrice !== null && compareAtPrice > price;
-                              const discountPercentage = isOnSale && compareAtPrice 
-                                   ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
-                                   : undefined;
-                              
-                              const primaryCollection = collectionHandles.length > 0 
-                                   ? collectionHandles[0] 
-                                   : undefined;
-
-                              // Extract structured product data from description HTML
-                              const parsedData = extractProductData({
-                                   descriptionHtml: product.descriptionHtml || '',
-                                   description: product.description || '',
-                                   metafields: [] // Storefront API doesn't return metafields
+                         try {
+                              const response: Response = await fetch(`https://${shopifyDomain}/api/2023-10/graphql.json`, {
+                                   method: 'POST',
+                                   headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-Shopify-Storefront-Access-Token': shopifyToken,
+                                   },
+                                   body: JSON.stringify({
+                                        query,
+                                        variables: cursor ? { cursor } : {},
+                                   }),
+                                   signal: controller.signal,
                               });
 
-                              // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
-                              const colorAxis = getColorAxisForHandle(product.handle);
+                              clearTimeout(timeoutId);
 
-                              const cachedProduct: CachedProductData = {
-                                   title: product.title,
-                                   price: price,
-                                   originalPrice: compareAtPrice || undefined,
-                                   discountPercentage: discountPercentage,
-                                   isOnSale: isOnSale,
-                                   image: image?.url || '',
-                                   variantId: variant?.id || '',
-                                   available: variant?.availableForSale || false,
-                                   currency: variant?.price.currencyCode || 'USD',
-                                   tags: product.tags || [],
-                                   collections: collections.length > 0 ? collections : undefined,
-                                   collection: primaryCollection,
-                                   description: product.description || '',
-                                   // Structured product data
-                                   benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
-                                   targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
-                                   usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
-                                   contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
-                                   parsedData: parsedData,
-                                   // Store handle for HTML extraction later
-                                   handle: product.handle,
-                                   colorAxis: colorAxis,
-                              };
-
-                              allProducts.push(cachedProduct);
-                         }
-
-                         // Check if there's a next page
-                         hasNextPage = data.data.products.pageInfo.hasNextPage;
-                         cursor = data.data.products.pageInfo.endCursor;
-                         
-                         if (hasNextPage) {
-                              console.log(`[Shopify] More pages available, continuing...`);
-                         } else {
-                              console.log(`[Shopify] ✅ Finished fetching all pages. Total products: ${allProducts.length}`);
-                         }
-
-                         pageFetched = true; // Success, exit retry loop
-                    } catch (error: unknown) {
-                         clearTimeout(timeoutId);
-                         
-                         const isTimeoutError = error instanceof Error && 
-                              (error.name === 'AbortError' || 
-                               error.message.includes('timeout') || 
-                               error.message.includes('Connect Timeout'));
-                         
-                         if (isTimeoutError && retryCount < maxRetries - 1) {
-                              retryCount++;
-                              console.warn(`[Shopify] Request timeout on page ${pageCount}, will retry (${retryCount}/${maxRetries - 1})...`);
-                              // Continue to retry
-                         } else {
-                              // Either not a timeout error, or max retries reached
-                              if (isTimeoutError) {
-                                   throw new Error(`Shopify API request timed out after ${maxRetries} attempts. This may indicate network issues or the Shopify API is unavailable.`);
+                              if (!response.ok) {
+                                   throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
                               }
-                              throw error;
+
+                              // The Shopify GraphQL response structure is known but complex; keep it as any but
+                              // explicitly disable the lint rule here to avoid polluting the rest of the file.
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              const data: any = await response.json();
+
+                              if (data.errors) {
+                                   console.error('GraphQL errors:', data.errors);
+                                   throw new Error('GraphQL query failed');
+                              }
+
+                              const edges = data.data.products.edges || [];
+                              console.log(`[Shopify] Page ${pageCount}: Received ${edges.length} products`);
+
+                              for (const edge of edges) {
+                                   const product = edge.node;
+                                   const variant = product.variants.edges[0]?.node;
+                                   const image = product.images.edges[0]?.node;
+                                   const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
+                                   const collectionHandles = product.collections?.edges.map((edge: { node: { handle: string } }) => edge.node.handle) || [];
+
+                                   const price = parseFloat(variant?.price.amount || '0');
+                                   const compareAtPrice = variant?.compareAtPrice?.amount
+                                        ? parseFloat(variant.compareAtPrice.amount)
+                                        : null;
+
+                                   const isOnSale = compareAtPrice !== null && compareAtPrice > price;
+                                   const discountPercentage = isOnSale && compareAtPrice
+                                        ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+                                        : undefined;
+
+                                   const primaryCollection = collectionHandles.length > 0
+                                        ? collectionHandles[0]
+                                        : undefined;
+
+                                   // Extract structured product data from description HTML
+                                   const parsedData = extractProductData({
+                                        descriptionHtml: product.descriptionHtml || '',
+                                        description: product.description || '',
+                                        metafields: [] // Storefront API doesn't return metafields
+                                   });
+
+                                   // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
+                                   const colorAxis = getColorAxisForHandle(product.handle);
+
+                                   const cachedProduct: CachedProductData = {
+                                        title: product.title,
+                                        price: price,
+                                        originalPrice: compareAtPrice || undefined,
+                                        discountPercentage: discountPercentage,
+                                        isOnSale: isOnSale,
+                                        image: image?.url || '',
+                                        variantId: variant?.id || '',
+                                        available: variant?.availableForSale || false,
+                                        currency: variant?.price.currencyCode || 'USD',
+                                        tags: product.tags || [],
+                                        collections: collections.length > 0 ? collections : undefined,
+                                        collection: primaryCollection,
+                                        description: product.description || '',
+                                        // Structured product data
+                                        benefits: parsedData.benefits.length > 0 ? parsedData.benefits : undefined,
+                                        targetAudience: parsedData.targetAudience.length > 0 ? parsedData.targetAudience : undefined,
+                                        usageInstructions: parsedData.usageInstructions.dosage ? parsedData.usageInstructions : undefined,
+                                        contraindications: parsedData.contraindications.length > 0 ? parsedData.contraindications : undefined,
+                                        parsedData: parsedData,
+                                        // Store handle for HTML extraction later
+                                        handle: product.handle,
+                                        colorAxis: colorAxis,
+                                   };
+
+                                   allProducts.push(cachedProduct);
+                              }
+
+                              // Check if there's a next page
+                              hasNextPage = data.data.products.pageInfo.hasNextPage;
+                              cursor = data.data.products.pageInfo.endCursor;
+
+                              if (hasNextPage) {
+                                   console.log(`[Shopify] More pages available, continuing...`);
+                              } else {
+                                   console.log(`[Shopify] ✅ Finished fetching all pages. Total products: ${allProducts.length}`);
+                              }
+
+                              pageFetched = true; // Success, exit retry loop
+                         } catch (error: unknown) {
+                              clearTimeout(timeoutId);
+
+                              const isTimeoutError = error instanceof Error &&
+                                   (error.name === 'AbortError' ||
+                                        error.message.includes('timeout') ||
+                                        error.message.includes('Connect Timeout'));
+
+                              if (isTimeoutError && retryCount < maxRetries - 1) {
+                                   retryCount++;
+                                   console.warn(`[Shopify] Request timeout on page ${pageCount}, will retry (${retryCount}/${maxRetries - 1})...`);
+                                   // Continue to retry
+                              } else {
+                                   // Either not a timeout error, or max retries reached
+                                   if (isTimeoutError) {
+                                        throw new Error(`Shopify API request timed out after ${maxRetries} attempts. This may indicate network issues or the Shopify API is unavailable.`);
+                                   }
+                                   throw error;
+                              }
                          }
                     }
                }
-          }
-          
-          const fetchDuration = Date.now() - fetchStartTime;
-          console.log(`[Shopify] Product fetch completed in ${(fetchDuration / 1000).toFixed(2)}s`);
 
-          // Extract HTML content in parallel batches after fetching all products
-          const extractionStartTime = Date.now();
-          console.log('[Shopify] ========================================');
-          console.log(`[Shopify] 🔄 Starting parallel HTML extraction for ${allProducts.length} products...`);
-          console.log('[Shopify] Extraction batch size: 10 products');
-          console.log('[Shopify] ========================================');
-          
-          const extractionBatchSize = 10; // Process 10 products at a time
-          const storeDomain = shopifyDomain; // Use the already fetched shopifyDomain from getShopifyConfig() above
-          
-          let totalExtracted = 0;
-          let totalWithBenefits = 0;
-          let totalWithTargetAudience = 0;
-          let extractionErrors = 0;
-          
-          for (let i = 0; i < allProducts.length; i += extractionBatchSize) {
-               const batch = allProducts.slice(i, i + extractionBatchSize);
-               const batchNumber = Math.floor(i / extractionBatchSize) + 1;
-               const totalBatches = Math.ceil(allProducts.length / extractionBatchSize);
-               const batchStartTime = Date.now();
-               
-               console.log(`[Shopify] Processing batch ${batchNumber}/${totalBatches} (products ${i + 1}-${Math.min(i + extractionBatchSize, allProducts.length)})...`);
-               
-               const extractionPromises = batch.map(async (product: CachedProductData) => {
-                    if (!product.handle) {
-                         console.log(`[Shopify] ⚠️  Product "${product.title}" has no handle, skipping HTML extraction`);
-                         return;
-                    }
-                    
-                    try {
-                         const extractedContent = await extractProductContentFromHTML(product.handle, storeDomain);
-                         product.extractedContent = extractedContent;
-                         totalExtracted++;
-                         
-                         let benefitsAdded = 0;
-                         let targetAudienceAdded = 0;
-                         
-                         // Update benefits and targetAudience from extracted content if available
-                         if (extractedContent.bienfaits.found && extractedContent.bienfaits.bullet_points.length > 0) {
-                              const extractedBenefits = extractedContent.bienfaits.bullet_points
-                                   .map(bp => bp.title && bp.description 
-                                        ? `${bp.title}: ${bp.description}` 
-                                        : bp.title || bp.description || '')
-                                   .filter(b => b.length > 0);
-                              
-                              if (extractedBenefits.length > 0) {
-                                   const beforeCount = (product.benefits || []).length;
-                                   product.benefits = [...(product.benefits || []), ...extractedBenefits];
-                                   product.parsedData.benefits = [...product.parsedData.benefits, ...extractedBenefits];
-                                   benefitsAdded = extractedBenefits.length;
-                                   totalWithBenefits++;
-                                   
-                                   console.log(`[Shopify] ✅ "${product.title}": Added ${benefitsAdded} benefits from HTML (total: ${product.benefits.length}, was: ${beforeCount})`);
+               const fetchDuration = Date.now() - fetchStartTime;
+               console.log(`[Shopify] Product fetch completed in ${(fetchDuration / 1000).toFixed(2)}s`);
+
+               // Extract HTML content in parallel batches after fetching all products
+               const extractionStartTime = Date.now();
+               console.log('[Shopify] ========================================');
+               console.log(`[Shopify] 🔄 Starting parallel HTML extraction for ${allProducts.length} products...`);
+               console.log('[Shopify] Extraction batch size: 10 products');
+               console.log('[Shopify] ========================================');
+
+               const extractionBatchSize = 10; // Process 10 products at a time
+               const storeDomain = shopifyDomain; // Use the already fetched shopifyDomain from getShopifyConfig() above
+
+               let totalExtracted = 0;
+               let totalWithBenefits = 0;
+               let totalWithTargetAudience = 0;
+               let extractionErrors = 0;
+
+               for (let i = 0; i < allProducts.length; i += extractionBatchSize) {
+                    const batch = allProducts.slice(i, i + extractionBatchSize);
+                    const batchNumber = Math.floor(i / extractionBatchSize) + 1;
+                    const totalBatches = Math.ceil(allProducts.length / extractionBatchSize);
+                    const batchStartTime = Date.now();
+
+                    console.log(`[Shopify] Processing batch ${batchNumber}/${totalBatches} (products ${i + 1}-${Math.min(i + extractionBatchSize, allProducts.length)})...`);
+
+                    const extractionPromises = batch.map(async (product: CachedProductData) => {
+                         if (!product.handle) {
+                              console.log(`[Shopify] ⚠️  Product "${product.title}" has no handle, skipping HTML extraction`);
+                              return;
+                         }
+
+                         try {
+                              const extractedContent = await extractProductContentFromHTML(product.handle, storeDomain);
+                              product.extractedContent = extractedContent;
+                              totalExtracted++;
+
+                              let benefitsAdded = 0;
+                              let targetAudienceAdded = 0;
+
+                              // Update benefits and targetAudience from extracted content if available
+                              if (extractedContent.bienfaits.found && extractedContent.bienfaits.bullet_points.length > 0) {
+                                   const extractedBenefits = extractedContent.bienfaits.bullet_points
+                                        .map(bp => bp.title && bp.description
+                                             ? `${bp.title}: ${bp.description}`
+                                             : bp.title || bp.description || '')
+                                        .filter(b => b.length > 0);
+
+                                   if (extractedBenefits.length > 0) {
+                                        const beforeCount = (product.benefits || []).length;
+                                        product.benefits = [...(product.benefits || []), ...extractedBenefits];
+                                        product.parsedData.benefits = [...product.parsedData.benefits, ...extractedBenefits];
+                                        benefitsAdded = extractedBenefits.length;
+                                        totalWithBenefits++;
+
+                                        console.log(`[Shopify] ✅ "${product.title}": Added ${benefitsAdded} benefits from HTML (total: ${product.benefits.length}, was: ${beforeCount})`);
+                                   }
                               }
-                         }
-                         
-                         if (extractedContent.pour_qui.found && extractedContent.pour_qui.bullet_points.length > 0) {
-                              const extractedTargetAudience = extractedContent.pour_qui.bullet_points
-                                   .map(bp => bp.title && bp.description 
-                                        ? `${bp.title}: ${bp.description}` 
-                                        : bp.title || bp.description || '')
-                                   .filter(b => b.length > 0);
-                              
-                              if (extractedTargetAudience.length > 0) {
-                                   const beforeCount = (product.targetAudience || []).length;
-                                   product.targetAudience = [...(product.targetAudience || []), ...extractedTargetAudience];
-                                   product.parsedData.targetAudience = [...product.parsedData.targetAudience, ...extractedTargetAudience];
-                                   targetAudienceAdded = extractedTargetAudience.length;
-                                   totalWithTargetAudience++;
-                                   
-                                   console.log(`[Shopify] ✅ "${product.title}": Added ${targetAudienceAdded} target audience items from HTML (total: ${product.targetAudience.length}, was: ${beforeCount})`);
+
+                              if (extractedContent.pour_qui.found && extractedContent.pour_qui.bullet_points.length > 0) {
+                                   const extractedTargetAudience = extractedContent.pour_qui.bullet_points
+                                        .map(bp => bp.title && bp.description
+                                             ? `${bp.title}: ${bp.description}`
+                                             : bp.title || bp.description || '')
+                                        .filter(b => b.length > 0);
+
+                                   if (extractedTargetAudience.length > 0) {
+                                        const beforeCount = (product.targetAudience || []).length;
+                                        product.targetAudience = [...(product.targetAudience || []), ...extractedTargetAudience];
+                                        product.parsedData.targetAudience = [...product.parsedData.targetAudience, ...extractedTargetAudience];
+                                        targetAudienceAdded = extractedTargetAudience.length;
+                                        totalWithTargetAudience++;
+
+                                        console.log(`[Shopify] ✅ "${product.title}": Added ${targetAudienceAdded} target audience items from HTML (total: ${product.targetAudience.length}, was: ${beforeCount})`);
+                                   }
                               }
+
+                              // Log section extraction status
+                              const sectionsFound = [
+                                   extractedContent.bienfaits.found ? 'bienfaits' : null,
+                                   extractedContent.pour_qui.found ? 'pour_qui' : null,
+                                   extractedContent.mode_emploi.found ? 'mode_emploi' : null,
+                                   extractedContent.contre_indication.found ? 'contre_indication' : null
+                              ].filter(Boolean);
+
+                              if (sectionsFound.length > 0) {
+                                   console.log(`[Shopify] 📄 "${product.title}": Extracted sections: ${sectionsFound.join(', ')}`);
+                              }
+                         } catch (error) {
+                              extractionErrors++;
+                              console.error(`[Shopify] ❌ Error extracting HTML content for product "${product.title}" (handle: ${product.handle}):`, error);
+                              // Continue with other products even if one fails
                          }
-                         
-                         // Log section extraction status
-                         const sectionsFound = [
-                              extractedContent.bienfaits.found ? 'bienfaits' : null,
-                              extractedContent.pour_qui.found ? 'pour_qui' : null,
-                              extractedContent.mode_emploi.found ? 'mode_emploi' : null,
-                              extractedContent.contre_indication.found ? 'contre_indication' : null
-                         ].filter(Boolean);
-                         
-                         if (sectionsFound.length > 0) {
-                              console.log(`[Shopify] 📄 "${product.title}": Extracted sections: ${sectionsFound.join(', ')}`);
-                         }
-                    } catch (error) {
-                         extractionErrors++;
-                         console.error(`[Shopify] ❌ Error extracting HTML content for product "${product.title}" (handle: ${product.handle}):`, error);
-                         // Continue with other products even if one fails
+                    });
+
+                    await Promise.all(extractionPromises);
+                    const batchDuration = Date.now() - batchStartTime;
+                    console.log(`[Shopify] ✅ Batch ${batchNumber}/${totalBatches} completed in ${(batchDuration / 1000).toFixed(2)}s`);
+
+                    // Add a delay between batches to avoid rate limiting (except for the last batch)
+                    if (i + extractionBatchSize < allProducts.length) {
+                         const delayMs = 500; // 500ms delay between batches
+                         await new Promise(resolve => setTimeout(resolve, delayMs));
                     }
-               });
-               
-               await Promise.all(extractionPromises);
-               const batchDuration = Date.now() - batchStartTime;
-               console.log(`[Shopify] ✅ Batch ${batchNumber}/${totalBatches} completed in ${(batchDuration / 1000).toFixed(2)}s`);
-               
-               // Add a delay between batches to avoid rate limiting (except for the last batch)
-               if (i + extractionBatchSize < allProducts.length) {
-                    const delayMs = 500; // 500ms delay between batches
-                    await new Promise(resolve => setTimeout(resolve, delayMs));
                }
-          }
-          
-          const extractionDuration = Date.now() - extractionStartTime;
-          console.log('[Shopify] ========================================');
-          console.log(`[Shopify] ✅ Completed parallel HTML extraction`);
-          console.log('[Shopify] ========================================');
-          console.log(`[Shopify] Total duration: ${(extractionDuration / 1000).toFixed(2)}s`);
-          console.log(`[Shopify] Products with extracted content: ${totalExtracted}/${allProducts.length}`);
-          console.log(`[Shopify] Products with benefits from HTML: ${totalWithBenefits}`);
-          console.log(`[Shopify] Products with target audience from HTML: ${totalWithTargetAudience}`);
-          console.log(`[Shopify] Extraction errors: ${extractionErrors}`);
-          console.log('[Shopify] ========================================');
 
-          // Update cache
-          const totalDuration = Date.now() - fetchStartTime;
-          console.log('[Shopify] ========================================');
-          console.log('[Shopify] 📦 UPDATING CACHE');
-          console.log('[Shopify] ========================================');
-          
-          cachedProducts = {
-               products: allProducts,
-               fetchedAt: now,
-          };
+               const extractionDuration = Date.now() - extractionStartTime;
+               console.log('[Shopify] ========================================');
+               console.log(`[Shopify] ✅ Completed parallel HTML extraction`);
+               console.log('[Shopify] ========================================');
+               console.log(`[Shopify] Total duration: ${(extractionDuration / 1000).toFixed(2)}s`);
+               console.log(`[Shopify] Products with extracted content: ${totalExtracted}/${allProducts.length}`);
+               console.log(`[Shopify] Products with benefits from HTML: ${totalWithBenefits}`);
+               console.log(`[Shopify] Products with target audience from HTML: ${totalWithTargetAudience}`);
+               console.log(`[Shopify] Extraction errors: ${extractionErrors}`);
+               console.log('[Shopify] ========================================');
 
-          // Invalidate context cache when products are refreshed
-          cachedProductContext = {
-               context: '',
-               maxProducts: 50,
-               generatedAt: null,
-          };
+               // Update cache
+               const totalDuration = Date.now() - fetchStartTime;
+               console.log('[Shopify] ========================================');
+               console.log('[Shopify] 📦 UPDATING CACHE');
+               console.log('[Shopify] ========================================');
+
+               cachedProducts = {
+                    products: allProducts,
+                    fetchedAt: now,
+               };
+
+               // Invalidate context cache when products are refreshed
+               cachedProductContext = {
+                    context: '',
+                    maxProducts: 50,
+                    generatedAt: null,
+               };
 
                console.log(`[Shopify] ✅ Successfully cached ${allProducts.length} products`);
                console.log(`[Shopify] Cache timestamp: ${new Date(now).toISOString()}`);
                console.log(`[Shopify] Cache will expire in ${PRODUCT_CACHE_TTL_MS / 1000 / 60 / 60} hours`);
                console.log(`[Shopify] Total operation duration: ${(totalDuration / 1000).toFixed(2)}s`);
                console.log('[Shopify] ========================================');
-               
+
                return allProducts;
           } catch (error) {
                console.error('[Shopify] Error fetching all products:', error);
-               
+
                // Return cached products if available, even if expired
                if (cachedProducts.products.length > 0) {
                     console.log(`[Shopify] Using expired cache as fallback (${cachedProducts.products.length} products)`);
                     return cachedProducts.products;
                }
-               
+
                throw error;
           } finally {
                // Clear the mutex when done
@@ -1067,7 +1067,7 @@ function generateProductContextFromProducts(
      console.log('[Shopify] ========================================');
      console.log(`[Shopify] Total products available: ${products.length}`);
      console.log(`[Shopify] Max products to include: ${maxProducts}`);
-     
+
      // Resolve options with sensible defaults.
      // By default we keep ALL heavy fields disabled to minimize token usage.
      const resolvedOptions: Required<ProductContextOptions> = {
@@ -1077,14 +1077,14 @@ function generateProductContextFromProducts(
           includeContraindications: options?.includeContraindications ?? false,
      };
      console.log('[Shopify] Product context options:', resolvedOptions);
-     
+
      // Limit products to avoid token limits
      const limitedProducts = products.slice(0, maxProducts);
      console.log(`[Shopify] Products included in context: ${limitedProducts.length}`);
-     
+
      let productsWithExtractedContent = 0;
      let totalExtractedSections = 0;
-     
+
      let context = `\n\nAVAILABLE PRODUCTS IN STORE (use this information for accurate product recommendations and details):\n`;
      context += `Total products available: ${products.length}\n`;
      context += `Showing ${limitedProducts.length} products for context:\n\n`;
@@ -1101,63 +1101,60 @@ function generateProductContextFromProducts(
                totalExtractedSections += sections;
           }
           context += `PRODUCT: ${product.title}\n`;
-          
+
           // Always include core, lightweight fields in context
           if (product.variantId) {
                context += `  VariantId: ${product.variantId}\n`;
           }
-          
-          // Add color axis information from CSV if available
-          if (product.handle) {
-               const colorAxis = getColorAxisForHandle(product.handle);
-               if (colorAxis) {
-                    context += `  Color Axis: ${colorAxis}\n`;
-               }
+
+          // Add color axis information (already populated during fetch from CSV)
+          if (product.colorAxis) {
+               context += `  Color Axis: ${product.colorAxis}\n`;
           }
-          
+
           if (product.collection) {
                context += `  Collection: ${product.collection}\n`;
           }
-          
+
           if (product.collections && product.collections.length > 0) {
                context += `  Collections: ${product.collections.join(', ')}\n`;
           }
-          
+
           if (product.description) {
                const shortDesc = product.description.substring(0, 200);
                context += `  Description: ${shortDesc}${product.description.length > 200 ? '...' : ''}\n`;
           }
-          
+
           // Add parsed structured data (conditionally, to save tokens)
           if (resolvedOptions.includeBenefits && product.parsedData.benefits.length > 0) {
                context += `  Benefits: ${product.parsedData.benefits.join('; ')}\n`;
           }
-          
+
           if (resolvedOptions.includeTargetAudience && product.parsedData.targetAudience.length > 0) {
                context += `  Target Audience: ${product.parsedData.targetAudience.join('; ')}\n`;
           }
-          
+
           if (resolvedOptions.includeUsageInstructions && product.parsedData.usageInstructions.dosage) {
                context += `  Dosage: ${product.parsedData.usageInstructions.dosage}\n`;
           }
-          
+
           if (resolvedOptions.includeUsageInstructions && product.parsedData.usageInstructions.timing) {
                context += `  Timing: ${product.parsedData.usageInstructions.timing}\n`;
           }
-          
+
           if (resolvedOptions.includeUsageInstructions && product.parsedData.usageInstructions.duration) {
                context += `  Duration: ${product.parsedData.usageInstructions.duration}\n`;
           }
-          
+
           if (resolvedOptions.includeContraindications && product.parsedData.contraindications.length > 0) {
                context += `  Contraindications: ${product.parsedData.contraindications.join('; ')}\n`;
           }
-          
+
           // Add extracted HTML sections if available
           if (product.extractedContent) {
                const extracted = product.extractedContent;
                let sectionsAdded = 0;
-               
+
                // Bienfaits (Benefits)
                if (
                     resolvedOptions.includeBenefits &&
@@ -1176,7 +1173,7 @@ function generateProductContextFromProducts(
                     });
                     sectionsAdded++;
                }
-               
+
                // Pour qui (Target Audience)
                if (
                     resolvedOptions.includeTargetAudience &&
@@ -1195,7 +1192,7 @@ function generateProductContextFromProducts(
                     });
                     sectionsAdded++;
                }
-               
+
                // Mode d'emploi (Usage Instructions)
                if (
                     resolvedOptions.includeUsageInstructions &&
@@ -1214,7 +1211,7 @@ function generateProductContextFromProducts(
                     });
                     sectionsAdded++;
                }
-               
+
                // Contre-indication (Contraindications)
                if (
                     resolvedOptions.includeContraindications &&
@@ -1233,19 +1230,19 @@ function generateProductContextFromProducts(
                     });
                     sectionsAdded++;
                }
-               
+
                if (sectionsAdded > 0) {
                     console.log(`[Shopify] 📄 Added ${sectionsAdded} extracted HTML sections for "${product.title}"`);
                }
           }
-          
+
           // Core commercial info (always included)
           context += `  Price: ${product.price} ${product.currency}\n`;
           if (typeof product.discountPercentage === 'number') {
                context += `  DiscountPercentage: ${product.discountPercentage}\n`;
           }
           context += `  Available: ${product.available ? 'Yes' : 'No'}\n`;
-          
+
           context += '\n';
      }
 
@@ -1261,7 +1258,7 @@ function generateProductContextFromProducts(
      console.log(`[Shopify] Total extracted sections included: ${totalExtractedSections}`);
      console.log(`[Shopify] Context length: ${context.length} characters`);
      console.log('[Shopify] ========================================');
-     
+
      return context;
 }
 
@@ -1285,22 +1282,22 @@ export async function generateProductContext(
           });
 
           // Check if we have a cached context for the same maxProducts
-          if (cachedProductContext.context && 
-              cachedProductContext.maxProducts === maxProducts && 
-              cachedProductContext.generatedAt &&
-              cachedProducts.fetchedAt &&
-              cachedProductContext.generatedAt >= cachedProducts.fetchedAt &&
-              JSON.stringify(normalizeOptions(cachedProductContext.options)) === JSON.stringify(normalizeOptions(options))) {
+          if (cachedProductContext.context &&
+               cachedProductContext.maxProducts === maxProducts &&
+               cachedProductContext.generatedAt &&
+               cachedProducts.fetchedAt &&
+               cachedProductContext.generatedAt >= cachedProducts.fetchedAt &&
+               JSON.stringify(normalizeOptions(cachedProductContext.options)) === JSON.stringify(normalizeOptions(options))) {
                console.log(`[Shopify] Using cached product context (${cachedProductContext.context.length} characters)`);
                return cachedProductContext.context;
           }
 
           // Fetch products (uses cache if available)
           const products = await fetchAllProductsWithParsedData();
-          
+
           // Generate context from products
           const context = generateProductContextFromProducts(products, maxProducts, options);
-          
+
           // Cache the generated context
           cachedProductContext = {
                context,
@@ -1313,13 +1310,13 @@ export async function generateProductContext(
           return context;
      } catch (error) {
           console.error('[Shopify] Error generating product context:', error);
-          
+
           // Return cached context if available, even if expired
           if (cachedProductContext.context) {
                console.log(`[Shopify] Using expired context cache as fallback`);
                return cachedProductContext.context;
           }
-          
+
           return '\n\nNote: Product catalog information is temporarily unavailable. Please provide general advice based on your knowledge.\n';
      }
 }
@@ -1365,14 +1362,14 @@ export async function generateProductContextForVariantIds(
  * @returns Promise<ProductSearchResult[]> - Array of top 3 matching products from live Shopify store
  */
 export async function searchProducts(
-     query: string, 
+     query: string,
      useTagRankingOrOptions: boolean | { useTagRanking?: boolean; onlyOnSale?: boolean; collection?: string } = true
 ): Promise<ProductSearchResult[]> {
      // Handle backward compatibility: if second param is boolean, treat as useTagRanking
-     const options = typeof useTagRankingOrOptions === 'boolean' 
+     const options = typeof useTagRankingOrOptions === 'boolean'
           ? { useTagRanking: useTagRankingOrOptions }
           : { useTagRanking: true, ...useTagRankingOrOptions };
-     
+
      const useTagRanking = options.useTagRanking !== false; // Default to true
      const onlyOnSale = options.onlyOnSale === true;
      const collectionFilter = options.collection;
@@ -1385,10 +1382,10 @@ export async function searchProducts(
                // Search within collection by adding collection handle to query
                searchQueryString = `collection:${collectionFilter} ${query}`.trim();
           }
-          
+
           // Increase limit if filtering by sale to get more results
           const productLimit = onlyOnSale ? 20 : 10;
-          
+
           console.log(`[Shopify] searchProducts start | query="${searchQueryString}" | tag-ranking=${useTagRanking} | onlyOnSale=${onlyOnSale} | collection=${collectionFilter || 'none'}`);
 
           const searchQuery = `
@@ -1472,19 +1469,19 @@ export async function searchProducts(
                const image = product.images.edges[0]?.node;
                const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
                const collectionHandles = product.collections?.edges.map((edge) => edge.node.handle) || [];
-               
+
                const price = parseFloat(variant?.price.amount || '0');
-               const compareAtPrice = variant?.compareAtPrice?.amount 
-                    ? parseFloat(variant.compareAtPrice.amount) 
+               const compareAtPrice = variant?.compareAtPrice?.amount
+                    ? parseFloat(variant.compareAtPrice.amount)
                     : null;
-               
+
                const isOnSale = compareAtPrice !== null && compareAtPrice > price;
-               const discountPercentage = isOnSale && compareAtPrice 
+               const discountPercentage = isOnSale && compareAtPrice
                     ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
                     : undefined;
-               
-               const primaryCollection = collectionHandles.length > 0 
-                    ? collectionHandles[0] 
+
+               const primaryCollection = collectionHandles.length > 0
+                    ? collectionHandles[0]
                     : undefined;
 
                // Extract structured product data from description HTML
@@ -1531,7 +1528,7 @@ export async function searchProducts(
           if (useTagRanking && filteredProducts.length > 0) {
                const queryLower = query.toLowerCase();
                const queryWords = queryLower.split(/\s+/).filter((w: string) => w.length > 2);
-               
+
                // Score products based on tag matches, collection matches, and description matches
                type ScoredProduct = { product: ProductSearchResult; score: number };
                const scoredProducts = filteredProducts.map((product: ProductSearchResult) => {
@@ -1541,7 +1538,7 @@ export async function searchProducts(
                     const productDescription = (product.description || '').toLowerCase();
                     const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
                     const productCollectionHandles = product.collection ? [product.collection.toLowerCase()] : [];
-                    
+
                     // Score based on query words
                     queryWords.forEach((word: string) => {
                          // Higher score for exact tag matches
@@ -1565,7 +1562,7 @@ export async function searchProducts(
                               score += 6; // Collection handle match
                          }
                     });
-                    
+
                     // Bonus scoring for multi-word matches in description
                     if (queryWords.length > 1 && productDescription) {
                          const allWordsMatch = queryWords.every(word => productDescription.includes(word));
@@ -1573,14 +1570,14 @@ export async function searchProducts(
                               score += 8; // Bonus for matching all query words in description
                          }
                     }
-                    
+
                     return { product, score };
                });
-               
+
                // Sort by score (highest first) and return top 3 products
                scoredProducts.sort((a: ScoredProduct, b: ScoredProduct) => b.score - a.score);
                const topProducts = scoredProducts.slice(0, 3).map((sp: ScoredProduct) => sp.product);
-               
+
                console.log(`[Shopify] searchProducts success | query="${query}" | count=${topProducts.length} | tag-collection-description-enhanced`);
                if (topProducts.length > 0) {
                     console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
@@ -1711,19 +1708,19 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                const image = product.images.edges[0]?.node;
                const collections = product.collections?.edges.map((edge) => edge.node.title) || [];
                const collectionHandles = product.collections?.edges.map((edge) => edge.node.handle) || [];
-               
+
                const price = parseFloat(variant?.price.amount || '0');
-               const compareAtPrice = variant?.compareAtPrice?.amount 
-                    ? parseFloat(variant.compareAtPrice.amount) 
+               const compareAtPrice = variant?.compareAtPrice?.amount
+                    ? parseFloat(variant.compareAtPrice.amount)
                     : null;
-               
+
                const isOnSale = compareAtPrice !== null && compareAtPrice > price;
-               const discountPercentage = isOnSale && compareAtPrice 
+               const discountPercentage = isOnSale && compareAtPrice
                     ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
                     : undefined;
-               
-               const primaryCollection = collectionHandles.length > 0 
-                    ? collectionHandles[0] 
+
+               const primaryCollection = collectionHandles.length > 0
+                    ? collectionHandles[0]
                     : undefined;
 
                // Get color axis from CSV mapping (getColorAxisForHandle handles undefined handles)
@@ -1751,13 +1748,13 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
           // If tag search returned no results, fall back to keyword search
           if (products.length === 0) {
                console.log(`[Shopify] Tag search returned 0 results, falling back to keyword search for tags: [${tags.join(', ')}]`);
-               
+
                // Use the tag names as keywords for a general product search
                const keywordQuery = tags.join(' OR ');
-               
+
                // Use the existing searchProducts function with keyword search
                products = await searchProducts(keywordQuery, { useTagRanking: false });
-               
+
                // Score and rank products based on how well they match the tag keywords
                if (products.length > 0) {
                     const tagsLower = tags.map(t => t.toLowerCase());
@@ -1766,7 +1763,7 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                          let score = 0;
                          const productTitle = product.title.toLowerCase();
                          const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
-                         
+
                          tagsLower.forEach((tag: string) => {
                               // Higher score for title matches
                               if (productTitle.includes(tag)) {
@@ -1777,17 +1774,17 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                                    score += 3;
                               }
                          });
-                         
+
                          return { product, score };
                     });
-                    
+
                     // Sort by score (highest first) and limit results
                     scoredProducts.sort((a: TagScoredProduct, b: TagScoredProduct) => b.score - a.score);
                     products = scoredProducts
                          .filter((sp: TagScoredProduct) => sp.score > 0) // Only include products with some match
                          .slice(0, limit)
                          .map((sp: TagScoredProduct) => sp.product);
-                    
+
                     console.log(`[Shopify] Keyword fallback search found ${products.length} products matching tags: [${tags.join(', ')}]`);
                }
           }
@@ -1800,26 +1797,26 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
                const productCollectionHandle = product.collection ? product.collection.toLowerCase() : '';
                const searchTags = tags.map((t: string) => t.toLowerCase());
-               
+
                let score = 0;
-               
+
                // Count tag matches (primary scoring)
-               const tagMatchCount = searchTags.filter((searchTag: string) => 
-                    productTags.some((productTag: string) => 
-                         productTag === searchTag || 
-                         productTag.includes(searchTag) || 
+               const tagMatchCount = searchTags.filter((searchTag: string) =>
+                    productTags.some((productTag: string) =>
+                         productTag === searchTag ||
+                         productTag.includes(searchTag) ||
                          searchTag.includes(productTag)
                     )
                ).length;
                score += tagMatchCount * 10; // Tag matches are most important
-               
+
                // Check description matches
                searchTags.forEach((searchTag: string) => {
                     if (productDescription.includes(searchTag)) {
                          score += 4; // Description match bonus
                     }
                });
-               
+
                // Check collection matches
                searchTags.forEach((searchTag: string) => {
                     if (productCollections.some((col: string) => col.includes(searchTag))) {
@@ -1829,7 +1826,7 @@ export async function searchProductsByTags(tags: string[], limit: number = 3): P
                          score += 6; // Collection handle match bonus
                     }
                });
-               
+
                return { product, score };
           });
 
@@ -1873,19 +1870,19 @@ export async function searchProductsByCollection(
 
      try {
           console.log(`[Shopify] searchProductsByCollection start | goals=[${goalKeys.join(', ')}] | limit=${limit}`);
-          
+
           // Get collection map (with live data if available)
           const collectionMap = await getCollectionMap();
-          
+
           // Find relevant collections for the goals
           const relevantCollections: string[] = [];
-          
+
           goalKeys.forEach(goal => {
                // Check each collection in the map
                Object.keys(collectionMap).forEach(collectionHandle => {
                     const keywords = collectionMap[collectionHandle];
                     const goalLower = goal.toLowerCase();
-                    
+
                     // Check if goal matches any keyword in this collection
                     if (keywords.some(keyword => {
                          const keywordLower = keyword.toLowerCase();
@@ -1897,31 +1894,31 @@ export async function searchProductsByCollection(
                     }
                });
           });
-          
+
           if (relevantCollections.length === 0) {
                console.log(`[Shopify] No relevant collections found for goals: [${goalKeys.join(', ')}]`);
                return [];
           }
-          
+
           console.log(`[Shopify] Found ${relevantCollections.length} relevant collections: [${relevantCollections.join(', ')}]`);
-          
+
           // Search products from each relevant collection
           const allProducts: ProductSearchResult[] = [];
           const seenVariants = new Set<string>();
-          
+
           for (const collectionHandle of relevantCollections.slice(0, 3)) { // Limit to top 3 collections
                try {
                     // Use a broad search query within the collection
                     const collectionKeywords = collectionMap[collectionHandle] || [];
                     const searchQuery = collectionKeywords.slice(0, 2).join(' ') || collectionHandle.split('-')[0];
-                    
+
                     console.log(`[Shopify] Searching collection "${collectionHandle}" with query: "${searchQuery}"`);
-                    
+
                     const products = await searchProducts(searchQuery, {
                          useTagRanking: true,
                          collection: collectionHandle
                     });
-                    
+
                     // Add unique products
                     products.forEach(product => {
                          if (!seenVariants.has(product.variantId)) {
@@ -1929,7 +1926,7 @@ export async function searchProductsByCollection(
                               seenVariants.add(product.variantId);
                          }
                     });
-                    
+
                     if (allProducts.length >= limit) {
                          break;
                     }
@@ -1937,7 +1934,7 @@ export async function searchProductsByCollection(
                     console.error(`[Shopify] Error searching collection "${collectionHandle}":`, error);
                }
           }
-          
+
           // Score and rank products based on description and collection relevance
           type CollectionScoredProduct = { product: ProductSearchResult; score: number };
           const scoredProducts = allProducts.map((product: ProductSearchResult) => {
@@ -1945,34 +1942,34 @@ export async function searchProductsByCollection(
                const productDescription = (product.description || '').toLowerCase();
                const productCollections = (product.collections || []).map((c: string) => c.toLowerCase());
                const productCollectionHandle = product.collection ? product.collection.toLowerCase() : '';
-               
+
                // Score based on goal matches in description
                goalKeys.forEach(goal => {
                     const goalLower = goal.toLowerCase();
                     if (productDescription.includes(goalLower)) {
                          score += 8; // Strong description match
                     }
-                    
+
                     // Check if product is in a relevant collection
                     if (relevantCollections.some(relCol => {
                          const relColLower = relCol.toLowerCase();
-                         return productCollectionHandle === relColLower || 
-                                productCollections.some(col => col.includes(relColLower));
+                         return productCollectionHandle === relColLower ||
+                              productCollections.some(col => col.includes(relColLower));
                     })) {
                          score += 10; // High score for being in a relevant collection
                     }
                });
-               
+
                return { product, score };
           });
-          
+
           // Sort by score and return top products
           scoredProducts.sort((a: CollectionScoredProduct, b: CollectionScoredProduct) => b.score - a.score);
           const topProducts = scoredProducts
                .filter(sp => sp.score > 0) // Only include products with some relevance
                .slice(0, limit)
                .map(sp => sp.product);
-          
+
           console.log(`[Shopify] searchProductsByCollection success | goals=[${goalKeys.join(', ')}] | count=${topProducts.length}`);
           if (topProducts.length > 0) {
                console.log('[Shopify] product titles:', topProducts.map((p: ProductSearchResult) => p.title).join(', '));
@@ -1985,7 +1982,7 @@ export async function searchProductsByCollection(
                     }
                });
           }
-          
+
           return topProducts;
      } catch (error) {
           console.error(`[Shopify] Error searching products by collection for goals "${goalKeys.join(', ')}":`, error);
@@ -2218,11 +2215,11 @@ export async function generateDynamicCombosFromProducts(
           if (seenVariantIds.has(mainProduct.variantId)) continue;
 
           const complementaryProducts = await findComplementaryProducts(mainProduct);
-          
+
           if (complementaryProducts.length > 0) {
                // Create combo with main product + complementary products
                const comboProducts = [mainProduct, ...complementaryProducts.slice(0, 2)]; // Max 3 products per combo
-               
+
                // Generate combo name based on products
                const productNames = comboProducts.map(p => {
                     // Extract key ingredient/nutrient from product title
@@ -2248,7 +2245,7 @@ export async function generateDynamicCombosFromProducts(
                     }
                     if (title.includes('collagen') || title.includes('collagène')) return 'Collagène';
                     if (title.includes('biotin') || title.includes('biotine')) return 'Biotine';
-                    
+
                     // Better fallback: extract meaningful part of title
                     // Try to get the main product name (before the em dash or first meaningful words)
                     const parts = p.title.split('–').map(s => s.trim());
@@ -2265,7 +2262,7 @@ export async function generateDynamicCombosFromProducts(
                               }
                          }
                     }
-                    
+
                     // Last resort: take first 2 words (skip brand if it's "Vigaia")
                     const words = p.title.split(/\s+/);
                     if (words[0].toLowerCase() === 'vigaia' && words.length > 1) {
@@ -2274,7 +2271,7 @@ export async function generateDynamicCombosFromProducts(
                     return words.slice(0, 2).join(' ');
                });
 
-               const comboName = productNames.length > 1 
+               const comboName = productNames.length > 1
                     ? `Combo ${productNames.join(' + ')}`
                     : `${productNames[0]} & Compléments`;
 
@@ -2441,19 +2438,19 @@ export async function getProductByVariantId(variantId: string): Promise<ProductS
           const image = product.images.edges[0]?.node;
           const collections = product.collections?.edges.map((edge: { node: { title: string } }) => edge.node.title) || [];
           const collectionHandles = product.collections?.edges.map((edge: { node: { handle: string } }) => edge.node.handle) || [];
-          
+
           const price = parseFloat(variant.price.amount);
-          const compareAtPrice = variant.compareAtPrice?.amount 
-               ? parseFloat(variant.compareAtPrice.amount) 
+          const compareAtPrice = variant.compareAtPrice?.amount
+               ? parseFloat(variant.compareAtPrice.amount)
                : null;
-          
+
           const isOnSale = compareAtPrice !== null && compareAtPrice > price;
-          const discountPercentage = isOnSale && compareAtPrice 
+          const discountPercentage = isOnSale && compareAtPrice
                ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
                : undefined;
-          
-          const primaryCollection = collectionHandles.length > 0 
-               ? collectionHandles[0] 
+
+          const primaryCollection = collectionHandles.length > 0
+               ? collectionHandles[0]
                : undefined;
 
           return {
@@ -2562,14 +2559,14 @@ async function retryWithBackoff<T>(
      initialDelayMs: number = 1000
 ): Promise<T> {
      let lastError: Error | null = null;
-     
+
      for (let attempt = 0; attempt <= maxRetries; attempt++) {
           try {
                return await fn();
           } catch (error: unknown) {
                const rateLimitError = error as RateLimitError;
                lastError = rateLimitError;
-               
+
                // If it's a 429 error and we have retries left, wait and retry
                if (rateLimitError.status === 429 && attempt < maxRetries) {
                     const delayMs = initialDelayMs * Math.pow(2, attempt);
@@ -2577,12 +2574,12 @@ async function retryWithBackoff<T>(
                     await sleep(delayMs);
                     continue;
                }
-               
+
                // For other errors or if we're out of retries, throw
                throw error;
           }
      }
-     
+
      throw lastError || new Error('Retry failed');
 }
 
@@ -2594,7 +2591,7 @@ export async function extractProductContentFromHTML(
      const cacheKey = `${storeDomain}:${productHandle}`;
      const cached = extractedContentCache.get(cacheKey);
      const now = Date.now();
-     
+
      // Use cache if valid, but use shorter TTL for rate-limited failures
      if (cached) {
           const cacheTTL = cached.isRateLimited ? RATE_LIMITED_CACHE_TTL_MS : EXTRACTED_CONTENT_CACHE_TTL_MS;
@@ -2640,7 +2637,7 @@ export async function extractProductContentFromHTML(
           // Fetch HTML from product page with retry logic for rate limiting
           const url = `https://${storeDomain}/products/${productHandle}`;
           console.log(`[Shopify] Fetching HTML from ${url}`);
-          
+
           let response: Response;
           try {
                response = await retryWithBackoff(async () => {
@@ -2651,14 +2648,14 @@ export async function extractProductContentFromHTML(
                               'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
                          }
                     });
-                    
+
                     // Throw error for 429 to trigger retry
                     if (res.status === 429) {
                          const error: RateLimitError = new Error(`Rate limited: ${res.status} ${res.statusText}`);
                          error.status = 429;
                          throw error;
                     }
-                    
+
                     return res;
                }, 3, 1000); // 3 retries, starting with 1 second delay
           } catch (error: unknown) {
@@ -2666,10 +2663,10 @@ export async function extractProductContentFromHTML(
                // If we still get 429 after retries, cache with short TTL
                if (rateLimitError.status === 429) {
                     console.error(`[Shopify] Failed to fetch HTML after retries: 429 Too Many Requests`);
-                    extractedContentCache.set(cacheKey, { 
-                         content: result, 
+                    extractedContentCache.set(cacheKey, {
+                         content: result,
                          fetchedAt: now,
-                         isRateLimited: true 
+                         isRateLimited: true
                     });
                     return result;
                }
@@ -2697,11 +2694,11 @@ export async function extractProductContentFromHTML(
           // Find and extract each section
           for (const [sectionKey, patterns] of Object.entries(sectionPatterns)) {
                const section = result[sectionKey as keyof ExtractedProductContent] as typeof result.bienfaits;
-               
+
                // Search for collapsible tab trigger with section name
                let triggerMatch: RegExpMatchArray | null = null;
                let foundSectionName: string | null = null;
-               
+
                for (const pattern of patterns) {
                     // Escape special regex characters in pattern (except apostrophes which we handle specially)
                     const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2732,11 +2729,11 @@ export async function extractProductContentFromHTML(
                // The target div should be after the trigger, within the same collapse component
                const triggerIndex = triggerMatch.index!;
                const htmlAfterTrigger = html.substring(triggerIndex);
-               
+
                // Look for the target div that follows this trigger
                // Try multiple patterns to handle different HTML structures
                let targetMatch: RegExpMatchArray | null = null;
-               
+
                // Pattern 1: Try to find the content div directly (most reliable)
                const contentDivMatch = htmlAfterTrigger.match(
                     /<div[^>]*class="[^"]*wt-collapse__target__content[^"]*rte[^"]*"[^>]*>([\s\S]*?)<\/div>/i
@@ -2744,7 +2741,7 @@ export async function extractProductContentFromHTML(
                if (contentDivMatch) {
                     targetMatch = ['', contentDivMatch[1]]; // Use content directly
                }
-               
+
                // Pattern 2: Find target div and extract content (non-greedy, handles simple nesting)
                if (!targetMatch) {
                     const simpleTargetMatch = htmlAfterTrigger.match(
@@ -2754,24 +2751,24 @@ export async function extractProductContentFromHTML(
                          targetMatch = simpleTargetMatch;
                     }
                }
-               
+
                // Pattern 3: Find target div start and extract until next collapse trigger
                if (!targetMatch) {
                     const targetStartMatch = htmlAfterTrigger.match(/<div[^>]*class="[^"]*wt-collapse__target[^"]*"[^>]*>/i);
                     if (targetStartMatch) {
                          const startPos = targetStartMatch.index! + targetStartMatch[0].length;
                          const remainingHtml = htmlAfterTrigger.substring(startPos);
-                         
+
                          // Find the next wt-collapse__trigger or end of collapse component
                          const nextTriggerMatch = remainingHtml.match(/<div[^>]*class="[^"]*wt-collapse__trigger/i);
                          const nextTriggerPos = nextTriggerMatch ? nextTriggerMatch.index! : remainingHtml.length;
-                         
+
                          // Extract content up to the next trigger
                          let extractedContent = remainingHtml.substring(0, nextTriggerPos);
-                         
+
                          // Remove trailing closing divs that belong to the next section
                          extractedContent = extractedContent.replace(/<\/div>\s*<\/div>\s*$/, '');
-                         
+
                          if (extractedContent.trim()) {
                               targetMatch = [targetStartMatch[0], extractedContent];
                          }
@@ -2810,10 +2807,10 @@ export async function extractProductContentFromHTML(
           }
 
           // Cache the successful result
-          extractedContentCache.set(cacheKey, { 
-               content: result, 
+          extractedContentCache.set(cacheKey, {
+               content: result,
                fetchedAt: now,
-               isRateLimited: false 
+               isRateLimited: false
           });
           console.log(`[Shopify] Extracted content for ${productHandle}:`, {
                bienfaits: result.bienfaits.found,
@@ -2826,10 +2823,10 @@ export async function extractProductContentFromHTML(
      } catch (error) {
           console.error(`[Shopify] Error extracting product content from HTML for ${productHandle}:`, error);
           // Cache empty result to avoid repeated failed requests (non-429 errors)
-          extractedContentCache.set(cacheKey, { 
-               content: result, 
+          extractedContentCache.set(cacheKey, {
+               content: result,
                fetchedAt: now,
-               isRateLimited: false 
+               isRateLimited: false
           });
           return result;
      }

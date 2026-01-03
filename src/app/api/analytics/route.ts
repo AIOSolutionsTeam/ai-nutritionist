@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            eventId: newEvent._id
+            eventId: newEvent.id
         }, { status: 201 });
     } catch (error) {
         console.error('[Analytics API] Error tracking event:', error);
