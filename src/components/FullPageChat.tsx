@@ -744,7 +744,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
   /**
    * Selects the best available natural-sounding female French voice.
    * Prioritizes high-quality voices (Google, Microsoft Natural, Apple Premium)
@@ -753,6 +752,43 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const getBestFrenchFemaleVoice = (): SpeechSynthesisVoice | null => {
     const voices = window.speechSynthesis.getVoices();
 
+    // Detect browser for logging (order matters - check specific browsers before generic Chrome)
+    const ua = navigator.userAgent.toLowerCase();
+    const isFirefox = ua.includes('firefox');
+    const isOpera = ua.includes('opr') || ua.includes('opera');
+    const isBrave = (navigator as { brave?: { isBrave?: () => Promise<boolean> } }).brave !== undefined;
+    const isVivaldi = ua.includes('vivaldi');
+    const isSamsungInternet = ua.includes('samsungbrowser');
+    const isEdge = ua.includes('edg');
+    const isChrome = ua.includes('chrome') && !isOpera && !isEdge && !isVivaldi && !isSamsungInternet;
+    const isSafari = ua.includes('safari') && !isChrome && !isOpera && !isEdge && !isVivaldi && !isSamsungInternet;
+
+    // Chromium-based browsers (share Chrome's voice capabilities)
+    const isChromiumBased = isChrome || isOpera || isBrave || isVivaldi || isEdge || isSamsungInternet;
+
+    const browserName = isFirefox ? 'Firefox'
+      : isBrave ? 'Brave (Chromium)'
+        : isOpera ? 'Opera (Chromium)'
+          : isVivaldi ? 'Vivaldi (Chromium)'
+            : isSamsungInternet ? 'Samsung Internet (Chromium)'
+              : isEdge ? 'Edge (Chromium)'
+                : isChrome ? 'Chrome'
+                  : isSafari ? 'Safari'
+                    : 'Unknown';
+
+    const voiceQualityNote = isChromiumBased
+      ? '✅ Chromium-based - Good voice support expected'
+      : isSafari
+        ? '✅ Safari - Apple voices available'
+        : isFirefox
+          ? '⚠️ Firefox - Limited voice support (OS voices only)'
+          : '❓ Unknown browser';
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`🎤 [TTS] Voice Selection - Browser: ${browserName}`);
+    console.log(`🎤 [TTS] ${voiceQualityNote}`);
+    console.log(`🎤 [TTS] Total voices available: ${voices.length}`);
+
     // Filter for French voices only (fr-FR, fr-CA, fr)
     const frenchVoices = voices.filter(voice =>
       voice.lang.startsWith('fr') ||
@@ -760,7 +796,12 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
       voice.lang === 'fr-CA'
     );
 
-    if (frenchVoices.length === 0) return null;
+    console.log(`🎤 [TTS] French voices found: ${frenchVoices.length}`);
+
+    if (frenchVoices.length === 0) {
+      console.warn('⚠️ [TTS] No French voices available! Will use browser default.');
+      return null;
+    }
 
     // Keywords indicating high-quality, natural-sounding voices (case-insensitive)
     const premiumKeywords = [
@@ -777,7 +818,6 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     const femaleNamePatterns = [
       // Apple iOS/macOS voices
       'amelie', 'marie', 'aurelie', 'audrey', 'amélie',
-      'thomas', // Note: Thomas is male, but listing common names for filtering
       // Microsoft voices
       'denise', 'caroline', 'sylvie', 'elise', 'brigitte',
       // Google voices  
@@ -838,24 +878,45 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
         score += 10;
       }
 
+      // Firefox penalty - its default voices are very robotic
+      // Only penalize if it's a generic "French" voice without quality indicators
+      if (isFirefox && !premiumKeywords.some(k => nameLower.includes(k))) {
+        // Don't add bonus, but log warning
+      }
+
       return { voice, score };
     });
 
     // Sort by score (highest first) and return the best match
     scoredVoices.sort((a, b) => b.score - a.score);
 
-    // Debug log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[TTS] Available French voices:', scoredVoices.map(v => ({
-        name: v.voice.name,
-        lang: v.voice.lang,
-        score: v.score,
-        local: v.voice.localService
-      })));
-      console.log('[TTS] Selected voice:', scoredVoices[0]?.voice.name);
+    // Log all available French voices with scores
+    console.log('🎤 [TTS] All French voices (sorted by score):');
+    scoredVoices.forEach((v, i) => {
+      const icon = i === 0 ? '✅' : '  ';
+      console.log(`${icon} ${i + 1}. "${v.voice.name}" (${v.voice.lang}) - Score: ${v.score} | Local: ${v.voice.localService}`);
+    });
+
+    const selectedVoice = scoredVoices[0]?.voice || null;
+
+    if (selectedVoice) {
+      console.log(`🎤 [TTS] ✅ SELECTED: "${selectedVoice.name}" (${selectedVoice.lang})`);
+
+      // Firefox warning
+      if (isFirefox) {
+        const hasPremiumVoice = premiumKeywords.some(k => selectedVoice.name.toLowerCase().includes(k));
+        if (!hasPremiumVoice) {
+          console.warn('⚠️ [TTS] Firefox detected with basic voices. Voice quality may be robotic.');
+          console.warn('💡 [TTS] For better voice quality, try Chrome, Edge, or Safari.');
+        }
+      }
+    } else {
+      console.warn('⚠️ [TTS] No suitable voice found!');
     }
 
-    return scoredVoices[0]?.voice || null;
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    return selectedVoice;
   };
 
   const handleTextToSpeech = (messageId: string, text: string) => {
