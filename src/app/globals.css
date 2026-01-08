@@ -2,17 +2,25 @@
 
 :root {
   /* Vigaia.com Premium Color Palette (HSL Values) */
-  --primary: 45 100% 65%;        /* Warm golden yellow #FFD966 */
+  --primary: 45 100% 65%;
+  /* Warm golden yellow #FFD966 */
   --primary-foreground: 0 0% 13%;
-  --secondary: 145 25% 72%;      /* Soft sage green #A8C9A5 */
-  --accent: 10 60% 85%;          /* Blush pink #F2C4B8 */
-  --background: 40 30% 98%;      /* Cream white #FFFDF8 */
-  --foreground: 0 0% 13%;        /* Rich charcoal #222222 */
-  --muted: 30 15% 92%;           /* Warm light gray */
-  --muted-foreground: 0 0% 45%;  /* Medium warm gray */
+  --secondary: 145 25% 72%;
+  /* Soft sage green #A8C9A5 */
+  --accent: 10 60% 85%;
+  /* Blush pink #F2C4B8 */
+  --background: 40 30% 98%;
+  /* Cream white #FFFDF8 */
+  --foreground: 0 0% 13%;
+  /* Rich charcoal #222222 */
+  --muted: 30 15% 92%;
+  /* Warm light gray */
+  --muted-foreground: 0 0% 45%;
+  /* Medium warm gray */
   --card: 0 0% 100%;
-  --banner: 0 0% 8%;             /* Deep charcoal for top banner */
-  
+  --banner: 0 0% 8%;
+  /* Deep charcoal for top banner */
+
   /* Legacy support for existing components */
   --text: hsl(var(--foreground));
   --text-muted: hsl(var(--muted-foreground));
@@ -47,6 +55,7 @@ body {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -57,6 +66,7 @@ body {
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -68,6 +78,7 @@ body {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -75,10 +86,12 @@ body {
 }
 
 @keyframes float {
+
   0%,
   100% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-8px);
   }
@@ -88,6 +101,7 @@ body {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -97,6 +111,7 @@ body {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -141,17 +156,22 @@ body {
 /* Typography utilities - Vigaia style */
 .headline {
   font-family: var(--font-playfair), serif;
-  font-weight: 400; /* Light/regular weight for elegant serif */
+  font-weight: 400;
+  /* Light/regular weight for elegant serif */
   text-transform: uppercase;
-  letter-spacing: 0.1em; /* Generous letter-spacing 0.1-0.15em */
+  letter-spacing: 0.1em;
+  /* Generous letter-spacing 0.1-0.15em */
 }
 
 .subheading {
   font-family: var(--font-inter), sans-serif;
-  font-weight: 300; /* Light weight */
+  font-weight: 300;
+  /* Light weight */
   text-transform: lowercase;
-  letter-spacing: 0.2em; /* Wide tracking */
-  font-size: 0.75rem; /* Small text-xs */
+  letter-spacing: 0.2em;
+  /* Wide tracking */
+  font-size: 0.75rem;
+  /* Small text-xs */
   color: hsl(var(--muted-foreground));
 }
 
@@ -172,7 +192,8 @@ body {
 /* Button styles - Vigaia style */
 .btn-outline {
   border: 1px solid hsl(var(--foreground));
-  border-radius: 9999px; /* rounded-full */
+  border-radius: 9999px;
+  /* rounded-full */
   padding: 0.75rem 2rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -250,31 +271,53 @@ nav a:hover::after {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+/* Mobile viewport height fix - handles keyboard and address bar changes */
+@supports (height: 100dvh) {
+  .h-screen-dynamic {
+    height: 100dvh;
+  }
+}
+
+@supports not (height: 100dvh) {
+  .h-screen-dynamic {
+    height: 100vh;
+    height: calc(var(--vh, 1vh) * 100);
+  }
+}
+
+/* Prevent body scroll when chat modal is open */
+body:has(.chat-fullpage-active) {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 /* Mobile responsive improvements */
 @media (max-width: 640px) {
+
   /* Ensure text wraps properly on mobile */
   * {
     word-wrap: break-word;
     overflow-wrap: break-word;
   }
-  
+
   /* Prevent horizontal scrolling */
   body {
     overflow-x: hidden;
   }
-  
+
   /* Better touch targets for mobile */
-  button, a {
+  button,
+  a {
     min-height: 44px;
     min-width: 44px;
   }
-  
+
   /* Improve textarea on mobile */
   textarea {
     -webkit-appearance: none;
     appearance: none;
   }
-  
+
   /* Prevent zoom on input focus - ensure minimum 16px font-size */
   input[type="text"],
   input[type="email"],

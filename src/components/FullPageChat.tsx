@@ -138,7 +138,7 @@ const TypingIndicator = () => (
 
 // Initial Loading Screen Component
 const InitialLoadingScreen = () => (
-  <div className="fixed inset-0 w-screen h-screen bg-background z-50 flex flex-col items-center justify-center">
+  <div className="fixed inset-0 w-screen h-[100dvh] bg-background z-50 flex flex-col items-center justify-center">
     <div className="flex flex-col items-center justify-center space-y-6 animate-fade-in">
       {/* Animated Logo/Icon */}
       <div className="relative">
@@ -2239,7 +2239,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   }
 
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-background z-50 flex flex-col">
+    <div className="chat-fullpage-active fixed inset-0 w-screen h-[100dvh] bg-background z-50 flex flex-col">
       {/* Minimal Header */}
       <div className="w-full bg-card border-b border-muted/20 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
         <div className="max-w-3xl mx-auto w-full flex items-center justify-between gap-2">
