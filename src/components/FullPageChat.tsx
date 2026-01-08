@@ -730,6 +730,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const activeTypingMessagesRef = useRef<Set<string>>(new Set());
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const selectedVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
   // Check if any products have been recommended in the chat history
@@ -742,6 +743,119 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  /**
+   * Selects the best available natural-sounding female French voice.
+   * Prioritizes high-quality voices (Google, Microsoft Natural, Apple Premium)
+   * across all platforms: iOS, Android, macOS, Windows.
+   */
+  const getBestFrenchFemaleVoice = (): SpeechSynthesisVoice | null => {
+    const voices = window.speechSynthesis.getVoices();
+
+    // Filter for French voices only (fr-FR, fr-CA, fr)
+    const frenchVoices = voices.filter(voice =>
+      voice.lang.startsWith('fr') ||
+      voice.lang === 'fr-FR' ||
+      voice.lang === 'fr-CA'
+    );
+
+    if (frenchVoices.length === 0) return null;
+
+    // Keywords indicating high-quality, natural-sounding voices (case-insensitive)
+    const premiumKeywords = [
+      'natural',      // Microsoft Natural voices
+      'neural',       // Neural/AI voices
+      'wavenet',      // Google WaveNet
+      'enhanced',     // Enhanced quality
+      'premium',      // Premium tier
+      'hd',           // High definition
+      'studio',       // Studio quality
+    ];
+
+    // Female voice name patterns across platforms
+    const femaleNamePatterns = [
+      // Apple iOS/macOS voices
+      'amelie', 'marie', 'aurelie', 'audrey', 'amélie',
+      'thomas', // Note: Thomas is male, but listing common names for filtering
+      // Microsoft voices
+      'denise', 'caroline', 'sylvie', 'elise', 'brigitte',
+      // Google voices  
+      'google français', // Often female by default
+      // Common female indicators
+      'female', 'femme', 'féminin',
+    ];
+
+    // Male voice patterns to exclude
+    const malePatterns = [
+      'thomas', 'nicolas', 'henri', 'male', 'homme', 'masculin',
+      'claude', 'paul', 'pierre', 'jean', 'guillaume',
+    ];
+
+    // Score each voice based on quality and gender preference
+    const scoredVoices = frenchVoices.map(voice => {
+      let score = 0;
+      const nameLower = voice.name.toLowerCase();
+
+      // Bonus for premium/natural voice indicators (+50 points each)
+      premiumKeywords.forEach(keyword => {
+        if (nameLower.includes(keyword)) {
+          score += 50;
+        }
+      });
+
+      // Bonus for female voice patterns (+30 points)
+      femaleNamePatterns.forEach(pattern => {
+        if (nameLower.includes(pattern) && !malePatterns.some(male => nameLower.includes(male))) {
+          score += 30;
+        }
+      });
+
+      // Penalty for male voice patterns (-100 points)
+      malePatterns.forEach(pattern => {
+        if (nameLower.includes(pattern)) {
+          score -= 100;
+        }
+      });
+
+      // Bonus for Google voices (+20 points - generally good quality)
+      if (nameLower.includes('google')) {
+        score += 20;
+      }
+
+      // Bonus for Microsoft voices (+15 points)
+      if (nameLower.includes('microsoft')) {
+        score += 15;
+      }
+
+      // Bonus for local/native voices over network voices for reliability (+5)
+      if (voice.localService) {
+        score += 5;
+      }
+
+      // Prefer fr-FR over fr-CA for standard French (+10)
+      if (voice.lang === 'fr-FR') {
+        score += 10;
+      }
+
+      return { voice, score };
+    });
+
+    // Sort by score (highest first) and return the best match
+    scoredVoices.sort((a, b) => b.score - a.score);
+
+    // Debug log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TTS] Available French voices:', scoredVoices.map(v => ({
+        name: v.voice.name,
+        lang: v.voice.lang,
+        score: v.score,
+        local: v.voice.localService
+      })));
+      console.log('[TTS] Selected voice:', scoredVoices[0]?.voice.name);
+    }
+
+    return scoredVoices[0]?.voice || null;
   };
 
   const handleTextToSpeech = (messageId: string, text: string) => {
@@ -769,10 +883,26 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     if (!cleanText) return;
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'fr-FR'; // French language
-    utterance.rate = 1.0; // Normal speed
-    utterance.pitch = 1.0; // Normal pitch
-    utterance.volume = 1.0; // Full volume
+
+    // Use cached voice if available, otherwise try to get one dynamically
+    const bestVoice = selectedVoiceRef.current || getBestFrenchFemaleVoice();
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+      utterance.lang = bestVoice.lang;
+      // Cache it for next time if not already cached
+      if (!selectedVoiceRef.current) {
+        selectedVoiceRef.current = bestVoice;
+      }
+    } else {
+      // Fallback to French language if no specific voice found
+      utterance.lang = 'fr-FR';
+    }
+
+    // Slightly slower rate for more natural, human-like speech
+    utterance.rate = 0.95;
+    // Slightly higher pitch for feminine voice quality
+    utterance.pitch = 1.05;
+    utterance.volume = 1.0;
 
     utterance.onend = () => {
       setSpeakingMessageId(null);
@@ -788,6 +918,34 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
     setSpeakingMessageId(messageId);
     window.speechSynthesis.speak(utterance);
   };
+
+  // Preload voices when component mounts (voices load asynchronously)
+  useEffect(() => {
+    const loadVoices = () => {
+      const voice = getBestFrenchFemaleVoice();
+      if (voice) {
+        selectedVoiceRef.current = voice;
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[TTS] Voice preloaded and cached:', voice.name);
+        }
+      }
+    };
+
+    // Try to load voices immediately
+    loadVoices();
+
+    // Some browsers (Chrome, Edge) fire this event when voices are ready
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cleanup speech on unmount
   useEffect(() => {
