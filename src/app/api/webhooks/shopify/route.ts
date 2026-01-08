@@ -31,18 +31,26 @@ interface ShopifyOrder {
  */
 function verifyShopifyWebhook(body: string, signature: string | null): boolean {
     const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+    const nodeEnv = process.env.NODE_ENV;
+    console.log({ secret, nodeEnv })
+
+    console.log('[Shopify Webhook] Verification check:');
+    console.log('  - SECRET configured:', secret ? 'YES (' + secret.substring(0, 4) + '...)' : 'NO');
+    console.log('  - NODE_ENV:', nodeEnv);
 
     if (!secret) {
-        console.warn('[Shopify Webhook] SHOPIFY_WEBHOOK_SECRET not configured');
+        console.warn('[Shopify Webhook] ⚠️ SHOPIFY_WEBHOOK_SECRET not configured');
         // In development, allow webhooks without signature verification
-        if (process.env.NODE_ENV === 'development') {
+        if (nodeEnv === 'development') {
+            console.log('[Shopify Webhook] ✅ Bypassing verification (development mode)');
             return true;
         }
+        console.error('[Shopify Webhook] ❌ Rejecting - no secret in production');
         return false;
     }
 
     if (!signature) {
-        console.warn('[Shopify Webhook] No signature provided');
+        console.warn('[Shopify Webhook] ❌ No signature provided in request header');
         return false;
     }
 
@@ -51,7 +59,9 @@ function verifyShopifyWebhook(body: string, signature: string | null): boolean {
         .update(body, 'utf8')
         .digest('base64');
 
-    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+    const isValid = crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+    console.log('[Shopify Webhook] Signature verification:', isValid ? '✅ VALID' : '❌ INVALID');
+    return isValid;
 }
 
 /**
@@ -96,12 +106,24 @@ function extractSessionId(order: ShopifyOrder): string | null {
 }
 
 export async function POST(request: NextRequest) {
+    console.log('========================================');
+    console.log('[Shopify Webhook] 🚀 WEBHOOK CALLED!');
+    console.log('[Shopify Webhook] Timestamp:', new Date().toISOString());
+    console.log('[Shopify Webhook] Method:', request.method);
+    console.log('[Shopify Webhook] URL:', request.url);
+    console.log('========================================');
+
     try {
         const body = await request.text();
         const signature = request.headers.get('x-shopify-hmac-sha256');
         const topic = request.headers.get('x-shopify-topic');
+        const shopDomain = request.headers.get('x-shopify-shop-domain');
 
-        console.log('[Shopify Webhook] Received:', topic);
+        console.log('[Shopify Webhook] Headers received:');
+        console.log('  - Topic:', topic || 'MISSING');
+        console.log('  - Shop Domain:', shopDomain || 'MISSING');
+        console.log('  - Signature present:', signature ? 'YES' : 'NO');
+        console.log('  - Body length:', body.length, 'bytes');
 
         // Verify webhook signature
         if (!verifyShopifyWebhook(body, signature)) {

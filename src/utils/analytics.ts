@@ -117,11 +117,11 @@ export class AnalyticsService {
                     await this.sendToAnalyticsEndpoint(eventData)
                }
 
-               // Persist to MongoDB
+               // Persist to Firestore
                if (typeof window === 'undefined') {
                     // Server-side: direct DB access
                     try {
-                         console.log('[Analytics] Server-side: Persisting to MongoDB:', eventName)
+                         console.log('[Analytics] Server-side: Persisting to Firestore:', eventName)
                          const { analyticsEventService } = await import('../lib/analytics-event')
                          const { dbService } = await import('../lib/db')
                          await dbService.connect()
@@ -133,7 +133,7 @@ export class AnalyticsService {
                          })
                          console.log('[Analytics] Event saved to Firestore:', savedEvent.id)
                     } catch (dbError) {
-                         console.error('[Analytics] Failed to persist event to MongoDB:', dbError)
+                         console.error('[Analytics] Failed to persist event to Firestore:', dbError)
                     }
                } else {
                     // Client-side: send to /api/analytics endpoint

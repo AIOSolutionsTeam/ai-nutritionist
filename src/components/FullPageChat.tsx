@@ -732,6 +732,9 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
+  // Check if any products have been recommended in the chat history
+  const hasRecommendedProducts = messages.some(m => !m.isUser && m.recommendedProducts && m.recommendedProducts.length > 0);
+
   const generateMessageId = (): string => {
     messageIdCounterRef.current += 1;
     return `${Date.now()}_${messageIdCounterRef.current}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1925,6 +1928,19 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
 
     // Check if user is asking to generate a nutrition plan (intent detection)
     if (isOnboardingComplete && userId && detectPlanGenerationIntent(currentInput)) {
+      // If no products have been recommended yet, explain that we need recommendations first
+      if (!hasRecommendedProducts) {
+        const noProductsMessage: Message = {
+          id: generateMessageId(),
+          text: "Pour pouvoir générer votre plan nutritionnel personnalisé, j'ai d'abord besoin de vous recommander des produits adaptés à vos besoins. Continuons à discuter pour trouver ce qui vous convient le mieux ! 🥗",
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, noProductsMessage]);
+        setIsLoading(false);
+        return;
+      }
+
       // Add confirmation message before generating
       const confirmMessage: Message = {
         id: generateMessageId(),
@@ -2250,7 +2266,7 @@ export default function FullPageChat({ isConsultationStarted, onBack }: FullPage
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {isOnboardingComplete && userId && (
+            {isOnboardingComplete && userId && hasRecommendedProducts && (
               <button
                 onClick={handleGeneratePlan}
                 disabled={isGeneratingPlan || isLoading}
