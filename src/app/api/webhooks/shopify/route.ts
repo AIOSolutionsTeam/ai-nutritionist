@@ -32,15 +32,13 @@ interface ShopifyOrder {
 function verifyShopifyWebhook(body: string, signature: string | null): boolean {
     const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
     const nodeEnv = process.env.NODE_ENV;
-    console.log({ secret, nodeEnv })
 
     console.log('[Shopify Webhook] Verification check:');
-    console.log('  - SECRET configured:', secret ? 'YES (' + secret.substring(0, 4) + '...)' : 'NO');
+    console.log('  - SECRET configured:', secret ? 'YES (length: ' + secret.length + ', first 8 chars: ' + secret.substring(0, 8) + ')' : 'NO');
     console.log('  - NODE_ENV:', nodeEnv);
 
     if (!secret) {
         console.warn('[Shopify Webhook] ⚠️ SHOPIFY_WEBHOOK_SECRET not configured');
-        // In development, allow webhooks without signature verification
         if (nodeEnv === 'development') {
             console.log('[Shopify Webhook] ✅ Bypassing verification (development mode)');
             return true;
@@ -54,10 +52,26 @@ function verifyShopifyWebhook(body: string, signature: string | null): boolean {
         return false;
     }
 
+    // Compute HMAC
     const hmac = crypto
         .createHmac('sha256', secret)
         .update(body, 'utf8')
         .digest('base64');
+
+    // Debug: Compare signatures
+    console.log('[Shopify Webhook] Signature comparison:');
+    console.log('  - Received signature (first 20 chars):', signature.substring(0, 20) + '...');
+    console.log('  - Computed HMAC (first 20 chars):', hmac.substring(0, 20) + '...');
+    console.log('  - Received length:', signature.length);
+    console.log('  - Computed length:', hmac.length);
+    console.log('  - Body length:', body.length);
+    console.log('  - Body first 100 chars:', body.substring(0, 100));
+
+    // Check if lengths match before timingSafeEqual (it throws if different lengths)
+    if (Buffer.from(hmac).length !== Buffer.from(signature).length) {
+        console.error('[Shopify Webhook] ❌ Signature length mismatch!');
+        return false;
+    }
 
     const isValid = crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
     console.log('[Shopify Webhook] Signature verification:', isValid ? '✅ VALID' : '❌ INVALID');

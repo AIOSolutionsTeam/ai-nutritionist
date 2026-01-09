@@ -55,4 +55,10 @@ export const COLLECTIONS = {
     USER_PROFILES: 'userProfiles',
     ANALYTICS_EVENTS: 'analyticsEvents',
     AI_USAGE: 'aiUsage',
+    // Response caching collections
+    RESPONSE_CACHE_PRODUCT: 'responseCacheProduct',
+    RESPONSE_CACHE_PROFILE: 'responseCacheProfile',
+    RESPONSE_CACHE_FAQ: 'responseCacheFAQ',
+    CACHE_FREQUENCY: 'cacheFrequency',
 } as const;
+

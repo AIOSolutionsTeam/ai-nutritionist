@@ -4,6 +4,7 @@ import { searchProducts, searchProductsByTags, searchProductsByCollection, Produ
 import { analytics } from '../../../utils/analytics'
 import { dbService, IUserProfile } from '../../../lib/db'
 import { scoreProductsWithColorAxis } from '../../../lib/product-recommendation-filter'
+import { responseCacheService } from '../../../lib/response-cache'
 
 /**
  * Simple in-memory rate limiter to prevent excessive API calls
@@ -54,12 +55,12 @@ const HEALTH_CHECK_THROTTLE_MS = 10 * 60 * 1000 // 10 minutes between health che
 function shouldPerformHealthCheck(provider: 'openai' | 'gemini'): boolean {
      const lastCheck = healthCheckThrottleMap.get(provider)
      const now = Date.now()
-     
+
      if (!lastCheck) {
           // First check for this provider, allow it
           return true
      }
-     
+
      // Only allow if enough time has passed since last check
      return (now - lastCheck) >= HEALTH_CHECK_THROTTLE_MS
 }
@@ -339,7 +340,7 @@ function scoreProductsWithStructuredData(
 
      // First, get color axis boost scores
      const colorAxisScored = scoreProductsWithColorAxis(products, goalKeys)
-     
+
      // Create a map for quick lookup of color axis boosts
      const colorAxisBoostMap = new Map<string, number>()
      colorAxisScored.forEach(p => {
@@ -361,7 +362,7 @@ function scoreProductsWithStructuredData(
           if (product.targetAudience && product.targetAudience.length > 0 && userProfile) {
                const audienceLower = product.targetAudience.map(a => a.toLowerCase())
                let audienceScore = 0
-               
+
                // Age-based matching
                if (userProfile.age) {
                     if (userProfile.age >= 65) {
@@ -409,10 +410,10 @@ function scoreProductsWithStructuredData(
                     if (audienceLower.some(a => {
                          const aLower = a.toLowerCase()
                          return aLower.includes(goalLower) ||
-                                (goalLower.includes('energie') && (aLower.includes('fatigué') || aLower.includes('fatigue'))) ||
-                                (goalLower.includes('immun') && (aLower.includes('immunité') || aLower.includes('défense'))) ||
-                                (goalLower.includes('sport') && (aLower.includes('sportif') || aLower.includes('athlète'))) ||
-                                (goalLower.includes('beaute') && (aLower.includes('peau') || aLower.includes('beauté')))
+                              (goalLower.includes('energie') && (aLower.includes('fatigué') || aLower.includes('fatigue'))) ||
+                              (goalLower.includes('immun') && (aLower.includes('immunité') || aLower.includes('défense'))) ||
+                              (goalLower.includes('sport') && (aLower.includes('sportif') || aLower.includes('athlète'))) ||
+                              (goalLower.includes('beaute') && (aLower.includes('peau') || aLower.includes('beauté')))
                     })) {
                          score += 2
                          scoreBreakdown.push(`Audience-Goal: +2 (${goal})`)
@@ -427,11 +428,11 @@ function scoreProductsWithStructuredData(
                     const goalLower = goal.toLowerCase()
                     if (benefitsLower.some(b => {
                          return b.includes(goalLower) ||
-                                (goalLower.includes('energie') && (b.includes('énergie') || b.includes('fatigue'))) ||
-                                (goalLower.includes('immun') && (b.includes('immunité') || b.includes('défense'))) ||
-                                (goalLower.includes('sport') && (b.includes('muscle') || b.includes('récupération'))) ||
-                                (goalLower.includes('beaute') && (b.includes('peau') || b.includes('collagène'))) ||
-                                (goalLower.includes('sommeil') && (b.includes('sommeil') || b.includes('relaxation')))
+                              (goalLower.includes('energie') && (b.includes('énergie') || b.includes('fatigue'))) ||
+                              (goalLower.includes('immun') && (b.includes('immunité') || b.includes('défense'))) ||
+                              (goalLower.includes('sport') && (b.includes('muscle') || b.includes('récupération'))) ||
+                              (goalLower.includes('beaute') && (b.includes('peau') || b.includes('collagène'))) ||
+                              (goalLower.includes('sommeil') && (b.includes('sommeil') || b.includes('relaxation')))
                     })) {
                          score += 2
                          scoreBreakdown.push(`Benefits-Goal: +2 (${goal})`)
@@ -466,7 +467,7 @@ function scoreProductsWithStructuredData(
 
      // Sort by relevance score (highest first)
      const sorted = scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
-     
+
      // Log top 10 products with full breakdown
      console.log('[Scoring] ========================================');
      console.log('[Scoring] TOP 10 PRODUCTS BY TOTAL SCORE:');
@@ -475,7 +476,7 @@ function scoreProductsWithStructuredData(
           console.log(`[Scoring] ${idx + 1}. "${p.title}" (${p.colorAxis || 'N/A'}): ${p.relevanceScore} points (ColorAxis: ${colorAxisBoost > 0 ? '+' : ''}${colorAxisBoost})`);
      });
      console.log('[Scoring] ========================================');
-     
+
      return sorted
 }
 
@@ -570,7 +571,7 @@ function performBackgroundHealthCheck(userId?: string): void {
                }
 
                console.log('[API] Starting background health check for providers in cooldown...')
-               
+
                const healthChecks: Promise<{ provider: 'openai' | 'gemini'; healthy: boolean }>[] = []
 
                if (shouldCheckOpenAI) {
@@ -629,10 +630,10 @@ function performBackgroundHealthCheck(userId?: string): void {
  */
 function createFallbackResponse(userMessage: string): StructuredNutritionResponse {
      const messageLower = userMessage.toLowerCase()
-     
+
      // Detect common question types and provide appropriate fallback responses
      let reply = "😔 Oups ! Je rencontre actuellement un petit problème technique de mon côté. "
-     
+
      if (messageLower.includes('éviter') || messageLower.includes('interaction') || messageLower.includes('compatible')) {
           reply += "Mais je peux quand même vous donner quelques conseils généraux sur les compléments à éviter ensemble :\n\n"
           reply += "• **Fer et Calcium** : Ne pas prendre ensemble, car le calcium peut réduire l'absorption du fer.\n"
@@ -655,7 +656,7 @@ function createFallbackResponse(userMessage: string): StructuredNutritionRespons
           reply += "Je ne peux pas traiter votre demande pour le moment, mais je travaille à résoudre ce problème ! 🔧 "
           reply += "Veuillez réessayer dans quelques instants. Si le problème persiste, n'hésitez pas à contacter notre service client - ils sont là pour vous aider ! 💚"
      }
-     
+
      return {
           reply,
           products: [],
@@ -672,11 +673,11 @@ function formatUserProfileContext(userProfile: IUserProfile | null): string {
      }
 
      const contextParts: string[] = []
-     
+
      // Basic info
      contextParts.push(`Âge: ${userProfile.age} ans`)
      contextParts.push(`Sexe: ${userProfile.gender === 'male' ? 'Homme' : userProfile.gender === 'female' ? 'Femme' : userProfile.gender}`)
-     
+
      // Goals
      if (userProfile.goals && userProfile.goals.length > 0) {
           const goalsText = userProfile.goals.map(g => {
@@ -694,7 +695,7 @@ function formatUserProfileContext(userProfile: IUserProfile | null): string {
           }).join(', ')
           contextParts.push(`Objectifs: ${goalsText}`)
      }
-     
+
      // Allergies
      if (userProfile.allergies && userProfile.allergies.length > 0) {
           const allergiesText = userProfile.allergies.map(a => {
@@ -780,7 +781,7 @@ export async function POST(request: NextRequest) {
                     { status: 400 }
                )
           }
-          
+
           const { message, userId, provider = 'gemini', conversationHistory, contextVariantIds } = body
 
           if (!message) {
@@ -789,7 +790,7 @@ export async function POST(request: NextRequest) {
                     { status: 400 }
                )
           }
-          
+
           // EDGE CASE: Validate message is not just whitespace
           if (typeof message !== 'string' || message.trim().length === 0) {
                return NextResponse.json(
@@ -797,20 +798,20 @@ export async function POST(request: NextRequest) {
                     { status: 400 }
                )
           }
-          
+
           // EDGE CASE: Limit message length to prevent token limit issues
           const MAX_MESSAGE_LENGTH = 2000
-          const trimmedMessage = message.length > MAX_MESSAGE_LENGTH 
-               ? message.substring(0, MAX_MESSAGE_LENGTH) 
+          const trimmedMessage = message.length > MAX_MESSAGE_LENGTH
+               ? message.substring(0, MAX_MESSAGE_LENGTH)
                : message
           if (message.length > MAX_MESSAGE_LENGTH) {
                console.warn(`[API] Message too long (${message.length} chars), truncating to ${MAX_MESSAGE_LENGTH}`)
           }
 
           // Rate limiting: use userId if available, otherwise use IP address
-          const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0] || 
-                          request.headers.get('x-real-ip') || 
-                          'unknown'
+          const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0] ||
+               request.headers.get('x-real-ip') ||
+               'unknown'
           const rateLimitId = userId || clientIp
           const rateLimit = checkRateLimit(rateLimitId)
 
@@ -818,11 +819,11 @@ export async function POST(request: NextRequest) {
                const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
                console.warn(`[API] Rate limit exceeded for ${rateLimitId}. Retry after ${retryAfter}s`)
                return NextResponse.json(
-                    { 
+                    {
                          error: 'Rate limit exceeded. Please wait before making another request.',
-                         retryAfter 
+                         retryAfter
                     },
-                    { 
+                    {
                          status: 429,
                          headers: {
                               'Retry-After': String(retryAfter),
@@ -842,7 +843,7 @@ export async function POST(request: NextRequest) {
                          if (!msg || typeof msg !== 'object') return false
                          const m = msg as { role?: unknown; content?: unknown }
                          return (m.role === 'user' || m.role === 'assistant') &&
-                                typeof m.content === 'string'
+                              typeof m.content === 'string'
                     })
                     .map((msg) => ({
                          role: msg.role,
@@ -866,11 +867,11 @@ export async function POST(request: NextRequest) {
 
           // Use trimmed message for processing
           const messageToProcess = trimmedMessage
-          
+
           // Fetch user profile if userId is provided
           let userProfile: IUserProfile | null = null
           let userProfileContext = ''
-          
+
           if (userId) {
                try {
                     await dbService.connect()
@@ -885,6 +886,40 @@ export async function POST(request: NextRequest) {
                }
           }
 
+          // ==================== CACHE LOOKUP ====================
+          // Check cache before calling AI to save costs on repetitive questions
+          try {
+               const cachedResponse = await responseCacheService.lookup(messageToProcess, userProfile);
+               if (cachedResponse) {
+                    console.log(`[API] ✅ Cache HIT (${cachedResponse.type}) - returning cached response`);
+
+                    // Track cache hit
+                    try {
+                         await analytics.trackEvent('cache_hit', {
+                              category: 'cache',
+                              cacheType: cachedResponse.type,
+                              userId: userId || 'anonymous'
+                         });
+                    } catch (analyticsError) {
+                         console.error('[API] Analytics tracking error (non-fatal):', analyticsError);
+                    }
+
+                    const response = {
+                         ...cachedResponse.response,
+                         recommendedCombos: undefined,
+                         suggestedCombo: undefined,
+                         userId: userId || null,
+                         provider: 'cache',
+                         timestamp: new Date().toISOString()
+                    };
+
+                    return NextResponse.json(response);
+               }
+          } catch (cacheError) {
+               console.error('[API] Cache lookup error (non-fatal, proceeding to AI):', cacheError);
+               // Continue to AI call if cache fails
+          }
+
           // Select AI provider based on request or environment variable
           const selectedProvider = provider || process.env.AI_PROVIDER || 'openai'
           const fallbackProvider = selectedProvider === 'gemini' ? 'openai' : 'gemini'
@@ -897,7 +932,7 @@ export async function POST(request: NextRequest) {
                const openaiRemaining = openaiService.getCooldownRemainingMs()
                const geminiRemaining = geminiService.getCooldownRemainingMs()
                console.warn(`[API] Both providers in cooldown - OpenAI: ${Math.ceil(openaiRemaining / 1000)}s, Gemini: ${Math.ceil(geminiRemaining / 1000)}s. Skipping to fallback response.`)
-               
+
                // Track this scenario
                try {
                     await analytics.trackEvent('ai_both_providers_cooldown', {
@@ -912,7 +947,7 @@ export async function POST(request: NextRequest) {
 
                // Skip directly to fallback response
                const nutritionResponse = createFallbackResponse(message)
-               
+
                const response = {
                     ...nutritionResponse,
                     recommendedProducts: [],
@@ -1052,21 +1087,21 @@ export async function POST(request: NextRequest) {
 
                // Fallback to the other provider if one fails
                console.log(`Falling back to ${fallbackProvider}`)
-               
+
                // Check if fallback provider is also in cooldown before attempting
-               const fallbackInCooldown = fallbackProvider === 'gemini' 
+               const fallbackInCooldown = fallbackProvider === 'gemini'
                     ? geminiService.isInCooldown()
                     : openaiService.isInCooldown()
-               
+
                if (fallbackInCooldown) {
                     const remaining = fallbackProvider === 'gemini'
                          ? geminiService.getCooldownRemainingMs()
                          : openaiService.getCooldownRemainingMs()
                     console.warn(`[API] Fallback provider ${fallbackProvider} also in cooldown (${Math.ceil(remaining / 1000)}s remaining). Skipping to fallback response.`)
-                    
-                         // Skip directly to fallback response without attempting API call
+
+                    // Skip directly to fallback response without attempting API call
                     nutritionResponse = createFallbackResponse(messageToProcess)
-                    
+
                     // Background health check: verify if APIs are back online (non-blocking)
                     performBackgroundHealthCheck(userId)
                } else {
@@ -1127,7 +1162,7 @@ export async function POST(request: NextRequest) {
                          // Instead of throwing an error, provide a fallback response
                          console.warn('[API] Both AI providers failed, using fallback response')
                          nutritionResponse = createFallbackResponse(messageToProcess)
-                         
+
                          // Background health check: verify if APIs are back online (non-blocking)
                          performBackgroundHealthCheck(userId)
                     }
@@ -1139,7 +1174,7 @@ export async function POST(request: NextRequest) {
                console.error('[API] nutritionResponse is null or undefined, using fallback')
                nutritionResponse = createFallbackResponse(messageToProcess)
           }
-          
+
           if (!nutritionResponse.reply) {
                console.error('[API] nutritionResponse.reply is missing:', {
                     hasResponse: !!nutritionResponse,
@@ -1148,7 +1183,7 @@ export async function POST(request: NextRequest) {
                })
                nutritionResponse = createFallbackResponse(messageToProcess)
           }
-          
+
           // EDGE CASE: Check if reply is just whitespace or empty after trimming
           if (nutritionResponse.reply && nutritionResponse.reply.trim().length === 0) {
                console.warn('[API] nutritionResponse.reply is empty or whitespace only, using fallback')
@@ -1163,12 +1198,12 @@ export async function POST(request: NextRequest) {
                // EDGE CASE: Filter out invalid product entries (null, undefined, missing name)
                const originalLength = nutritionResponse.products.length
                nutritionResponse.products = nutritionResponse.products.filter(
-                    (p: unknown) => p !== null && 
-                                   p !== undefined && 
-                                   typeof p === 'object' && 
-                                   'name' in p && 
-                                   typeof (p as { name: unknown }).name === 'string' &&
-                                   (p as { name: string }).name.trim().length > 0
+                    (p: unknown) => p !== null &&
+                         p !== undefined &&
+                         typeof p === 'object' &&
+                         'name' in p &&
+                         typeof (p as { name: unknown }).name === 'string' &&
+                         (p as { name: string }).name.trim().length > 0
                )
                if (originalLength !== nutritionResponse.products.length) {
                     console.warn(`[API] Filtered out ${originalLength - nutritionResponse.products.length} invalid product entries`)
@@ -1186,7 +1221,7 @@ export async function POST(request: NextRequest) {
           const replyLower = nutritionResponse.reply.toLowerCase()
           const userLower = (messageToProcess || '').toLowerCase()
           const hasExplicitProducts = nutritionResponse.products.length > 0
-          
+
           // More specific product recommendation triggers (avoid generic words like "recommand")
           const explicitProductTriggers = [
                'produit vigaïa',
@@ -1206,14 +1241,14 @@ export async function POST(request: NextRequest) {
                'voici',
                'sélection'
           ]
-          
-          const hasExplicitTrigger = explicitProductTriggers.some(trigger => 
+
+          const hasExplicitTrigger = explicitProductTriggers.some(trigger =>
                replyLower.includes(trigger)
           )
-          
+
           // Also check for specific supplement mentions (not just generic "vitamine")
           const hasSpecificSupplement = replyLower.match(/\b(vitamine [a-z]|vitamine d|vitamine c|magnésium|oméga|probiotique|collagène|protéine|créatine|fer|zinc|calcium|mélatonine|melatonin)\b/i)
-          
+
           // EDGE CASE: Detect negative supplement mentions (e.g., "ne prenez pas ces compléments", "éviter ces suppléments")
           // These should NOT trigger product search
           const negativeSupplementPatterns = [
@@ -1222,17 +1257,17 @@ export async function POST(request: NextRequest) {
                /\b(compléments?|suppléments?|complements?|supplements?)\s+(à\s+éviter|à\s+eviter|to\s+avoid|ne\s+pas\s+prendre)/i,
                /\b(déconseillé|deconseille|not\s+recommended)\s+(pour|for)\s+(les\s+)?(compléments?|suppléments?)/i,
           ]
-          const hasNegativeSupplementMention = negativeSupplementPatterns.some(pattern => 
+          const hasNegativeSupplementMention = negativeSupplementPatterns.some(pattern =>
                pattern.test(replyLower) || pattern.test(userLower)
           )
 
           // Detect user intent directly from the user's message
           // Include phrases that explicitly request product lists
           const productListPhrases = [
-               'lister', 'liste', 'list', 
+               'lister', 'liste', 'list',
                'donner moi', 'donnez moi', 'donne moi', 'donnez-moi', 'donne-moi',
                'montre moi', 'montrez moi', 'montre-moi', 'montrez-moi',
-               'produit', 'produits', 
+               'produit', 'produits',
                'recommande', 'recommander', 'recommandation', 'recommandations',
                'quel produit', 'quels produits',
                'aide moi', 'aidez moi', 'aide-moi', 'aidez-moi',
@@ -1247,7 +1282,7 @@ export async function POST(request: NextRequest) {
                'suppléments pour', 'supplément pour'
           ]
           const userHasProductIntent = productListPhrases.some(t => userLower.includes(t))
-          
+
           // Also check for "quels sont" + supplement keywords pattern (more flexible)
           const quelsSontPattern = /\b(quels?|which)\s+(sont|are)\s+(les\s+)?(compléments?|suppléments?|complements?|supplements?)/i
           const hasQuelsSontSupplementPattern = quelsSontPattern.test(userLower)
@@ -1282,9 +1317,9 @@ export async function POST(request: NextRequest) {
                // Questions about spacing/timing between supplements
                /\b(espacer|séparer|espace|séparation|combien\s+de\s+temps|how\s+long\s+between)\b/i,
           ]
-          
+
           const isInformationalQuestion = informationalQuestionPatterns.some(pattern => pattern.test(userLower))
-          
+
           // Also check the AI reply for informational content indicators
           const replyInformationalPatterns = [
                /\b(éviter|eviter|ne\s+pas\s+combiner|incompatible|interactions?|contre-indications?)\b/i,
@@ -1295,16 +1330,16 @@ export async function POST(request: NextRequest) {
                /\b(voici\s+les\s+paires|conseille\s+fortement\s+d\'?espacer)\b/i,
           ]
           const replyIsInformational = replyInformationalPatterns.some(pattern => pattern.test(replyLower))
-          
+
           // Combined check: if user asks informational question OR AI gives informational answer
           // EDGE CASE: Also include negative supplement mentions as informational (don't show products)
           const interactionIntent = isInformationalQuestion || replyIsInformational || hasNegativeSupplementMention
           const deficiencyIntent = /\b(carence|manque de|deficiency|insuffisance)\b/i.test(userLower)
-          
+
           if (hasNegativeSupplementMention) {
                console.log('[API] Detected negative supplement mention - treating as informational (no products)')
           }
-          
+
           if (interactionIntent) {
                console.log('[API] Detected informational/safety question - will not show products')
                console.log('[API] User question type:', isInformationalQuestion ? 'informational' : 'other')
@@ -1323,10 +1358,10 @@ export async function POST(request: NextRequest) {
                /\b(offre|offres|spécial|special|bon plan)\b/i,
                /\b(produits?\s+(?:en\s+)?solde|produits?\s+(?:en\s+)?promotion)\b/i,
           ]
-          const isSaleRequest = saleRequestPatterns.some(pattern => 
+          const isSaleRequest = saleRequestPatterns.some(pattern =>
                pattern.test(userLower) || pattern.test(replyLower)
           )
-          
+
           if (isSaleRequest) {
                console.log('[API] Detected sale/promotion request from user')
           }
@@ -1344,10 +1379,10 @@ export async function POST(request: NextRequest) {
                /\b(quelle\s+combinaison|quelles?\s+combinaisons?)\b/i,
                /\b(work\s+together|go\s+well\s+together|best\s+combination)\b/i,
           ]
-          const isComboRequest = comboRequestPatterns.some(pattern => 
+          const isComboRequest = comboRequestPatterns.some(pattern =>
                pattern.test(userLower) || pattern.test(replyLower)
           )
-          
+
           if (isComboRequest) {
                console.log('[API] Detected combo/combination request from user')
           }
@@ -1369,7 +1404,7 @@ export async function POST(request: NextRequest) {
                     const regex = new RegExp(`\\b${term}\\b`, 'i')
                     return regex.test(userLower) || regex.test(replyLower)
                })
-               
+
                // Also check for explicit collection mentions
                const collectionMentionPatterns = [
                     new RegExp(`\\bcollection\\s+${collectionHandle.replace(/-/g, '[-\\s]')}\\b`, 'i'),
@@ -1379,7 +1414,7 @@ export async function POST(request: NextRequest) {
                const hasExplicitCollectionMention = collectionMentionPatterns.some(pattern =>
                     pattern.test(userLower) || pattern.test(replyLower)
                )
-               
+
                if (hasCollectionTerm || hasExplicitCollectionMention) {
                     requestedCollection = collectionHandle
                     console.log(`[API] Detected collection request: ${collectionHandle}`)
@@ -1392,31 +1427,31 @@ export async function POST(request: NextRequest) {
           // - AI reply explicitly recommends products (even without specific supplement mention), OR
           // - AI reply mentions supplements/complements, OR
           // - User explicitly asked for products and mentioned specific supplement(s) or we detect supplement keywords
-          const hasSupplementMentions = replyLower.includes('complément') || 
-                                        replyLower.includes('supplément') || 
-                                        replyLower.includes('compléments') ||
-                                        replyLower.includes('suppléments') ||
-                                        hasSupplementKeywords ||
-                                        hasSpecificSupplement
-          
+          const hasSupplementMentions = replyLower.includes('complément') ||
+               replyLower.includes('supplément') ||
+               replyLower.includes('compléments') ||
+               replyLower.includes('suppléments') ||
+               hasSupplementKeywords ||
+               hasSpecificSupplement
+
           // Decide whether we should search for products.
           // CRITICAL: If this is an informational/safety question, NEVER show products
           // unless the user explicitly asks for products in a non-informational context.
           // Par exemple : "Quels compléments éviter de prendre ensemble ?" = question
           // d'interactions -> réponse purement pédagogique, sans produits.
-          
+
           // Check if user explicitly asks for products in a way that's NOT informational
           // This means they want a product list, not information about what to avoid
           // Expanded to include "quels sont les compléments" patterns and supplement requests with goals
           const explicitProductRequest = (
-               (userHasProductIntent || hasQuelsSontSupplementPattern) && 
-               !isInformationalQuestion && 
-               (userLower.includes('liste') || userLower.includes('lister') || 
-                userLower.includes('donner') || userLower.includes('montrer') ||
-                userLower.includes('recommand') ||
-                hasQuelsSontSupplementPattern ||
-                // If user asks about supplements/complements for a specific goal, it's a product request
-                (userLower.includes('complément') || userLower.includes('supplément')) && goalKeys.length > 0
+               (userHasProductIntent || hasQuelsSontSupplementPattern) &&
+               !isInformationalQuestion &&
+               (userLower.includes('liste') || userLower.includes('lister') ||
+                    userLower.includes('donner') || userLower.includes('montrer') ||
+                    userLower.includes('recommand') ||
+                    hasQuelsSontSupplementPattern ||
+                    // If user asks about supplements/complements for a specific goal, it's a product request
+                    (userLower.includes('complément') || userLower.includes('supplément')) && goalKeys.length > 0
                )
           )
 
@@ -1428,7 +1463,7 @@ export async function POST(request: NextRequest) {
 
           // Sale requests, collection requests, and combo requests should always trigger product search
           const isProductRequest = isSaleRequest || requestedCollection !== undefined || isComboRequest
-          
+
           const shouldSearchProducts = allowProductSearch && !!(
                hasExplicitProducts ||
                (hasExplicitTrigger && hasSupplementMentions && !interactionIntent) ||
@@ -1487,25 +1522,25 @@ export async function POST(request: NextRequest) {
                          try {
                               const allProducts = await fetchAllProductsWithParsedData()
                               const aiProductNames = nutritionResponse.products.map(p => (p.name || '').trim()).filter(name => name.length > 0)
-                              
+
                               console.log(`[API] Attempting to match ${aiProductNames.length} AI-recommended products:`, aiProductNames)
-                              
+
                               for (const aiProductName of aiProductNames) {
                                    // Try to find exact or close match
                                    const match = allProducts.find(product => {
                                         const productTitleLower = product.title.toLowerCase()
                                         const aiNameLower = aiProductName.toLowerCase()
-                                        
+
                                         // Exact match
                                         if (productTitleLower === aiNameLower) {
                                              return true
                                         }
-                                        
+
                                         // Check if AI name is contained in product title (handles partial names)
                                         if (productTitleLower.includes(aiNameLower) || aiNameLower.includes(productTitleLower)) {
                                              return true
                                         }
-                                        
+
                                         // Check for key words match (e.g., "Magnésium Bisglycinate" matches "Vigaia Magnésium Bisglycinate + B6")
                                         const aiKeywords = aiNameLower.split(/\s+/).filter(w => w.length > 3 && !['vigaia', 'pour', 'avec', 'et'].includes(w))
                                         if (aiKeywords.length > 0) {
@@ -1514,10 +1549,10 @@ export async function POST(request: NextRequest) {
                                                   return true
                                              }
                                         }
-                                        
+
                                         return false
                                    })
-                                   
+
                                    if (match && match.available) {
                                         // Check if already added
                                         if (!recommendedProducts.some(p => p.variantId === match.variantId)) {
@@ -1528,7 +1563,7 @@ export async function POST(request: NextRequest) {
                                         console.log(`[API] ⚠️  Could not find match for AI product: "${aiProductName}"`)
                                    }
                               }
-                              
+
                               if (recommendedProducts.length > 0) {
                                    console.log(`[API] Successfully matched ${recommendedProducts.length} products from AI recommendations`)
                               }
@@ -1537,7 +1572,7 @@ export async function POST(request: NextRequest) {
                               // Continue with other search methods
                          }
                     }
-                    
+
                     // 1) Goal-based, tag-driven search (preferred when a clear goal is identified)
                     // CRITICAL: Always run goal-based search when goals are detected, even if other conditions suggest otherwise
                     // Skip if we already found products from AI recommendations
@@ -1627,26 +1662,26 @@ export async function POST(request: NextRequest) {
                          } catch (goalSearchError) {
                               console.error('[API] Goal-based product search error:', goalSearchError)
                          }
-                         
+
                          // 1b) Also try collection-based search to complement tag search
                          // This uses collections and descriptions to find relevant products
                          if (goalKeys.length > 0 && !isSaleRequest && !requestedCollection) {
                               try {
                                    console.log('[API] Attempting collection-based product search for goals:', goalKeys)
                                    const collectionProducts = await searchProductsByCollection(goalKeys, 3)
-                                   
+
                                    if (collectionProducts && collectionProducts.length > 0) {
                                         console.log(`[API] Found ${collectionProducts.length} products via collection-based search`)
-                                        
+
                                         // Add unique products from collection search
                                         collectionProducts.forEach((p) => {
                                              if (!recommendedProducts.some(rp => rp.variantId === p.variantId)) {
                                                   recommendedProducts.push(p)
                                              }
                                         })
-                                        
+
                                         console.log(`[API] Total products after collection search: ${recommendedProducts.length}`)
-                                        
+
                                         // Track collection-based search
                                         try {
                                              await analytics.trackEvent('product_search_completed', {
@@ -1672,46 +1707,46 @@ export async function POST(request: NextRequest) {
                          // Start with queries derived from the AI reply
                          let searchQueries = generateProductSearchQueries(nutritionResponse.reply)
 
-                    // If none, try deriving from the user's original message
-                    if (searchQueries.length === 0) {
-                         const userDerived = generateProductSearchQueries(userLower)
-                         if (userDerived.length > 0) {
-                              searchQueries = userDerived
-                         }
-                    }
-
-                    // If still empty, map common intents to concrete supplement search terms
-                    if (searchQueries.length === 0) {
-                         const intentToKeywords: Array<{ test: (s: string) => boolean; keywords: string[] }> = [
-                              // Recovery / Post-workout
-                              { test: s => /\b(récupération|recuperation|recovery|après.*sport|après.*entraînement|après.*entrainement|post.*workout|post.*training|récupérer|recuperer)\b/i.test(s), keywords: ['magnesium', 'protein', 'bcaa', 'creatine'] },
-                              // Weight gain / Muscle gain
-                              { test: s => /\b(prise de poids|gain de poids|prise de masse|gain de masse|muscle|musculation|bodybuilding|masse musculaire)\b/i.test(s), keywords: ['protein', 'creatine', 'bcaa'] },
-                              // Weight loss
-                              { test: s => /\b(perte de poids|maigrir|minceur|weight ?loss)\b/i.test(s), keywords: ['protein', 'magnesium', 'collagen'] },
-                              // Sleep
-                              { test: s => /\b(sommeil|dormir|insomnie|sleep)\b/i.test(s), keywords: ['melatonin', 'magnesium', 'ashwagandha'] },
-                              // Stress/anxiety
-                              { test: s => /\b(stress|anxiété|anxiete|anxiety)\b/i.test(s), keywords: ['ashwagandha', 'magnesium', 'omega'] },
-                              // Energy
-                              { test: s => /\b(énergie|energie|fatigue|energy)\b/i.test(s), keywords: ['b-complex', 'iron', 'coq10'] },
-                              // Immunity
-                              { test: s => /\b(immunité|immunite|immune)\b/i.test(s), keywords: ['vitamin c', 'zinc', 'vitamin d'] },
-                              // Beauty / Skin / Hair
-                              { test: s => /\b(peau|skin|beauté|beaute|beauty|cheveux|hair|cheveu|anti-âge|anti-age|anti-aging)\b/i.test(s), keywords: ['collagen', 'collagène', 'biotin', 'biotine', 'vitamin c'] },
-                         ]
-
-                         // Check both user message and AI reply for intents
-                         const combinedText = `${userLower} ${replyLower}`
-                         for (const mapper of intentToKeywords) {
-                              if (mapper.test(combinedText)) {
-                                   searchQueries = mapper.keywords.slice(0, 3)
-                                   console.log('Mapped intent to keywords:', mapper.keywords)
-                                   break
+                         // If none, try deriving from the user's original message
+                         if (searchQueries.length === 0) {
+                              const userDerived = generateProductSearchQueries(userLower)
+                              if (userDerived.length > 0) {
+                                   searchQueries = userDerived
                               }
                          }
-                    }
-                    console.log('Searching for products with queries:', searchQueries)
+
+                         // If still empty, map common intents to concrete supplement search terms
+                         if (searchQueries.length === 0) {
+                              const intentToKeywords: Array<{ test: (s: string) => boolean; keywords: string[] }> = [
+                                   // Recovery / Post-workout
+                                   { test: s => /\b(récupération|recuperation|recovery|après.*sport|après.*entraînement|après.*entrainement|post.*workout|post.*training|récupérer|recuperer)\b/i.test(s), keywords: ['magnesium', 'protein', 'bcaa', 'creatine'] },
+                                   // Weight gain / Muscle gain
+                                   { test: s => /\b(prise de poids|gain de poids|prise de masse|gain de masse|muscle|musculation|bodybuilding|masse musculaire)\b/i.test(s), keywords: ['protein', 'creatine', 'bcaa'] },
+                                   // Weight loss
+                                   { test: s => /\b(perte de poids|maigrir|minceur|weight ?loss)\b/i.test(s), keywords: ['protein', 'magnesium', 'collagen'] },
+                                   // Sleep
+                                   { test: s => /\b(sommeil|dormir|insomnie|sleep)\b/i.test(s), keywords: ['melatonin', 'magnesium', 'ashwagandha'] },
+                                   // Stress/anxiety
+                                   { test: s => /\b(stress|anxiété|anxiete|anxiety)\b/i.test(s), keywords: ['ashwagandha', 'magnesium', 'omega'] },
+                                   // Energy
+                                   { test: s => /\b(énergie|energie|fatigue|energy)\b/i.test(s), keywords: ['b-complex', 'iron', 'coq10'] },
+                                   // Immunity
+                                   { test: s => /\b(immunité|immunite|immune)\b/i.test(s), keywords: ['vitamin c', 'zinc', 'vitamin d'] },
+                                   // Beauty / Skin / Hair
+                                   { test: s => /\b(peau|skin|beauté|beaute|beauty|cheveux|hair|cheveu|anti-âge|anti-age|anti-aging)\b/i.test(s), keywords: ['collagen', 'collagène', 'biotin', 'biotine', 'vitamin c'] },
+                              ]
+
+                              // Check both user message and AI reply for intents
+                              const combinedText = `${userLower} ${replyLower}`
+                              for (const mapper of intentToKeywords) {
+                                   if (mapper.test(combinedText)) {
+                                        searchQueries = mapper.keywords.slice(0, 3)
+                                        console.log('Mapped intent to keywords:', mapper.keywords)
+                                        break
+                                   }
+                              }
+                         }
+                         console.log('Searching for products with queries:', searchQueries)
 
                          // If queries are too generic (complément/supplément) and this is a deficiency intent,
                          // replace them with concrete deficiency-safe defaults to surface real products.
@@ -1787,13 +1822,13 @@ export async function POST(request: NextRequest) {
                                    onlyOnSale: isSaleRequest,
                                    collection: requestedCollection,
                               }
-                              
+
                               console.log(`[API] Searching for products with query: "${searchQueries[0]}"`, searchOptions)
                               try {
                                    // Use tag-enhanced search with sale/collection options
                                    recommendedProducts = await searchProducts(searchQueries[0], searchOptions)
                                    console.log(`[API] Found ${recommendedProducts.length} products for query: "${searchQueries[0]}"`)
-                                   
+
                                    // If sale request and we don't have enough products, try other queries
                                    if (isSaleRequest && recommendedProducts.length < 3 && searchQueries.length > 1) {
                                         for (let i = 1; i < searchQueries.length && recommendedProducts.length < 3; i++) {
@@ -1812,7 +1847,7 @@ export async function POST(request: NextRequest) {
                                              }
                                         }
                                    }
-                                   
+
                                    if (recommendedProducts.length > 0) {
                                         console.log(`[API] Product titles: ${recommendedProducts.map(p => p.title).join(', ')}`)
                                         if (isSaleRequest) {
@@ -1886,7 +1921,7 @@ export async function POST(request: NextRequest) {
                     }
                } catch (productSearchError) {
                     console.error('[API] Product search error:', productSearchError)
-                    
+
                     // Log detailed error information for debugging
                     if (productSearchError instanceof Error) {
                          console.error('[API] Product search error details:', {
@@ -1915,7 +1950,7 @@ export async function POST(request: NextRequest) {
           } else {
                console.log('No product search needed - AI response indicates no products required')
           }
-          
+
           // CRITICAL FIX: Fallback product search when AI mentions supplements but no products were found
           // This handles cases where:
           // 1. AI response is truncated and products array is incomplete
@@ -1924,38 +1959,38 @@ export async function POST(request: NextRequest) {
           // 4. AI response clearly indicates products should be shown (mentions "voici", "sélection", etc.)
           // EDGE CASE: Skip fallback if negative supplement mention detected
           if (recommendedProducts.length === 0 && !interactionIntent && !hasNegativeSupplementMention) {
-               const replyMentionsSupplements = replyLower.includes('complément') || 
-                                                 replyLower.includes('supplément') || 
-                                                 replyLower.includes('compléments') ||
-                                                 replyLower.includes('suppléments') ||
-                                                 hasSupplementKeywords ||
-                                                 hasSpecificSupplement
-               
-               const userAsksForSupplements = userLower.includes('complément') || 
-                                              userLower.includes('supplément') ||
-                                              userLower.includes('complement') ||
-                                              userLower.includes('supplement') ||
-                                              hasQuelsSontSupplementPattern
-               
+               const replyMentionsSupplements = replyLower.includes('complément') ||
+                    replyLower.includes('supplément') ||
+                    replyLower.includes('compléments') ||
+                    replyLower.includes('suppléments') ||
+                    hasSupplementKeywords ||
+                    hasSpecificSupplement
+
+               const userAsksForSupplements = userLower.includes('complément') ||
+                    userLower.includes('supplément') ||
+                    userLower.includes('complement') ||
+                    userLower.includes('supplement') ||
+                    hasQuelsSontSupplementPattern
+
                // Check if AI response indicates products should be shown (even if truncated)
-               const replyIndicatesProducts = replyLower.includes('voici') || 
-                                              replyLower.includes('sélection') ||
-                                              replyLower.includes('recommand') ||
-                                              replyLower.includes('compléments qui') ||
-                                              replyLower.includes('suppléments qui') ||
-                                              replyLower.includes('nous allons nous concentrer') ||
-                                              replyLower.includes('concentrer sur')
-               
+               const replyIndicatesProducts = replyLower.includes('voici') ||
+                    replyLower.includes('sélection') ||
+                    replyLower.includes('recommand') ||
+                    replyLower.includes('compléments qui') ||
+                    replyLower.includes('suppléments qui') ||
+                    replyLower.includes('nous allons nous concentrer') ||
+                    replyLower.includes('concentrer sur')
+
                // If AI mentions supplements OR user asked about supplements OR AI indicates products, do a fallback search
-               if ((replyMentionsSupplements || userAsksForSupplements || replyIndicatesProducts) && 
-                   (goalKeys.length > 0 || userAsksForSupplements || hasQuelsSontSupplementPattern)) {
+               if ((replyMentionsSupplements || userAsksForSupplements || replyIndicatesProducts) &&
+                    (goalKeys.length > 0 || userAsksForSupplements || hasQuelsSontSupplementPattern)) {
                     console.log('[API] Fallback: AI mentioned supplements but no products found - performing goal-based search')
                     try {
                          // Try goal-based search first (tag-based)
                          for (const goal of goalKeys) {
                               const tagsForGoal = GOAL_TAGS[goal]
                               if (!tagsForGoal || tagsForGoal.length === 0) continue
-                              
+
                               try {
                                    const goalProducts = await searchProductsByTags(tagsForGoal, 4)
                                    if (goalProducts && goalProducts.length > 0) {
@@ -1968,10 +2003,10 @@ export async function POST(request: NextRequest) {
                               } catch (tagSearchError) {
                                    console.error(`[API] Fallback goal search error for "${goal}":`, tagSearchError)
                               }
-                              
+
                               if (recommendedProducts.length >= 3) break
                          }
-                         
+
                          // Also try collection-based search in fallback
                          if (goalKeys.length > 0 && recommendedProducts.length < 3) {
                               try {
@@ -1989,7 +2024,7 @@ export async function POST(request: NextRequest) {
                                    console.error('[API] Fallback collection search error:', collectionError)
                               }
                          }
-                         
+
                          // If goal-based search didn't work, try keyword-based search
                          if (recommendedProducts.length === 0) {
                               // Extract keywords from user message or AI reply
@@ -1997,7 +2032,7 @@ export async function POST(request: NextRequest) {
                               if (fallbackQueries.length === 0) {
                                    fallbackQueries = generateProductSearchQueries(replyLower)
                               }
-                              
+
                               // If still empty, use intent-based keywords
                               if (fallbackQueries.length === 0) {
                                    const combinedText = `${userLower} ${replyLower}`
@@ -2007,7 +2042,7 @@ export async function POST(request: NextRequest) {
                                         { test: s => /\b(énergie|energie|fatigue|energy)\b/i.test(s), keywords: ['b-complex', 'iron', 'coq10'] },
                                         { test: s => /\b(immunité|immunite|immune)\b/i.test(s), keywords: ['vitamin c', 'zinc', 'vitamin d'] },
                                    ]
-                                   
+
                                    for (const mapper of intentToKeywords) {
                                         if (mapper.test(combinedText)) {
                                              fallbackQueries = mapper.keywords.slice(0, 3)
@@ -2015,7 +2050,7 @@ export async function POST(request: NextRequest) {
                                         }
                                    }
                               }
-                              
+
                               if (fallbackQueries.length > 0) {
                                    console.log('[API] Fallback: Performing keyword-based search with:', fallbackQueries)
                                    try {
@@ -2029,7 +2064,7 @@ export async function POST(request: NextRequest) {
                                    }
                               }
                          }
-                         
+
                          if (recommendedProducts.length > 0) {
                               console.log('[API] Fallback search successful - found products:', recommendedProducts.map(p => p.title))
                          }
@@ -2045,20 +2080,20 @@ export async function POST(request: NextRequest) {
           if (recommendedProducts.length > 0) {
                const originalCount = recommendedProducts.length
                recommendedProducts = applyUserProfileFiltersToProducts(recommendedProducts, intent)
-               
+
                // Score and rank products using structured data for better matching
                if (recommendedProducts.length > 0) {
                     console.log('[API] ========================================');
                     console.log('[API] STARTING PRODUCT SCORING');
                     console.log('[API] Products before scoring:', recommendedProducts.length);
                     console.log('[API] ========================================');
-                    
+
                     const scoredProducts = scoreProductsWithStructuredData(
                          recommendedProducts,
                          userProfile,
                          goalKeys
                     )
-                    
+
                     // Log final displayed products with their scores
                     const topDisplayed = scoredProducts.slice(0, 6); // Top 6 that will be displayed
                     console.log('[API] ========================================');
@@ -2077,10 +2112,10 @@ export async function POST(request: NextRequest) {
                          }
                     });
                     console.log('[API] ========================================');
-                    
+
                     // Remove relevanceScore before returning (it's only for sorting)
                     recommendedProducts = scoredProducts.map(({ relevanceScore, ...product }) => product)
-                    
+
                     // Helper function to check if product has benefits (from parsed data or extracted HTML)
                     const hasBenefits = (p: ProductSearchResult): boolean => {
                          if (p.benefits && p.benefits.length > 0) {
@@ -2097,16 +2132,16 @@ export async function POST(request: NextRequest) {
                               };
                          }
                          const cachedProduct = p as ProductWithExtractedContent;
-                         if (cachedProduct.extractedContent?.bienfaits?.found && 
-                             cachedProduct.extractedContent.bienfaits.bullet_points && 
-                             cachedProduct.extractedContent.bienfaits.bullet_points.length > 0) {
+                         if (cachedProduct.extractedContent?.bienfaits?.found &&
+                              cachedProduct.extractedContent.bienfaits.bullet_points &&
+                              cachedProduct.extractedContent.bienfaits.bullet_points.length > 0) {
                               console.log(`[API] ✅ "${p.title}": hasBenefits=true (from extracted HTML: ${cachedProduct.extractedContent.bienfaits.bullet_points.length} items)`);
                               return true;
                          }
                          console.log(`[API] ❌ "${p.title}": hasBenefits=false (no parsed data or extracted content)`);
                          return false;
                     };
-                    
+
                     // Helper function to check if product has target audience (from parsed data or extracted HTML)
                     const hasTargetAudience = (p: ProductSearchResult): boolean => {
                          if (p.targetAudience && p.targetAudience.length > 0) {
@@ -2123,16 +2158,16 @@ export async function POST(request: NextRequest) {
                               };
                          }
                          const cachedProduct = p as ProductWithExtractedContent;
-                         if (cachedProduct.extractedContent?.pour_qui?.found && 
-                             cachedProduct.extractedContent.pour_qui.bullet_points && 
-                             cachedProduct.extractedContent.pour_qui.bullet_points.length > 0) {
+                         if (cachedProduct.extractedContent?.pour_qui?.found &&
+                              cachedProduct.extractedContent.pour_qui.bullet_points &&
+                              cachedProduct.extractedContent.pour_qui.bullet_points.length > 0) {
                               console.log(`[API] ✅ "${p.title}": hasTargetAudience=true (from extracted HTML: ${cachedProduct.extractedContent.pour_qui.bullet_points.length} items)`);
                               return true;
                          }
                          console.log(`[API] ❌ "${p.title}": hasTargetAudience=false (no parsed data or extracted content)`);
                          return false;
                     };
-                    
+
                     console.log('[API] ========================================');
                     console.log('[API] PRODUCT RANKING RESULTS');
                     console.log('[API] ========================================');
@@ -2148,7 +2183,7 @@ export async function POST(request: NextRequest) {
                     console.log('[API] Top 3 products:', topProducts);
                     console.log('[API] ========================================');
                }
-               
+
                // EDGE CASE: If filtering removed ALL products, log a warning
                // The filter function already returns original products if filtered is empty,
                // but we should still log this for monitoring
@@ -2158,24 +2193,24 @@ export async function POST(request: NextRequest) {
                     console.log(`[API] Profile filtering: ${originalCount} -> ${recommendedProducts.length} products (removed ${originalCount - recommendedProducts.length})`)
                }
           }
-          
+
           // EDGE CASE: Validate product structure before returning
           // Ensure all products have required fields
           recommendedProducts = recommendedProducts.filter((p): p is ProductSearchResult => {
-               const isValid = p !== null && 
-                              p !== undefined && 
-                              typeof p === 'object' &&
-                              'title' in p &&
-                              'variantId' in p &&
-                              typeof p.title === 'string' &&
-                              typeof p.variantId === 'string' &&
-                              p.title.trim().length > 0 &&
-                              p.variantId.trim().length > 0
-               
+               const isValid = p !== null &&
+                    p !== undefined &&
+                    typeof p === 'object' &&
+                    'title' in p &&
+                    'variantId' in p &&
+                    typeof p.title === 'string' &&
+                    typeof p.variantId === 'string' &&
+                    p.title.trim().length > 0 &&
+                    p.variantId.trim().length > 0
+
                if (!isValid) {
                     console.warn('[API] Filtered out invalid product:', p)
                }
-               
+
                return isValid
           })
 
@@ -2207,9 +2242,9 @@ export async function POST(request: NextRequest) {
                     // This creates combos based on what the chat actually recommended, with complementary upsales
                     if (recommendedProducts.length > 0) {
                          console.log('[API] Generating dynamic combos from recommended products:', recommendedProducts.map(p => p.title).join(', '))
-                         
+
                          const dynamicCombos = await generateDynamicCombosFromProducts(recommendedProducts)
-                         
+
                          // Apply user profile filters to dynamic combos
                          const filteredDynamicCombos = dynamicCombos.map(combo => ({
                               ...combo,
@@ -2219,7 +2254,7 @@ export async function POST(request: NextRequest) {
                          if (filteredDynamicCombos.length > 0) {
                               recommendedCombos = filteredDynamicCombos
                               console.log('[API] Dynamic combos generated:', recommendedCombos.map(c => c.name).join(', '))
-                              
+
                               // Use the first dynamic combo as suggested combo
                               if (filteredDynamicCombos.length > 0) {
                                    suggestedCombo = filteredDynamicCombos[0]
@@ -2234,7 +2269,7 @@ export async function POST(request: NextRequest) {
                     // - User explicitly asked about combos and we want to show more options
                     if (recommendedCombos.length === 0 || (isComboRequest && recommendedCombos.length < 2)) {
                          console.log('[API] Falling back to hardcoded combos')
-                         
+
                          // Determine goals from profile OR conversation context
                          const comboGoals = userProfile?.goals || goalKeys
                          const comboAge = userProfile?.age
@@ -2271,14 +2306,14 @@ export async function POST(request: NextRequest) {
                          )
 
                          const fallbackCombos = combosWithProducts.filter(combo => combo.products.length > 0)
-                         
+
                          // Merge with existing dynamic combos (if any) or replace if none
                          if (recommendedCombos.length === 0) {
                               recommendedCombos = fallbackCombos
                          } else {
                               // Add fallback combos that don't duplicate dynamic ones
                               const existingProductIds = new Set(recommendedCombos.flatMap(c => c.products.map(p => p.variantId)))
-                              const uniqueFallbackCombos = fallbackCombos.filter(combo => 
+                              const uniqueFallbackCombos = fallbackCombos.filter(combo =>
                                    !combo.products.some(p => existingProductIds.has(p.variantId))
                               )
                               recommendedCombos.push(...uniqueFallbackCombos.slice(0, 2)) // Add max 2 fallback combos
@@ -2315,14 +2350,14 @@ export async function POST(request: NextRequest) {
                : nutritionResponse
 
           // Also clear recommendedProducts if this is an informational question
-          const finalRecommendedProducts = (interactionIntent && !explicitProductRequest) 
-               ? [] 
+          const finalRecommendedProducts = (interactionIntent && !explicitProductRequest)
+               ? []
                : recommendedProducts
-          
+
           const finalRecommendedCombos = (interactionIntent && !explicitProductRequest)
                ? []
                : (recommendedCombos.length > 0 ? recommendedCombos : undefined)
-          
+
           const finalSuggestedCombo = (interactionIntent && !explicitProductRequest)
                ? undefined
                : (suggestedCombo || undefined)
@@ -2375,13 +2410,27 @@ export async function POST(request: NextRequest) {
                console.error('[API] Analytics tracking error (non-fatal):', analyticsError)
           }
 
+          // ==================== CACHE SAVE ====================
+          // Track question frequency and save to cache if threshold met
+          try {
+               await responseCacheService.trackAndSave(
+                    messageToProcess,
+                    nutritionResponse,
+                    userProfile,
+                    finalRecommendedProducts
+               );
+          } catch (cacheError) {
+               console.error('[API] Cache save error (non-fatal):', cacheError);
+               // Continue - caching failure should not affect response
+          }
+
           return NextResponse.json(response)
      } catch (error) {
           // Enhanced error logging
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           const errorStack = error instanceof Error ? error.stack : undefined
           const errorName = error instanceof Error ? error.name : 'UnknownError'
-          
+
           console.error('[API] Chat API error:', {
                name: errorName,
                message: errorMessage,
