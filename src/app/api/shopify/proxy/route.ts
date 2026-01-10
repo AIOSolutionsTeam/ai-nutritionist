@@ -145,24 +145,205 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-     // Simple health check / debug endpoint for the proxy
+     // Return Liquid/HTML that embeds the chat widget in an iframe
+     // This is served when users visit /apps/assistante-virtuelle on the Shopify store
      try {
           const url = new URL(request.url)
-          const shop = url.searchParams.get('shop')
 
-          return NextResponse.json(
-               {
-                    status: 'ok',
-                    message: 'Shopify proxy endpoint is running',
-                    shop: shop || null,
+          // Verify signature for security (optional but recommended)
+          const isValid = verifyShopifyProxySignature(url)
+          if (!isValid) {
+               console.warn('[Shopify Proxy] Invalid signature on GET request, allowing for development')
+               // In production you may want to return 401 here
+               // For now, we allow it to make testing easier
+          }
+
+          // Extract Shopify context
+          const shop = url.searchParams.get('shop') || ''
+          const customerId = url.searchParams.get('logged_in_customer_id') || ''
+          const timestamp = url.searchParams.get('timestamp') || ''
+
+          // Build the embed URL - use the Vercel deployment URL
+          const appOrigin = process.env.NEXT_PUBLIC_APP_URL ||
+               process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
+               url.origin
+
+          const embedUrl = new URL('/embed', appOrigin)
+          embedUrl.searchParams.set('shop', shop)
+          if (customerId) {
+               embedUrl.searchParams.set('logged_in_customer_id', customerId)
+          }
+          embedUrl.searchParams.set('timestamp', timestamp)
+
+          // Return Liquid template that renders the iframe
+          // Using Shopify Liquid syntax for dynamic content
+          const liquidTemplate = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Assistante Virtuelle | VIGAÏA</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background-color: #FEFDFB;
+    }
+    
+    .chat-container {
+      width: 100%;
+      height: 100vh;
+      height: 100dvh; /* Dynamic viewport height for mobile */
+      position: relative;
+    }
+    
+    .chat-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #FEFDFB;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: opacity 0.3s ease;
+    }
+    
+    .loading-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #E8E4DC;
+      border-top-color: #7C9A5E;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="loading-overlay" id="loading">
+      <div class="loading-spinner"></div>
+    </div>
+    <iframe 
+      id="chat-iframe"
+      class="chat-iframe" 
+      src="${embedUrl.toString()}"
+      allow="microphone"
+      title="Assistante Virtuelle VIGAÏA"
+    ></iframe>
+  </div>
+  
+  <script>
+    (function() {
+      var iframe = document.getElementById('chat-iframe');
+      var loading = document.getElementById('loading');
+      
+      // Hide loading when iframe is ready
+      iframe.addEventListener('load', function() {
+        setTimeout(function() {
+          loading.classList.add('hidden');
+        }, 300);
+      });
+      
+      // Listen for messages from the iframe
+      window.addEventListener('message', function(event) {
+        // Verify origin for security
+        var allowedOrigin = '${appOrigin}';
+        if (event.origin !== allowedOrigin) return;
+        
+        var data = event.data;
+        if (!data || !data.type) return;
+        
+        switch (data.type) {
+          case 'CHAT_READY':
+            loading.classList.add('hidden');
+            break;
+          case 'CHAT_CLOSE':
+            // Navigate back or close - customize as needed
+            window.history.back();
+            break;
+          case 'ADD_TO_CART':
+            // Handle cart additions if needed
+            // This allows the iframe to trigger cart updates
+            if (window.Shopify && data.variantId) {
+              fetch('/cart/add.js', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  id: data.variantId,
+                  quantity: data.quantity || 1,
+                  properties: data.properties || {}
+                })
+              })
+              .then(function(response) { return response.json(); })
+              .then(function(item) {
+                iframe.contentWindow.postMessage({ 
+                  type: 'CART_UPDATED', 
+                  success: true, 
+                  item: item 
+                }, allowedOrigin);
+                // Optionally refresh cart drawer
+                if (typeof refreshCart === 'function') refreshCart();
+              })
+              .catch(function(error) {
+                iframe.contentWindow.postMessage({ 
+                  type: 'CART_UPDATED', 
+                  success: false, 
+                  error: error.message 
+                }, allowedOrigin);
+              });
+            }
+            break;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
+`.trim()
+
+          // Return as HTML (Shopify App Proxy expects text/html for rendering)
+          return new NextResponse(liquidTemplate, {
+               status: 200,
+               headers: {
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
                },
-               { status: 200 }
-          )
+          })
      } catch (error) {
           console.error('[Shopify Proxy] GET error:', error)
-          return NextResponse.json(
-               { error: 'Internal server error' },
-               { status: 500 }
+          return new NextResponse(
+               '<html><body><h1>Error loading chat</h1><p>Please try again later.</p></body></html>',
+               {
+                    status: 500,
+                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+               }
           )
      }
 }

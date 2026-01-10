@@ -44,6 +44,24 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        // Allow iframe embedding for the embed page
+        source: '/embed',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOWALL',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self' https://*.myshopify.com https://*.shopify.com https://vigaia.com https://*.vigaia.com",
+          },
+        ],
+      },
+    ];
+  },
   serverExternalPackages: ['pdfkit'],
 };
 
