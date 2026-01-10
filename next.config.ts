@@ -44,6 +44,38 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        // Allow the embed page to be loaded in iframes from Shopify stores
+        source: '/embed/:path*',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOWALL', // Allow all frames (Shopify stores)
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self' https://*.myshopify.com https://*.shopify.com https://vigaia.com https://*.vigaia.com;",
+          },
+        ],
+      },
+      {
+        // Also allow the root embed page
+        source: '/embed',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOWALL',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self' https://*.myshopify.com https://*.shopify.com https://vigaia.com https://*.vigaia.com;",
+          },
+        ],
+      },
+    ];
+  },
   serverExternalPackages: ['pdfkit'],
 };
 

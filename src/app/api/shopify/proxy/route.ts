@@ -145,24 +145,146 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-     // Simple health check / debug endpoint for the proxy
+     // Serve Liquid template for Shopify App Proxy
+     // This returns HTML/Liquid that Shopify renders within the store theme
      try {
           const url = new URL(request.url)
-          const shop = url.searchParams.get('shop')
+          const shop = url.searchParams.get('shop') || ''
+          const loggedInCustomerId = url.searchParams.get('logged_in_customer_id') || ''
+          const signature = url.searchParams.get('signature') || ''
 
-          return NextResponse.json(
-               {
-                    status: 'ok',
-                    message: 'Shopify proxy endpoint is running',
-                    shop: shop || null,
-               },
-               { status: 200 }
-          )
+          // Verify the signature for security
+          const isValid = verifyShopifyProxySignature(url)
+
+          if (!isValid) {
+               console.warn('[Shopify Proxy] Invalid signature on GET request')
+               // Return a user-friendly error page
+               return new NextResponse(
+                    `<div style="padding: 40px; text-align: center; font-family: system-ui, sans-serif;">
+                         <h2>Accès non autorisé</h2>
+                         <p>Cette page doit être accédée via la boutique Shopify.</p>
+                    </div>`,
+                    {
+                         status: 401,
+                         headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                    }
+               )
+          }
+
+          // Build the embed URL with Shopify context
+          // Use the Vercel deployment URL or configured app URL
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL
+               || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+               || 'https://ai-nutritionist-v1.vercel.app'
+
+          const embedUrl = new URL('/embed', appUrl)
+          embedUrl.searchParams.set('shop', shop)
+          if (loggedInCustomerId) {
+               embedUrl.searchParams.set('logged_in_customer_id', loggedInCustomerId)
+          }
+
+          // Return Liquid template that Shopify will render
+          // The iframe loads the embed page from our Vercel app
+          const liquidTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+     <title>Assistante Virtuelle | {{ shop.name }}</title>
+     <style>
+          .chat-embed-container {
+               width: 100%;
+               max-width: 1200px;
+               margin: 0 auto;
+               padding: 20px;
+          }
+          .chat-embed-header {
+               text-align: center;
+               margin-bottom: 20px;
+          }
+          .chat-embed-header h1 {
+               font-family: inherit;
+               font-size: 1.8rem;
+               color: #333;
+               margin: 0 0 8px 0;
+          }
+          .chat-embed-header p {
+               color: #666;
+               margin: 0;
+          }
+          .chat-embed-iframe {
+               width: 100%;
+               height: 700px;
+               border: none;
+               border-radius: 16px;
+               box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+               background: #FEFDFB;
+          }
+          @media (max-width: 768px) {
+               .chat-embed-container {
+                    padding: 10px;
+               }
+               .chat-embed-iframe {
+                    height: calc(100vh - 200px);
+                    min-height: 500px;
+                    border-radius: 12px;
+               }
+               .chat-embed-header h1 {
+                    font-size: 1.4rem;
+               }
+          }
+     </style>
+</head>
+<body>
+     <div class="chat-embed-container">
+          <div class="chat-embed-header">
+               <h1>🌿 Assistante Nutritionnelle Virtuelle</h1>
+               <p>Posez vos questions sur la nutrition et découvrez nos produits personnalisés</p>
+          </div>
+          <iframe 
+               src="${embedUrl.toString()}" 
+               class="chat-embed-iframe"
+               allow="microphone"
+               title="Assistante Nutritionnelle"
+               loading="lazy"
+          ></iframe>
+     </div>
+     <script>
+          // Listen for messages from the iframe
+          window.addEventListener('message', function(event) {
+               if (event.data && event.data.type === 'CHAT_CLOSE') {
+                    // Handle close action - could navigate back or hide the chat
+                    console.log('[Shopify Embed] Chat close requested');
+               }
+               if (event.data && event.data.type === 'CART_UPDATE') {
+                    // Refresh the cart if the iframe adds products
+                    if (typeof Shopify !== 'undefined' && Shopify.onCartUpdate) {
+                         fetch('/cart.js')
+                              .then(r => r.json())
+                              .then(cart => Shopify.onCartUpdate(cart));
+                    }
+               }
+          });
+     </script>
+</body>
+</html>
+`
+
+          return new NextResponse(liquidTemplate, {
+               status: 200,
+               headers: {
+                    'Content-Type': 'application/liquid; charset=utf-8',
+               }
+          })
      } catch (error) {
           console.error('[Shopify Proxy] GET error:', error)
-          return NextResponse.json(
-               { error: 'Internal server error' },
-               { status: 500 }
+          return new NextResponse(
+               '<div style="padding: 40px; text-align: center;">Une erreur est survenue. Veuillez réessayer.</div>',
+               {
+                    status: 500,
+                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+               }
           )
      }
 }
