@@ -400,14 +400,13 @@ export async function GET(request: NextRequest) {
 </html>
 `.trim()
 
-          // Return as Liquid (Shopify App Proxy prefers application/liquid)
-          // This tells Shopify to render the content directly without processing
+          // Return as HTML (Shopify App Proxy expects text/html for rendering)
           console.log('[Shopify Proxy] Returning HTML response, length:', liquidTemplate.length)
 
           return new NextResponse(liquidTemplate, {
                status: 200,
                headers: {
-                    'Content-Type': 'application/liquid',
+                    'Content-Type': 'text/html; charset=utf-8',
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                },
           })
