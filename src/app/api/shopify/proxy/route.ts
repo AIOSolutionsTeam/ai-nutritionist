@@ -151,6 +151,28 @@ export async function GET(request: NextRequest) {
      try {
           const url = new URL(request.url)
 
+          // =================================================================
+          // SIMPLE TEST MODE - Add ?simple=1 to test App Proxy with minimal response
+          // =================================================================
+          const isSimpleTest = url.searchParams.get('simple') === '1'
+          if (isSimpleTest) {
+               console.log('[Shopify Proxy] SIMPLE TEST MODE - returning minimal HTML')
+               const simpleHtml = `<!DOCTYPE html>
+<html>
+<head><title>App Proxy Test</title></head>
+<body>
+<h1>App Proxy Works!</h1>
+<p>If you see this, the Shopify App Proxy is configured correctly.</p>
+<p>Shop: ${url.searchParams.get('shop') || 'N/A'}</p>
+<p>Timestamp: ${url.searchParams.get('timestamp') || 'N/A'}</p>
+</body>
+</html>`
+               return new NextResponse(simpleHtml, {
+                    status: 200,
+                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+               })
+          }
+
           // Verify signature for security (optional but recommended)
           const isValid = verifyShopifyProxySignature(url)
           if (!isValid) {
