@@ -6,7 +6,8 @@ export const runtime = 'nodejs'
 
 const SHOPIFY_APP_SECRET =
      process.env.SHOPIFY_API_SECRET ||
-     process.env.SHOPIFY_API_SECRET_KEY ||
+     // process.env.SHOPIFY_API_SECRET_KEY ||
+     process.env.SHOPIFY_APP_PROXY_SECRET ||
      ''
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -158,22 +159,93 @@ export async function GET(request: NextRequest) {
                // For now, we allow it to make testing easier
           }
 
-          // Extract Shopify context
+          // =================================================================
+          // SHOPIFY CONTEXT EXTRACTION
+          // =================================================================
+          // When Shopify App Proxy calls this endpoint, it automatically adds:
+          //   - shop: The store's myshopify.com domain (e.g., "mystore.myshopify.com")
+          //   - logged_in_customer_id: Customer ID if they're logged in (empty if guest)
+          //   - timestamp: Unix timestamp of the request
+          //   - signature: HMAC signature for verification
+          //   - path_prefix: The proxy URL path (e.g., "/apps/assistante-virtuelle")
+          //
+          // When accessed DIRECTLY (not via Shopify), these will be empty!
+          // =================================================================
+
           const shop = url.searchParams.get('shop') || ''
           const customerId = url.searchParams.get('logged_in_customer_id') || ''
           const timestamp = url.searchParams.get('timestamp') || ''
+          const pathPrefix = url.searchParams.get('path_prefix') || ''
 
-          // Build the embed URL - use the Vercel deployment URL
-          const appOrigin = process.env.NEXT_PUBLIC_APP_URL ||
-               process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
-               url.origin
+          // Log Shopify context for debugging
+          console.log('[Shopify Proxy] Request context:', {
+               shop: shop || '(empty - direct access, not via Shopify)',
+               customerId: customerId || '(guest or not logged in)',
+               timestamp,
+               pathPrefix,
+               isFromShopify: !!shop && !!timestamp
+          })
 
+          // =================================================================
+          // APP ORIGIN DETECTION (works on Vercel, AWS Amplify, or any host)
+          // =================================================================
+          // Priority:
+          // 1. NEXT_PUBLIC_APP_URL - Explicit URL (recommended for production)
+          // 2. VERCEL_URL - Auto-set by Vercel
+          // 3. AWS_AMPLIFY_URL - Custom var you can set in Amplify
+          // 4. x-forwarded-host header (reliable on Lambda/Amplify)
+          // 5. host header (fallback)
+          // 6. url.origin - Last resort
+          // =================================================================
+
+          let appOrigin: string | undefined
+
+          if (process.env.NEXT_PUBLIC_APP_URL) {
+               appOrigin = process.env.NEXT_PUBLIC_APP_URL
+               console.log('[Shopify Proxy] Using NEXT_PUBLIC_APP_URL:', appOrigin)
+          } else if (process.env.VERCEL_URL) {
+               appOrigin = `https://${process.env.VERCEL_URL}`
+               console.log('[Shopify Proxy] Using VERCEL_URL:', appOrigin)
+          } else if (process.env.AWS_AMPLIFY_URL) {
+               appOrigin = process.env.AWS_AMPLIFY_URL
+               console.log('[Shopify Proxy] Using AWS_AMPLIFY_URL:', appOrigin)
+          } else {
+               // Use request headers (works on AWS Lambda, CloudFront, etc.)
+               const forwardedHost = request.headers.get('x-forwarded-host')
+               const host = request.headers.get('host')
+               const proto = request.headers.get('x-forwarded-proto') || 'https'
+
+               if (forwardedHost) {
+                    appOrigin = `${proto}://${forwardedHost}`
+                    console.log('[Shopify Proxy] Using x-forwarded-host:', appOrigin)
+               } else if (host) {
+                    appOrigin = `${proto}://${host}`
+                    console.log('[Shopify Proxy] Using host header:', appOrigin)
+               } else if (url.origin && url.origin !== 'null') {
+                    appOrigin = url.origin
+                    console.log('[Shopify Proxy] Using url.origin:', appOrigin)
+               } else {
+                    // Final fallback - should never reach here
+                    appOrigin = 'https://ai-nutritionist-v1.vercel.app'
+                    console.warn('[Shopify Proxy] No origin detected, using hardcoded fallback:', appOrigin)
+               }
+          }
+
+          // Build the embed URL with Shopify context
           const embedUrl = new URL('/embed', appOrigin)
+
+          // Pass shop parameter (may be empty if direct access)
+          // The /embed page can handle empty shop gracefully
           embedUrl.searchParams.set('shop', shop)
+
           if (customerId) {
                embedUrl.searchParams.set('logged_in_customer_id', customerId)
           }
-          embedUrl.searchParams.set('timestamp', timestamp)
+          if (timestamp) {
+               embedUrl.searchParams.set('timestamp', timestamp)
+          }
+
+          console.log('[Shopify Proxy] Generated embed URL:', embedUrl.toString())
 
           // Return Liquid template that renders the iframe
           // Using Shopify Liquid syntax for dynamic content
