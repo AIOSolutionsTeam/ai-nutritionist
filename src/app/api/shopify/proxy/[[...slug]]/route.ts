@@ -272,6 +272,7 @@ export async function GET(request: NextRequest) {
           // Return Liquid template that renders the iframe
           // Using Shopify Liquid syntax for dynamic content
           const liquidTemplate = `
+{% layout none %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -428,7 +429,7 @@ export async function GET(request: NextRequest) {
           return new NextResponse(liquidTemplate, {
                status: 200,
                headers: {
-                    'Content-Type': 'text/html; charset=utf-8',
+                    'Content-Type': 'application/liquid',
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                },
           })
