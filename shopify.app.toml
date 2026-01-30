@@ -1,0 +1,21 @@
+name = "chatbot test"
+client_id = "f409dc7b794db3dbd8496efce8f5a92a"
+
+[access_scopes]
+scopes = "read_products,write_app_proxy"
+
+[app_proxy]
+url = "/api/shopify/proxy"
+prefix = "apps"
+subpath = "assistante"
+
+[webhooks]
+api_version = "2026-01"
+
+[auth]
+redirect_urls = [
+  "https://feat-implement-prefetch-system.d12cb1gvzstxra.amplifyapp.com/api/auth/callback"
+]
+
+[app_url]
+value = "https://feat-implement-prefetch-system.d12cb1gvzstxra.amplifyapp.com/"
