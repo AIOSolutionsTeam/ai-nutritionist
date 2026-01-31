@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
     // your project has TypeScript errors.
     ignoreBuildErrors: true,
   },
+  skipTrailingSlashRedirect: true,
   images: {
     remotePatterns: [
       {
