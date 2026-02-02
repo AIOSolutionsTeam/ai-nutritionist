@@ -22,8 +22,10 @@ function decodePrivateKey(): string | undefined {
     const base64Key = process.env.FIREBASE_PRIVATE_KEY_BASE64;
     if (base64Key) {
         try {
-            const decoded = Buffer.from(base64Key, 'base64').toString('utf-8');
-            console.log('[Firebase] Using base64-decoded private key');
+            let decoded = Buffer.from(base64Key, 'base64').toString('utf-8');
+            // Handle keys that were copied from JSON with escaped newlines
+            decoded = decoded.replace(/\\n/g, '\n');
+            console.log('[Firebase] Using base64-decoded private key, length:', decoded.length);
             return decoded;
         } catch (e) {
             console.error('[Firebase] Failed to decode base64 private key:', e);
