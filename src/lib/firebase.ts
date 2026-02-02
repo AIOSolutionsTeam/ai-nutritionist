@@ -61,6 +61,16 @@ function getFirebaseApp(): App {
         if (!clientEmail) missing.push('FIREBASE_CLIENT_EMAIL');
         if (!privateKey) missing.push('FIREBASE_PRIVATE_KEY or FIREBASE_PRIVATE_KEY_BASE64');
 
+        // Diagnostic logging for debugging Amplify environment variables
+        console.error('[Firebase] === ENVIRONMENT DIAGNOSTIC ===');
+        console.error('[Firebase] FIREBASE_PROJECT_ID exists:', !!process.env.FIREBASE_PROJECT_ID);
+        console.error('[Firebase] FIREBASE_CLIENT_EMAIL exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
+        console.error('[Firebase] FIREBASE_PRIVATE_KEY exists:', !!process.env.FIREBASE_PRIVATE_KEY);
+        console.error('[Firebase] FIREBASE_PRIVATE_KEY_BASE64 exists:', !!process.env.FIREBASE_PRIVATE_KEY_BASE64);
+        console.error('[Firebase] FIREBASE_PRIVATE_KEY_BASE64 length:', process.env.FIREBASE_PRIVATE_KEY_BASE64?.length || 0);
+        console.error('[Firebase] NODE_ENV:', process.env.NODE_ENV);
+        console.error('[Firebase] === END DIAGNOSTIC ===');
+
         const error = new Error(
             `Firebase configuration missing: ${missing.join(', ')}. ` +
             'For AWS Amplify, use FIREBASE_PRIVATE_KEY_BASE64 with base64-encoded key.'
