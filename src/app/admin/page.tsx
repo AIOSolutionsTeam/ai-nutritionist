@@ -133,6 +133,7 @@ export default function AdminDashboard() {
     const [salesChartGranularity, setSalesChartGranularity] = useState<'week' | 'month' | 'year'>('week');
     const [salesChartMetric, setSalesChartMetric] = useState<'count' | 'revenue'>('count');
     const [isSalesChartLoading, setIsSalesChartLoading] = useState(false);
+    const [configError, setConfigError] = useState<{ message: string; code?: string } | null>(null);
     const EVENTS_PER_PAGE = 10;
 
     // Check auth status on mount
@@ -325,13 +326,24 @@ export default function AdminDashboard() {
 
     const loadDashboardData = useCallback(async () => {
         setIsLoading(true);
+        setConfigError(null);
         try {
             // Initial load of all data
-            // We can also load comparison data here initially, or just rely on the separate call.
-            // Let's load everything initially to ensure consistent state, including default comparison.
+            const statsRes = await fetch('/api/admin/stats');
 
-            const [statsRes, eventsRes, usageRes] = await Promise.all([
-                fetch('/api/admin/stats'), // Load default stats (Today vs Yesterday inside)
+            if (statsRes.status === 503) {
+                const errorData = await statsRes.json();
+                if (errorData.code === 'FIREBASE_CONFIG_ERROR') {
+                    setConfigError({
+                        message: errorData.message,
+                        code: errorData.code
+                    });
+                    setIsLoading(false);
+                    return; // Stop loading other data
+                }
+            }
+
+            const [eventsRes, usageRes] = await Promise.all([
                 fetch('/api/admin/events?limit=50'),
                 fetch('/api/admin/usage')
             ]);
@@ -473,6 +485,44 @@ export default function AdminDashboard() {
                             {isLoading ? 'Connexion...' : 'Se Connecter'}
                         </button>
                     </form>
+                </div>
+            </div>
+        );
+    }
+
+    // Config Error View
+    if (isAuthenticated && configError) {
+        return (
+            <div className="admin-container">
+                <div className="dashboard-header">
+                    <h1 className="dashboard-title">⚠️ <span style={{ color: '#ef4444' }}>Erreur de Configuration</span></h1>
+                    <button className="logout-button" onClick={handleLogout}>Déconnexion</button>
+                </div>
+
+                <div className="warning-banner" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                    <span className="warning-icon">🚫</span>
+                    <p className="warning-text" style={{ color: '#fca5a5' }}>
+                        <strong>Le serveur ne peut pas se connecter à Firebase.</strong>
+                        <br /><br />
+                        {configError.message}
+                    </p>
+                </div>
+
+                <div style={{ marginTop: '24px', padding: '24px', background: '#1e293b', borderRadius: '12px' }}>
+                    <h3 style={{ color: 'white', marginBottom: '16px' }}>Comment réparer :</h3>
+                    <ol style={{ marginLeft: '24px', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <li>Allez dans votre console <strong>AWS Amplify</strong>.</li>
+                        <li>Naviguez vers <strong>App settings &gt; Environment variables</strong>.</li>
+                        <li>Assurez-vous que les variables suivantes sont définies :
+                            <ul style={{ marginTop: '8px', marginLeft: '24px', fontFamily: 'monospace' }}>
+                                <li>FIREBASE_PROJECT_ID</li>
+                                <li>FIREBASE_CLIENT_EMAIL</li>
+                                <li>FIREBASE_PRIVATE_KEY_BASE64 (Recommandé pour Amplify)</li>
+                                <li>Ou FIREBASE_PRIVATE_KEY</li>
+                            </ul>
+                        </li>
+                        <li>Après avoir ajouté les variables, <strong>redéployez</strong> votre application.</li>
+                    </ol>
                 </div>
             </div>
         );

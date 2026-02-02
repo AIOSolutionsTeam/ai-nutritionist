@@ -39,6 +39,19 @@ export async function GET(request: NextRequest) {
         });
     } catch (error) {
         console.error('Error fetching stats:', error);
+
+        // Check for Firebase config error
+        if (error instanceof Error && error.name === 'FirebaseConfigError') {
+            return NextResponse.json(
+                {
+                    error: 'Firebase Configuration Error',
+                    message: error.message,
+                    code: 'FIREBASE_CONFIG_ERROR'
+                },
+                { status: 503 }
+            );
+        }
+
         return NextResponse.json(
             { error: 'Failed to fetch statistics' },
             { status: 500 }

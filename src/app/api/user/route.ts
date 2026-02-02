@@ -64,6 +64,18 @@ export async function GET(request: NextRequest) {
                );
           }
 
+          // Check for Firebase config error
+          if (error instanceof Error && error.name === 'FirebaseConfigError') {
+               return NextResponse.json(
+                    {
+                         error: 'Firebase Configuration Error',
+                         message: error.message,
+                         code: 'FIREBASE_CONFIG_ERROR'
+                    },
+                    { status: 503 }
+               );
+          }
+
           return NextResponse.json(
                { error: 'Internal server error' },
                { status: 500 }
@@ -177,7 +189,7 @@ export async function POST(request: NextRequest) {
                // Update existing profile
                console.log('🔄 [API POST] Updating existing profile for userId:', userId);
                console.log('📋 [API POST] Profile data prepared for update:', JSON.stringify(profileData, null, 2));
-               
+
                const updatedProfile = await dbService.updateUserProfile(userId, profileData);
 
                if (!updatedProfile) {
@@ -192,7 +204,7 @@ export async function POST(request: NextRequest) {
                // Create new profile
                console.log('🆕 [API POST] Creating new profile for userId:', userId);
                console.log('📋 [API POST] Profile data prepared for creation:', JSON.stringify(profileData, null, 2));
-               
+
                userProfile = await dbService.createUserProfile(profileData);
           }
 
@@ -324,7 +336,7 @@ export async function PUT(request: NextRequest) {
 
           console.log('🔄 [API PUT] Updating profile for userId:', userId);
           console.log('📋 [API PUT] Update data prepared:', JSON.stringify(updateData, null, 2));
-          
+
           const updatedProfile = await dbService.updateUserProfile(userId, updateData);
 
           if (!updatedProfile) {

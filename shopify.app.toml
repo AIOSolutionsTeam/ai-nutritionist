@@ -1,5 +1,5 @@
 name = "chatbot test"
-client_id = "f409dc7b794db3dbd8496efce8f5a92a"
+client_id = "d93b38ee48a605c8c4d2bf93f0522755"
 
 [access_scopes]
 scopes = "read_products,write_app_proxy"
@@ -7,15 +7,15 @@ scopes = "read_products,write_app_proxy"
 [app_proxy]
 url = "/api/shopify/proxy"
 prefix = "apps"
-subpath = "assistante"
+subpath = "assistant"
 
 [webhooks]
 api_version = "2026-01"
 
 [auth]
 redirect_urls = [
-  "https://feat-implement-prefetch-system.d12cb1gvzstxra.amplifyapp.com/api/auth/callback"
+  "https://ai-nutritionist-v1.vercel.app/api/auth/callback"
 ]
 
 [app_url]
-value = "https://feat-implement-prefetch-system.d12cb1gvzstxra.amplifyapp.com/"
+value = "https://ai-nutritionist-v1.vercel.app/"

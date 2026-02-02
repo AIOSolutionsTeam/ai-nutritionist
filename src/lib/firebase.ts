@@ -61,10 +61,12 @@ function getFirebaseApp(): App {
         if (!clientEmail) missing.push('FIREBASE_CLIENT_EMAIL');
         if (!privateKey) missing.push('FIREBASE_PRIVATE_KEY or FIREBASE_PRIVATE_KEY_BASE64');
 
-        throw new Error(
+        const error = new Error(
             `Firebase configuration missing: ${missing.join(', ')}. ` +
             'For AWS Amplify, use FIREBASE_PRIVATE_KEY_BASE64 with base64-encoded key.'
         );
+        error.name = 'FirebaseConfigError';
+        throw error;
     }
 
     app = initializeApp({
