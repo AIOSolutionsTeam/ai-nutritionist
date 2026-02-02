@@ -19,13 +19,18 @@ let db: Firestore | undefined;
  */
 function decodePrivateKey(): string | undefined {
     // Option 1: Base64 encoded (recommended for AWS Amplify)
-    const base64Key = process.env.FIREBASE_PRIVATE_KEY_BASE64;
+    const base64Key = process.env.FIREBASE_PRIVATE_KEY_BASE64?.trim();
     if (base64Key) {
         try {
+            console.log('[Firebase] Base64 key found, length:', base64Key.length);
             let decoded = Buffer.from(base64Key, 'base64').toString('utf-8');
             // Handle keys that were copied from JSON with escaped newlines
             decoded = decoded.replace(/\\n/g, '\n');
-            console.log('[Firebase] Using base64-decoded private key, length:', decoded.length);
+            // Remove any trailing whitespace/CRLF
+            decoded = decoded.trim();
+            console.log('[Firebase] Decoded private key length:', decoded.length);
+            console.log('[Firebase] Key starts with:', decoded.substring(0, 30));
+            console.log('[Firebase] Key ends with:', decoded.substring(decoded.length - 30));
             return decoded;
         } catch (e) {
             console.error('[Firebase] Failed to decode base64 private key:', e);
