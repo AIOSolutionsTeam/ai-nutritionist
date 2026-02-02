@@ -12,6 +12,15 @@ const nextConfig: NextConfig = {
     // your project has TypeScript errors.
     ignoreBuildErrors: true,
   },
+  // Explicitly pass environment variables to server-side code
+  // This helps with AWS Amplify environment variable injection
+  env: {
+    FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
+    FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL,
+    FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY,
+    FIREBASE_PRIVATE_KEY_BASE64: process.env.FIREBASE_PRIVATE_KEY_BASE64,
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+  },
   skipTrailingSlashRedirect: true,
   images: {
     remotePatterns: [
