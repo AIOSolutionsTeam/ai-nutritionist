@@ -343,20 +343,22 @@ export default function AdminDashboard() {
                 }
             }
 
-            const [eventsRes, usageRes] = await Promise.all([
-                fetch('/api/admin/events?limit=50'),
-                fetch('/api/admin/usage')
-            ]);
+            // const [eventsRes, usageRes] = await Promise.all([
+            //     fetch('/api/admin/events?limit=50'),
+            //     fetch('/api/admin/usage')
+            // ]);
+
+            const usageRes = await fetch('/api/admin/usage');
 
             if (statsRes.ok) {
                 const statsData = await statsRes.json();
                 setStats(statsData.data);
             }
 
-            if (eventsRes.ok) {
-                const eventsData = await eventsRes.json();
-                setEvents(eventsData.data || []);
-            }
+            // if (eventsRes.ok) {
+            //     const eventsData = await eventsRes.json();
+            //     setEvents(eventsData.data || []);
+            // }
 
             if (usageRes.ok) {
                 const usageData = await usageRes.json();
@@ -1029,117 +1031,119 @@ export default function AdminDashboard() {
                     </div>
                 </div>
 
-                {/* Events Log */}
-                <div className="events-section">
-                    <div className="events-header">
-                        <h3 className="events-title">📋 Événements Récents</h3>
-                        <div className="events-filters">
-                            <select
-                                className="filter-select"
-                                value={eventFilter}
-                                onChange={(e) => { setEventFilter(e.target.value); setEventsPage(1); }}
-                            >
-                                <option value="all">Tous les Événements</option>
-                                <option value="chat_api_request">Requête Chat</option>
-                                <option value="chat_api_response">Réponse Chat</option>
-                                <option value="ai_response_generated">Réponse IA</option>
-                                <option value="product_recommended">Produit Recommandé</option>
-                                <option value="add_to_cart">Ajout au Panier</option>
-                                <option value="plan_generated">Plan Généré</option>
-                            </select>
-                            <button
-                                className="filter-select"
-                                onClick={loadDashboardData}
-                                style={{ cursor: 'pointer' }}
-                            >
-                                🔄 Actualiser
-                            </button>
+                {/* Events Log - Hiding as per request */}
+                {false && (
+                    <div className="events-section">
+                        <div className="events-header">
+                            <h3 className="events-title">📋 Événements Récents</h3>
+                            <div className="events-filters">
+                                <select
+                                    className="filter-select"
+                                    value={eventFilter}
+                                    onChange={(e) => { setEventFilter(e.target.value); setEventsPage(1); }}
+                                >
+                                    <option value="all">Tous les Événements</option>
+                                    <option value="chat_api_request">Requête Chat</option>
+                                    <option value="chat_api_response">Réponse Chat</option>
+                                    <option value="ai_response_generated">Réponse IA</option>
+                                    <option value="product_recommended">Produit Recommandé</option>
+                                    <option value="add_to_cart">Ajout au Panier</option>
+                                    <option value="plan_generated">Plan Généré</option>
+                                </select>
+                                <button
+                                    className="filter-select"
+                                    onClick={loadDashboardData}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    🔄 Actualiser
+                                </button>
+                            </div>
                         </div>
-                    </div>
 
-                    {isLoading ? (
-                        <div className="loading-container">
-                            <div className="loading-spinner"></div>
-                        </div>
-                    ) : filteredEvents.length ? (
-                        <>
-                            <div className="events-table-wrapper">
-                                <table className="events-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Événement</th>
-                                            <th>ID Utilisateur</th>
-                                            <th>Session</th>
-                                            <th>Détails</th>
-                                            <th>Heure</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {paginatedEvents.map((event) => (
-                                            <tr key={event.id}>
-                                                <td>
-                                                    <span className={`event-badge ${getEventBadgeClass(event.event)}`}>
-                                                        {event.event.replace(/_/g, ' ')}
-                                                    </span>
-                                                </td>
-                                                <td>{event.userId || '—'}</td>
-                                                <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                                                    {event.sessionId?.substring(0, 16)}...
-                                                </td>
-                                                <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {event.properties?.product_name as string ||
-                                                        event.properties?.source as string ||
-                                                        '—'}
-                                                </td>
-                                                <td>{formatDate(event.timestamp)}</td>
+                        {isLoading ? (
+                            <div className="loading-container">
+                                <div className="loading-spinner"></div>
+                            </div>
+                        ) : filteredEvents.length ? (
+                            <>
+                                <div className="events-table-wrapper">
+                                    <table className="events-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Événement</th>
+                                                <th>ID Utilisateur</th>
+                                                <th>Session</th>
+                                                <th>Détails</th>
+                                                <th>Heure</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {paginatedEvents.map((event) => (
+                                                <tr key={event.id}>
+                                                    <td>
+                                                        <span className={`event-badge ${getEventBadgeClass(event.event)}`}>
+                                                            {event.event.replace(/_/g, ' ')}
+                                                        </span>
+                                                    </td>
+                                                    <td>{event.userId || '—'}</td>
+                                                    <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                                                        {event.sessionId?.substring(0, 16)}...
+                                                    </td>
+                                                    <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {event.properties?.product_name as string ||
+                                                            event.properties?.source as string ||
+                                                            '—'}
+                                                    </td>
+                                                    <td>{formatDate(event.timestamp)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {/* Pagination Controls */}
+                                <div className="pagination-controls">
+                                    <button
+                                        className="pagination-btn"
+                                        onClick={() => setEventsPage(1)}
+                                        disabled={eventsPage === 1}
+                                    >
+                                        ««
+                                    </button>
+                                    <button
+                                        className="pagination-btn"
+                                        onClick={() => setEventsPage(p => Math.max(1, p - 1))}
+                                        disabled={eventsPage === 1}
+                                    >
+                                        «
+                                    </button>
+                                    <span className="pagination-info">
+                                        Page {eventsPage} / {totalPages} ({filteredEvents.length} événements)
+                                    </span>
+                                    <button
+                                        className="pagination-btn"
+                                        onClick={() => setEventsPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={eventsPage === totalPages}
+                                    >
+                                        »
+                                    </button>
+                                    <button
+                                        className="pagination-btn"
+                                        onClick={() => setEventsPage(totalPages)}
+                                        disabled={eventsPage === totalPages}
+                                    >
+                                        »»
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="no-data">
+                                <div className="no-data-icon">📭</div>
+                                <p>Aucun événement enregistré. Commencez à discuter pour générer des événements !</p>
                             </div>
-                            {/* Pagination Controls */}
-                            <div className="pagination-controls">
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => setEventsPage(1)}
-                                    disabled={eventsPage === 1}
-                                >
-                                    ««
-                                </button>
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => setEventsPage(p => Math.max(1, p - 1))}
-                                    disabled={eventsPage === 1}
-                                >
-                                    «
-                                </button>
-                                <span className="pagination-info">
-                                    Page {eventsPage} / {totalPages} ({filteredEvents.length} événements)
-                                </span>
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => setEventsPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={eventsPage === totalPages}
-                                >
-                                    »
-                                </button>
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => setEventsPage(totalPages)}
-                                    disabled={eventsPage === totalPages}
-                                >
-                                    »»
-                                </button>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="no-data">
-                            <div className="no-data-icon">📭</div>
-                            <p>Aucun événement enregistré. Commencez à discuter pour générer des événements !</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
+                        )}
+                    </div>
+                )}
+            </div >
+        </div >
     );
 }
